@@ -1,7 +1,0 @@
-# depslib dependency file v1.0
-1781174961 source:d:\prog\cbprojects\mylib\main.cpp
-	<iostream>
-	"mylib/mylib.h"
-
-1781174961 d:\prog\cbprojects\mylib\include\mylib\mylib.h
-
