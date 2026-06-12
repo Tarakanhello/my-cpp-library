@@ -40,3 +40,4 @@ qtcsettings.cmake
 *.depend
 *.layout
 *.workspace.layout
+*.bat
