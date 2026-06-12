@@ -35,3 +35,8 @@ qtcsettings.cmake
 *.lib
 *.so
 *.pdb
+
+# Code::Blocks files
+*.depend
+*.layout
+*.workspace.layout
