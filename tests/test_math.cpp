@@ -1,6 +1,6 @@
 #include <catch2/catch_all.hpp>
 
-#include "include/mylib.h"
+#include "mylib/mylib.h"
 
 TEST_CASE("Целочисленное деление с округлением вверх", "[math::ceiling]")
 {

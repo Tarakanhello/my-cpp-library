@@ -3,6 +3,7 @@
 
 #include"mylib/math.h"
 #include "mylib/show_debug_log_info.h"
+#include "mylib/memory.h"
 
 
 void helloFromMyLib();

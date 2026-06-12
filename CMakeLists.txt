@@ -25,4 +25,5 @@ target_sources(mylib PUBLIC
         include/mylib/mylib.h
         include/mylib/show_debug_log_info.h
         include/mylib/math.h
+        include/mylib/memory.h
 )
