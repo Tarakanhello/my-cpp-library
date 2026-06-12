@@ -1,29 +1,37 @@
-# —компилированные файлы
-*.exe
-*.a
-*.o
-*.obj
-*.so
-*.dll
-*.lib
-
-# ѕапки сборки
-bin/
-obj/
+# Build dirs
 build/
+build-*/
+cmake-build-*/
 
-# ‘айлы Code::Blocks (проекты и рабочее пространство Ч оставл€ем, но можно не исключать, они нужны)
-# *.cbp
-# *.workspace
 
-# ¬ременные файлы
-*.log
-*.tmp
-*.swp
+# Qt Creator user files
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user
+*.user
 
-# ѕапка .vs (если пользуетесь Visual Studio)
-.vs/
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+Makefile
+.ninja_deps
+.ninja_log
+build.ninja
 
-# ‘айлы пользовательских настроек Code::Blocks
-*.depend
-*.layout
+# Qt autogen
+*_autogen/
+qtcsettings.cmake
+.autosave
+.qtcreator/
+
+# Binaries
+*.exe
+*.dll
+*.obj
+*.o
+*.a
+*.lib
+*.so
+*.pdb
