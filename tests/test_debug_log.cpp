@@ -1,10 +1,11 @@
 #include <catch2/catch_all.hpp>
+
 #include "mylib/mylib.h"
 
 TEST_CASE("SHOW_DEBUG_LOG_INFO macro works with expression", "[debug]")
 {
     int x{ 42 };
-    // Макрос должен скомпилироваться и выполниться без исключений
+
     REQUIRE_NOTHROW(SHOW_DEBUG_LOG_INFO(x));
 }
 

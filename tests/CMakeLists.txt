@@ -1,16 +1,12 @@
-# Подключаем Catch2
-include(FetchContent)
-FetchContent_Declare(
-    Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG        v3.6.0
+add_executable(unit_tests
+    test_hello.cpp
+    test_debug_log.cpp
 )
-FetchContent_MakeAvailable(Catch2)
+target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 
-# Тест для helloFromMyLib
-add_executable(test_hello test_hello.cpp)
-target_link_libraries(test_hello PRIVATE mylib Catch2::Catch2WithMain)
+target_include_directories(unit_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 
-# Тест для debug макросов
-add_executable(test_debug_log test_debug_log.cpp)
-target_link_libraries(test_debug_log PRIVATE mylib Catch2::Catch2WithMain)
+
+include(Catch)
+catch_discover_tests(unit_tests)

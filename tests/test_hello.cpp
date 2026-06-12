@@ -5,6 +5,5 @@
 
 TEST_CASE("helloFromMyLib prints nothing unexpected", "hello")
 {
-    helloFromMyLib();
     REQUIRE_NOTHROW(helloFromMyLib());
 }
