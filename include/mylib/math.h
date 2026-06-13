@@ -1,6 +1,7 @@
 #ifndef MATH_H_INCLUDED
 #define MATH_H_INCLUDED
 
+#include <cstdint>
 #include <stdexcept>
 
 namespace math
