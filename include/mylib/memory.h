@@ -4,20 +4,23 @@
 #include <new>
 #include <cstddef>
 
-namespace memory
+namespace mylib
 {
-    template<typename T>
-    T* rawMemory(std::size_t size)
+    namespace memory
     {
-        return static_cast<T*>(::operator new(sizeof(T) * size,
-                                              std::align_val_t{ alignof(T) }));
-    }
+        template<typename T>
+        T* rawMemory(std::size_t size)
+        {
+            return static_cast<T*>(::operator new(sizeof(T) * size,
+                                                  std::align_val_t{ alignof(T) }));
+        }
 
-    template<typename T>
-    void rawDelete(T* array)
-    {
-        ::operator delete(array, std::align_val_t{ alignof(T) });
-    }
-}
+        template<typename T>
+        void rawDelete(T* array)
+        {
+            ::operator delete(array, std::align_val_t{ alignof(T) });
+        }
+    } // end namespace memory
+} // end namespace mylib
 
 #endif // MEMORY_H_INCLUDED

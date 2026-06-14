@@ -16,6 +16,7 @@ endif()
 # Библиотека mylib
 add_library(mylib STATIC
     src/mylib.cpp
+    include/mylib/structs.h
 )
 target_include_directories(mylib PUBLIC include)
 target_sources(mylib PUBLIC

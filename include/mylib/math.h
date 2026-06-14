@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <stdexcept>
 
-namespace math
+namespace mylib
 {
+    namespace math
+    {
     /**
      * @brief Вычисляет частное от деления с округлением вверх.
      *
@@ -35,6 +37,8 @@ namespace math
         return static_cast<std::int64_t>(dividend / divisor) +
                static_cast<std::int64_t>(dividend % divisor != 0);
     }
-} // end namespace math
+    } // end namespace math
+
+} //end namespace mylib
 
 #endif // MATH_H_INCLUDED
