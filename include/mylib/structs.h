@@ -26,7 +26,7 @@ namespace mylib
          * @param theKey  Начальный ключ (по умолчанию создаётся значение по умолчанию для KEY).
          * @param theValue Начальное значение (по умолчанию создаётся значение по умолчанию для VALUE).
          */
-        KVPair(const KEY& theKey = KEY(), const VALUE& theValue = VALUE())
+        constexpr KVPair(const KEY& theKey = KEY(), const VALUE& theValue = VALUE())
             : key{ theKey }
             , value{ theValue }
         {}
@@ -56,7 +56,7 @@ namespace mylib
          * @param right Правый операнд.
          * @return true если left < right, иначе false.
          */
-        bool operator()(const T& left, const T& right) const
+        constexpr bool operator()(const T& left, const T& right) const
         {
             return left < right;
         }
@@ -67,7 +67,7 @@ namespace mylib
          * @param right Правый операнд.
          * @return true если left == right, иначе false.
          */
-        bool isEqual(const T& left, const T& right) const
+        constexpr bool isEqual(const T& left, const T& right) const
         {
             return left == right;
         }
@@ -87,7 +87,7 @@ namespace mylib
          * @brief Конструктор.
          * @param theComparator Базовый компаратор (Компаратор по умолчанию, использующий операторы < и ==).
          */
-        explicit ReverseComparator(const COMPARATOR& theComparator = COMPARATOR())
+        explicit constexpr ReverseComparator(const COMPARATOR& theComparator = COMPARATOR())
             : comparator{ theComparator }
         {}
 
@@ -95,7 +95,7 @@ namespace mylib
          * @brief Оператор "меньше" с обратным порядком.
          * @return true если базовый компаратор считает, что right < left.
          */
-        bool operator()(const T& left, const T& right) const
+        constexpr bool operator()(const T& left, const T& right) const
         {
             return comparator(right, left);
         }
@@ -103,7 +103,7 @@ namespace mylib
         /**
          * @brief Равенство – делегируется базовому компаратору.
          */
-        bool isEqual(const T& left, const T& right) const
+        constexpr bool isEqual(const T& left, const T& right) const
         {
             return comparator.isEqual(right, left);
         }
@@ -126,7 +126,7 @@ namespace mylib
          * @param theTransform   Функтор преобразования (по умолчанию создаётся новый).
          * @param theComparator  Компаратор для преобразованных значений (по умолчанию новый).
          */
-        explicit TransformComparator(const TRANSFORM& theTransform = TRANSFORM(),
+        explicit constexpr TransformComparator(const TRANSFORM& theTransform = TRANSFORM(),
                                      const COMPARATOR& theComparator = COMPARATOR())
             : transform{ theTransform }
             , comparator{ theComparator }
@@ -135,7 +135,7 @@ namespace mylib
          /**
          * @brief Сравнение после применения transform.
          */
-        bool operator()(const T& left, const T& right) const
+        constexpr bool operator()(const T& left, const T& right) const
         {
             return comparator(transform(left), transform(right));
         }
@@ -143,7 +143,7 @@ namespace mylib
         /**
          * @brief Проверка равенства после применения transform.
          */
-        bool isEqual(const T& left, const T& right) const
+        constexpr bool isEqual(const T& left, const T& right) const
         {
             return comparator.isEqual(transform(left), transform(right));
         }
@@ -187,7 +187,7 @@ namespace mylib
          * @brief Конструктор, запоминающий массив.
          * @param theArray Указатель на массив (должен существовать дольше, чем объект трансформации).
          */
-        explicit IndexTransform(const T* theArray)
+        explicit constexpr IndexTransform(const T* theArray)
             : array{ theArray }
         {}
 
@@ -196,7 +196,7 @@ namespace mylib
          * @param i Индекс.
          * @return Ссылка на i-й элемент.
          */
-        const T& operator()(std::size_t i) const
+        constexpr const T& operator()(std::size_t i) const
         {
             return array[i];
         }
@@ -222,7 +222,7 @@ namespace mylib
          * @brief Возвращает pair.first.
          * @return Константная ссылка на поле first.
          */
-        const FIRST& operator()(const std::pair<FIRST, SECOND>& pair)
+        constexpr const FIRST& operator()(const std::pair<FIRST, SECOND>& pair) const
         {
             return pair.first;
         }
@@ -254,7 +254,7 @@ namespace mylib
          * @return true если левый элемент меньше правого на позиции i,
          *         иначе false (если индексы вне диапазона – см. логику).
          */
-        bool operator()(const VECTOR& left, const VECTOR& right, std::size_t i) const
+        constexpr bool operator()(const VECTOR& left, const VECTOR& right, std::size_t i) const
         {
             return i < left.size() ? i < right.size() && left[i] < right[i] :
                                         i < right.size();
@@ -264,7 +264,7 @@ namespace mylib
          * @brief Лексикографическое сравнение двух контейнеров.
          * @return true если left < right в лексикографическом порядке.
          */
-        bool operator()(const VECTOR& left, const VECTOR& right) const
+        constexpr bool operator()(const VECTOR& left, const VECTOR& right) const
         {
             for(std::size_t i{}; i < std::min(left.size(), right.size()); ++i)
             {
@@ -283,7 +283,7 @@ namespace mylib
         /**
          * @brief Проверка равенства элементов на позиции i.
          */
-        bool isEqual(const VECTOR& left, const VECTOR& right, std::size_t i) const
+        constexpr bool isEqual(const VECTOR& left, const VECTOR& right, std::size_t i) const
         {
             return i < left.size() ? i < right.size() && left[i] == right[i] :
                                         i >= right.size();
@@ -293,7 +293,7 @@ namespace mylib
          * @brief Проверка полного равенства двух контейнеров.
          * @return true если left и right имеют одинаковый размер и все элементы равны.
          */
-        bool isEqual(const VECTOR& left, const VECTOR& right) const
+        constexpr bool isEqual(const VECTOR& left, const VECTOR& right) const
         {
             for(std::size_t i{}; i < std::min(left.size(), right.size()); ++i)
             {
@@ -309,7 +309,7 @@ namespace mylib
         /**
          * @brief Возвращает размер контейнера (нужен для некоторых алгоритмов).
          */
-        std::size_t getSize(const VECTOR& vector) const
+        constexpr std::size_t getSize(const VECTOR& vector) const
         {
             return vector.size();
         }
@@ -444,43 +444,43 @@ namespace mylib
     template<typename T>
     struct ArithmeticType
     {
-        friend T operator+(const T& a, const T& b)
+        friend constexpr T operator+(const T& a, const T& b)
         {
             T result{ a };
             return result += b;
         }
 
-        friend T operator-(const T& a, const T& b)
+        friend constexpr T operator-(const T& a, const T& b)
         {
             T result{ a };
             return result -= b;
         }
 
-        friend T operator*(const T& a, const T& b)
+        friend constexpr T operator*(const T& a, const T& b)
         {
             T result{ a };
             return result *= b;
         }
 
-        friend T operator<<(const T& a, int shift)
+        friend constexpr T operator<<(const T& a, int shift)
         {
             T result{ a };
             return result <<= shift;
         }
 
-        friend T operator>>(const T& a, int shift)
+        friend constexpr T operator>>(const T& a, int shift)
         {
             T result{ a };
             return result >>= shift;
         }
 
-        friend T operator%(const T& a, const T& b)
+        friend constexpr T operator%(const T& a, const T& b)
         {
             T result{ a };
             return result %= b;
         }
 
-        friend T operator/(const T& a, const T& b)
+        friend constexpr T operator/(const T& a, const T& b)
         {
             T result{ a };
             return result /= b;

@@ -2,6 +2,7 @@ add_executable(unit_tests
     test_hello.cpp
     test_debug_log.cpp
     test_math.cpp
+    test_structs.cpp
 )
 target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 
