@@ -17,6 +17,8 @@ endif()
 add_library(mylib STATIC
     src/mylib.cpp
     include/mylib/structs.h
+    include/mylib/vector.h
+    src/vector.cpp
 )
 target_include_directories(mylib PUBLIC include)
 target_sources(mylib PUBLIC
