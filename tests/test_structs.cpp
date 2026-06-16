@@ -367,17 +367,22 @@ TEST_CASE("valMin / valMax", "[algorithms]")
 
     SECTION("valMin const")
     {
-
+        const int& minRef = mylib::comparators::valMin(vec.data(), vec.size());
+        CHECK(minRef == 1);
     }
 
     SECTION("valMax non-const")
     {
-
+        int& maxRef = mylib::comparators::valMax(vec.data(), vec.size());
+        CHECK(maxRef == 5);
+        maxRef = 99;
+        CHECK(vec[4] == 99);
     }
 
     SECTION("valMax const")
     {
-
+        const int& maxRef = mylib::comparators::valMax(vec.data(), vec.size());
+        CHECK(maxRef == 5);
     }
 }
 
