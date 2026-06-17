@@ -44,14 +44,12 @@ namespace mylib
 
         ~Vector();
 
-        T* getArray();
-        const T* getArray() const;
+
 
         T* data();
         const T* data() const;
 
         size_t size() const;
-        size_t getSize() const;
 
         bool empty() const;
 

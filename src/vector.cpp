@@ -176,30 +176,6 @@ bool mylib::Vector<T>::empty() const
 
 
 template<typename T>
-T* mylib::Vector<T>::getArray()
-{
-    return data();
-}
-
-
-
-template<typename T>
-const T* mylib::Vector<T>::getArray() const
-{
-    return data();
-}
-
-
-
-template<typename T>
-size_t mylib::Vector<T>::getSize() const
-{
-    return size();
-}
-
-
-
-template<typename T>
 void mylib::Vector<T>::reallocate(const Vector<T>& other)
 {
     T* newData{ memory::rawMemory<T>(other.m_capacity) };
