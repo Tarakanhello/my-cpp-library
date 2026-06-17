@@ -13,13 +13,13 @@ namespace mylib
     private:
         enum{ MinCapacity = 8 };
 
-        int m_capacity{};
-        int m_size{};
+        size_t m_capacity{};
+        size_t m_size{};
 
 
         T* m_data{ nullptr };
 
-        void updateCapacity();
+        void updateCapacity(size_t size);
 
         void allocate(const T& value = T());
 
@@ -29,11 +29,11 @@ namespace mylib
         void deallocate();
         void reallocate(const Vector<T>& other);
         void reset();
-        void resize(int newSize);
+        void resize(size_t newSize);
 
     public:
         Vector();
-        explicit Vector(int size, const T& value = T());
+        explicit Vector(size_t size, const T& value = T());
         explicit Vector(const std::initializer_list<T>& list);
 
         Vector(const Vector<T>& other);
@@ -50,13 +50,13 @@ namespace mylib
         T* data();
         const T* data() const;
 
-        int size() const;
-        int getSize() const;
+        size_t size() const;
+        size_t getSize() const;
 
         bool empty() const;
 
-        T& operator[](int i);
-        const T& operator[](int i) const;
+        T& operator[](size_t i);
+        const T& operator[](size_t i) const;
     };
 
 } // end namespace
