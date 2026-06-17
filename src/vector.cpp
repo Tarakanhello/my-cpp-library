@@ -130,6 +130,22 @@ void mylib::Vector<T>::allocate(const Z& values)
 }
 
 
+template<typename T>
+void mylib::Vector<T>::append(const T& item)
+{
+    if(m_size >= m_capacity)
+    {
+        resize(m_size + 1);
+        m_data[m_size - 1] = item;
+    }
+    else
+    {
+        new (&m_data[m_size]) T(item);
+        ++m_size;
+    }
+}
+
+
 
 template<typename T>
 T* mylib::Vector<T>::data()
@@ -150,13 +166,7 @@ void mylib::Vector<T>::deallocate()
 {
     if(m_data)
     {
-        for(size_t i{ 0 }; i < m_size; ++i)
-        {
-            m_data[i].~T();
-        }
-
-        memory::rawDelete(m_data);
-
+        memory::rawDestruct(m_data, m_size);
         m_data = nullptr;
     }
 
@@ -189,13 +199,7 @@ void mylib::Vector<T>::reallocate(const Vector<T>& other)
     }
     catch(...)
     {
-        for(size_t j{ 0 }; j < i; ++j)
-        {
-            newData[j].~T();
-        }
-
-        memory::rawDelete(newData);
-
+        memory::rawDestruct(newData, i);
         throw;
     }
 
@@ -227,9 +231,16 @@ void mylib::Vector<T>::resize(size_t newSize)
     }
     else if(newSize < m_size)
     {
-        for(size_t i{ newSize }; i < m_size; ++i)
+        if(m_capacity > MinCapacity && newSize * 4 < m_capacity)
         {
-            m_data[i].~T();
+            // TO DO
+        }
+        else
+        {
+            for(size_t i{ newSize }; i < m_size; ++i)
+            {
+                m_data[i].~T();
+            }
         }
     }
     else
@@ -268,12 +279,7 @@ void mylib::Vector<T>::resize(size_t newSize)
             }
             catch(...)
             {
-                for(size_t j{ 0 }; j < copied; ++j)
-                {
-                    newData[j].~T();
-                }
-
-                memory::rawDelete(newData);
+                memory::rawDestruct(newData, copied);
                 throw;
             }
 
@@ -287,29 +293,13 @@ void mylib::Vector<T>::resize(size_t newSize)
             }
             catch(...)
             {
-                // откат: уничтожаем созданные новые элементы
-                for(size_t j{ m_size }; j < created; ++j)
-                {
-                    newData[j].~T();
-                }
-                // уничтожаем скопированные старые элементы
-                for(size_t j{ 0 }; j < m_size; ++j)
-                {
-                    newData[j].~T();
-                }
-
-                memory::rawDelete(newData);
+                memory::rawDestruct(newData, created);
                 throw;
             }
 
             if (m_data)
             {
-                for (size_t i = 0; i < m_size; ++i)
-                {
-                    m_data[i].~T();
-                }
-
-                memory::rawDelete(m_data);
+                memory::rawDestruct(m_data, m_size);
             }
 
             m_data = newData;
@@ -319,7 +309,20 @@ void mylib::Vector<T>::resize(size_t newSize)
     m_size = newSize;
 }
 
+template<typename T>
+void mylib::Vector<T>::resize()
+{
+    T* oldItems{ m_data };
+    m_capacity = std::max(2 * m_size, MinCapacity);
 
+    m_data = memory::rawMemory<T>(m_capacity);
+
+    for(size_t i{}; i < m_size; ++i)
+    {
+        new (&m_data[i]) T(oldItems[i]);
+    }
+    memory::rawDestruct(oldItems, m_size);
+}
 
 template<typename T>
 size_t mylib::Vector<T>::size() const

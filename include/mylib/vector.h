@@ -29,6 +29,7 @@ namespace mylib
         void deallocate();
         void reallocate(const Vector<T>& other);
         void reset();
+        void resize();
         void resize(size_t newSize);
 
     public:
@@ -44,7 +45,7 @@ namespace mylib
 
         ~Vector();
 
-
+        void append(const T& item);
 
         T* data();
         const T* data() const;

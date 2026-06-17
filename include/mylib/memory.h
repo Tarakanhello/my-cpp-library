@@ -25,6 +25,17 @@ namespace mylib
         {
             ::operator delete(array, std::align_val_t{ alignof(T) });
         }
+
+        template<typename T>
+        void rawDestruct(T* array, size_t size)
+        {
+            for(size_t i{}; i < size; ++i)
+            {
+                array[i].~T();
+            }
+
+            rawDelete(array);
+        }
     } // end namespace memory
 } // end namespace mylib
 
