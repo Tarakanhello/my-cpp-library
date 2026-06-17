@@ -11,6 +11,11 @@ namespace mylib
         template<typename T>
         T* rawMemory(std::size_t size)
         {
+            if(size == 0)
+            {
+                return nullptr;
+            }
+
             return static_cast<T*>(::operator new(sizeof(T) * size,
                                                   std::align_val_t{ alignof(T) }));
         }

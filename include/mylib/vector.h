@@ -2,10 +2,8 @@
 #define VECTOR_H
 
 #include <initializer_list>
-#include <vector>
 
 #include "mylib/structs.h"
-
 
 namespace mylib
 {
@@ -18,13 +16,33 @@ namespace mylib
         int m_capacity{};
         int m_size{};
 
-        T* m_data;
+
+        T* m_data{ nullptr };
+
+        void updateCapacity();
+
+        void allocate(const T& value = T());
+
+        template<typename Z>
+        void allocate(const Z& values);
+
+        void deallocate();
+        void reallocate(const Vector<T>& other);
+        void reset();
+        void resize(int newSize);
 
     public:
-        explicit Vector();
-        explicit Vector(int size);
+        Vector();
         explicit Vector(int size, const T& value = T());
         explicit Vector(const std::initializer_list<T>& list);
+
+        Vector(const Vector<T>& other);
+        Vector<T>& operator=(const Vector<T>& other);
+
+        Vector(Vector<T>&& other) noexcept;
+        Vector<T>& operator=(Vector<T>&& other) noexcept;
+
+        ~Vector();
 
         T* getArray();
         const T* getArray() const;
@@ -35,8 +53,9 @@ namespace mylib
         int size() const;
         int getSize() const;
 
-        T& operator[](int i);
+        bool empty() const;
 
+        T& operator[](int i);
         const T& operator[](int i) const;
     };
 
