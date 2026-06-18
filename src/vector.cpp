@@ -21,8 +21,8 @@ mylib::Vector<T>::Vector(size_t size, const T& value)
     if(m_size == 0)
         return;
 
-    updateCapacity(size);
-    allocate(value);
+    size_t newCap{ calculateNewCapacity(size) };
+    reallocateBuffer(newCap, size, value);
 }
 
 
@@ -33,9 +33,25 @@ mylib::Vector<T>::Vector(const std::initializer_list<T>& list)
     , m_size{ 0 }
     , m_data{ nullptr }
 {
-    m_size = list.size();
-    updateCapacity(m_size);
-    allocate(list);
+    if(list.size() == 0)
+    {
+        return;
+    }
+
+    m_capacity = calculateNewCapacity(list.size());
+    m_data = memory::rawMemory<T>(m_capacity);
+    try
+    {
+        constructElementsFromRange(0, list.begin(), list.size());
+        m_size = list.size();
+    }
+    catch (...)
+    {
+        memory::rawDelete(m_data);
+        m_data = nullptr;
+        m_capacity = 0;
+        throw;
+    }
 }
 
 
@@ -44,7 +60,24 @@ mylib::Vector<T>::Vector(const Vector<T>& other)
     : m_capacity{ other.m_capacity }
     , m_size{ other.m_size }
 {
-    allocate(other);
+    if(m_capacity == 0)
+    {
+        return;
+    }
+
+    m_data = memory::rawMemory<T>(m_capacity);
+    try
+    {
+        constructElementsFromRange(0, other.m_data, other.m_size);
+    }
+    catch (...)
+    {
+        memory::rawDelete(m_data);
+        m_data = nullptr;
+        m_capacity = 0;
+        m_size = 0;
+        throw;
+    }
 }
 
 
@@ -53,7 +86,8 @@ mylib::Vector<T>& mylib::Vector<T>::operator=(const Vector<T>& other)
 {
     if(this != &other)
     {
-        reallocate(other);
+        Vector temp(other);
+        swap(temp);
     }
 
     return *this;
@@ -76,11 +110,7 @@ mylib::Vector<T>& mylib::Vector<T>::operator=(Vector<T>&& other) noexcept
 {
     if(this != &other)
     {
-        deallocate();
-        m_capacity = other.m_capacity;
-        m_size = other.m_size;
-        m_data = other.m_data;
-
+        swap(other);
         other.reset();
     }
 
@@ -98,50 +128,61 @@ mylib::Vector<T>::~Vector()
 
 
 template<typename T>
-void mylib::Vector<T>::allocate(const T& value)
-{
-    m_data = memory::rawMemory<T>(m_capacity);
-
-    for(size_t i{ 0 }; i < m_size; ++i)
-    {
-        new (&m_data[i]) T(value);
-    }
-}
-
-
-
-template<typename T>
-template<typename Z>
-void mylib::Vector<T>::allocate(const Z& values)
-{
-    if(m_capacity == 0)
-    {
-        m_data =  nullptr;
-
-        return;
-    }
-
-    m_data = memory::rawMemory<T>(m_capacity);
-
-    for(size_t i{ 0 }; i < m_size; ++i)
-    {
-        new (&m_data[i]) T(values[i]);
-    }
-}
-
-
-template<typename T>
 void mylib::Vector<T>::append(const T& item)
 {
-    if(m_size >= m_capacity)
+    resize(m_size + 1, item);
+}
+
+
+
+template<typename T>
+size_t mylib::Vector<T>::calculateNewCapacity(size_t requiredSize) const
+{
+    size_t newCap{ (m_capacity == 0) ? MinCapacity : m_capacity };
+    while(newCap < requiredSize)
     {
-        resize(m_size + 1);
-        m_data[m_size - 1] = item;
+        newCap *=2;
     }
-    else
+
+    return newCap;
+}
+
+
+
+template<typename T>
+void mylib::Vector<T>::constructElements(size_t from, size_t to, const T& value)
+{
+    size_t i{ from };
+    try
     {
-        new (&m_data[m_size]) T(item);
-        ++m_size;
+        for(; i < to; ++i)
+        {
+            new (&m_data[i]) T(value);
+        }
+    }
+    catch(...)
+    {
+        destroyElements(from, i);
+        throw;
+    }
+}
+
+
+template<typename T>
+void mylib::Vector<T>::constructElementsFromRange(size_t from, const T* src, size_t count)
+{
+    size_t i{ 0 };
+    try
+    {
+        for(; i < count; ++i)
+        {
+            new (&m_data[from + i]) T(src[i]);
+        }
+    }
+    catch(...)
+    {
+        destroyElements(from, from + i);
+        throw;
     }
 }
 
@@ -161,6 +202,8 @@ const T* mylib::Vector<T>::data() const
     return m_data;
 }
 
+
+
 template<typename T>
 void mylib::Vector<T>::deallocate()
 {
@@ -176,6 +219,16 @@ void mylib::Vector<T>::deallocate()
 
 
 
+template<typename T>
+void mylib::Vector<T>::destroyElements(size_t from, size_t to) noexcept
+{
+    for(size_t i{ from }; i < to; ++i)
+    {
+        m_data[i].~T();
+    }
+}
+
+
 
 template<typename T>
 bool mylib::Vector<T>::empty() const
@@ -185,32 +238,66 @@ bool mylib::Vector<T>::empty() const
 
 
 
+
 template<typename T>
-void mylib::Vector<T>::reallocate(const Vector<T>& other)
+void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, const T& value)
 {
-    T* newData{ memory::rawMemory<T>(other.m_capacity) };
-    size_t i{ 0 };
+    T* newData{ memory::rawMemory<T>(newCapacity) };
+    size_t oldSize{ m_size };
+    size_t copyCount{ (newSize < oldSize) ? newSize : oldSize };
+
+    size_t constructCount{ (newSize > oldSize) ? (newSize - oldSize) : 0 };
+
+    // Копирование старых элементов
+    size_t copied{ 0 };
+
     try
     {
-        for(; i < other.m_size; ++i)
+        if(m_data != nullptr)
         {
-            new (&newData[i]) T(other.m_data[i]);
+            for(; copied < copyCount; ++copied)
+            {
+                new (&newData[copied]) T(m_data[copied]);
+            }
         }
+
+        // Создание новых элементов
+        size_t created{ 0 };
+        if(constructCount > 0)
+        {
+            try
+            {
+                for(; created < constructCount; ++created)
+                {
+                    new (&newData[oldSize + created]) T(value);
+                }
+            }
+            catch(...)
+            {
+                // откат: уничтожить всё, что успели создать в новом буфере
+                memory::rawDestruct(newData, oldSize + created);
+                throw;
+            }
+        }
+
+        // Успех: освободить старые данные
+        if(m_data)
+        {
+            memory::rawDestruct(m_data, oldSize);
+        }
+
+        m_data = newData;
+        m_capacity = newCapacity;
+        m_size = newSize;
     }
-    catch(...)
+    catch (...)
     {
-        memory::rawDestruct(newData, i);
+        // откат: уничтожить скопированные объекты и освободить память
+        memory::rawDestruct(newData, copied);
         throw;
     }
-
-    deallocate();
-
-    m_data = newData;
-    m_size = other.m_size;
-    m_capacity = other.m_capacity;
-
-    newData = nullptr;
 }
+
 
 
 template<typename T>
@@ -223,106 +310,43 @@ void mylib::Vector<T>::reset()
 
 
 template<typename T>
-void mylib::Vector<T>::resize(size_t newSize)
+void mylib::Vector<T>::resize(size_t newSize, const T& value)
 {
     if(newSize == m_size)
     {
         return;
     }
-    else if(newSize < m_size)
+    else if(newSize < m_size) // Уменьшение размера
     {
+        // Проверяем, нужно ли уменьшить ёмкость
         if(m_capacity > MinCapacity && newSize * 4 < m_capacity)
         {
-            // TO DO
+            size_t newCapacity{ calculateNewCapacity(newSize) };
+            reallocateBuffer(newCapacity, newSize, value);
         }
         else
         {
-            for(size_t i{ newSize }; i < m_size; ++i)
-            {
-                m_data[i].~T();
-            }
+            destroyElements(newSize, m_size);
         }
     }
-    else
+    else // Увеличение размера
     {
         if(newSize <= m_capacity)
         {
-            size_t i{ m_size };
-            try
-            {
-                for(; i < newSize; ++i)
-                {
-                    new (&m_data[i]) T();
-                }
-            }
-            catch (...)
-            {
-                for(size_t j{ m_size }; j < i; ++j)
-                {
-                    m_data[j].~T();
-                }
-                throw;
-            }
+            constructElements(m_size, newSize, value);
         }
         else
         {
-            updateCapacity(newSize);
+            size_t newCapacity{ calculateNewCapacity(newSize) };
 
-            T* newData{ memory::rawMemory<T>(m_capacity) };
-            size_t copied{ 0 }; // сколько старых элементов скопировано
-            try
-            {
-                for(; copied < m_size; ++copied)
-                {
-                    new (&newData[copied]) T(m_data[copied]);
-                }
-            }
-            catch(...)
-            {
-                memory::rawDestruct(newData, copied);
-                throw;
-            }
-
-            size_t created{ m_size };
-            try
-            {
-                for(; created < newSize; ++created)
-                {
-                    new (&newData[created]) T();
-                }
-            }
-            catch(...)
-            {
-                memory::rawDestruct(newData, created);
-                throw;
-            }
-
-            if (m_data)
-            {
-                memory::rawDestruct(m_data, m_size);
-            }
-
-            m_data = newData;
+            reallocateBuffer(newCapacity, newSize, value);
         }
     }
 
     m_size = newSize;
 }
 
-template<typename T>
-void mylib::Vector<T>::resize()
-{
-    T* oldItems{ m_data };
-    m_capacity = std::max(2 * m_size, MinCapacity);
 
-    m_data = memory::rawMemory<T>(m_capacity);
-
-    for(size_t i{}; i < m_size; ++i)
-    {
-        new (&m_data[i]) T(oldItems[i]);
-    }
-    memory::rawDestruct(oldItems, m_size);
-}
 
 template<typename T>
 size_t mylib::Vector<T>::size() const
@@ -333,13 +357,11 @@ size_t mylib::Vector<T>::size() const
 
 
 template<typename T>
-void mylib::Vector<T>::updateCapacity(size_t size)
+void mylib::Vector<T>::swap(Vector& other) noexcept
 {
-    m_capacity = (m_capacity == 0 ? MinCapacity : m_capacity);
-    while(m_capacity < size)
-    {
-        m_capacity *= 2;
-    }
+    std::swap(m_data, other.m_data);
+    std::swap(m_size, other.m_size);
+    std::swap(m_capacity, other.m_capacity);
 }
 
 
@@ -347,7 +369,7 @@ void mylib::Vector<T>::updateCapacity(size_t size)
 template<typename T>
 T& mylib::Vector<T>::operator[](size_t i)
 {
-    assert(i >=0 && i < size());
+    assert(i < size());
 
     return m_data[i];
 }

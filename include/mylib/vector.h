@@ -19,18 +19,17 @@ namespace mylib
 
         T* m_data{ nullptr };
 
-        void updateCapacity(size_t size);
 
-        void allocate(const T& value = T());
 
-        template<typename Z>
-        void allocate(const Z& values);
-
+        size_t calculateNewCapacity(size_t requiredSize) const;
+        void constructElements(size_t from, size_t to, const T& value = T());
+        void constructElementsFromRange(size_t from, const T* src, size_t count);
+        void destroyElements(size_t from, size_t to) noexcept;
         void deallocate();
-        void reallocate(const Vector<T>& other);
+        void reallocateBuffer(size_t newCapacity, size_t newSize, const T& value = T());
         void reset();
-        void resize();
-        void resize(size_t newSize);
+        void resize(size_t newSize, const T& value = T());
+        void swap(Vector& other) noexcept;
 
     public:
         Vector();
