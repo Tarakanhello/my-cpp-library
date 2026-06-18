@@ -1,6 +1,8 @@
 #ifndef VECTOR_H
 #define VECTOR_H
 
+#include <algorithm>
+#include <cassert>
 #include <initializer_list>
 #include <utility>
 
@@ -58,6 +60,43 @@ namespace mylib
 
         T& operator[](size_t i) noexcept;
         const T& operator[](size_t i) const noexcept;
+
+
+        class iterator final
+        {
+        private:
+            T* m_ptr;
+
+        public:
+            using iterator_category = std::random_access_iterator_tag;
+            using value_type        = T;
+            using difference_type   = std::ptrdiff_t;
+            using pointer           = T*;
+            using reference         = T&;
+
+            explicit iterator(pointer ptr = nullptr) noexcept : m_ptr{ ptr } {}
+
+            reference operator*()  const noexcept { return *m_ptr; }
+            pointer   operator->() const noexcept { return  m_ptr; }
+
+            iterator& operator++() noexcept { ++m_ptr; return *this; }
+            iterator operator++(int) noexcept
+            {
+                iterator tmp(*this);
+                ++m_ptr;
+                return tmp;
+            }
+
+            iterator& operator--() noexcept { --m_ptr; return *this; }
+            iterator operator--(int) noexcept
+            {
+                iterator tmp(*this);
+                --m_ptr;
+                return tmp;
+            }
+
+
+        };
     };
 
 } // end namespace
@@ -302,6 +341,7 @@ template<typename T>
 void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, const T& value)
 {
     T* newData{ memory::rawMemory<T>(newCapacity) };
+
     mylib::BufferGuard<T> guard{ newData, 0 };
 
     size_t oldSize{ m_size };
