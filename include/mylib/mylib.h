@@ -2,10 +2,10 @@
 #define MYLIB_H_INCLUDED
 
 #include "mylib/math.h"
-#include "mylib/show_debug_log_info.h"
 #include "mylib/memory.h"
+#include "mylib/show_debug_log_info.h"
 #include "mylib/structs.h"
-
+#include "mylib/vector.h";
 
 void helloFromMyLib();
 

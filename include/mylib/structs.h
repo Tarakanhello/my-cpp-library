@@ -5,6 +5,7 @@
 #include <cassert>
 #include <utility>
 
+#include "mylib/memory.h"
 
 namespace mylib
 {
@@ -37,6 +38,39 @@ namespace mylib
      */
     struct Empty {};
 
+
+    template<typename T>
+    struct BufferGuard
+    {
+        T* ptr;
+        size_t count; // количество объектов в буфере
+        bool commited;
+
+        BufferGuard(T* thePtr, size_t theCount = 0) noexcept
+            : ptr{ thePtr }
+            , count{ theCount }
+            , commited{ false }
+        {}
+
+        ~BufferGuard() noexcept
+        {
+            if(!commited && ptr)
+            {
+                memory::rawDestruct(ptr, count);
+            }
+        }
+
+        void addConstructed(size_t n = 1) noexcept
+        {
+            count += n;
+        }
+
+        void commit() noexcept
+        {
+            commited = true;
+            ptr = nullptr;
+        }
+    };
 
 
     /**
