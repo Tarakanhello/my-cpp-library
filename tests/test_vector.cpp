@@ -1,5 +1,7 @@
 #include <catch2/catch_all.hpp>
 
+#include <algorithm>
+
 #include "mylib/mylib.h"
 
 namespace
@@ -369,6 +371,20 @@ TEST_CASE("Vector with non-trivial type", "[vector][custom-type]")
         mylib::Vector<TestStruct> v3{ std::move(v) };
         REQUIRE(v3.size() == 2);
         REQUIRE(v.size() == 0);
+    }
+}
+
+
+
+TEST_CASE("Vector iterators without nested types", "[vector][iterators]")
+{
+    mylib::Vector<int> v{ 5, 3, 1, 4, 2 };
+
+    SECTION("std::distance should work")
+    {
+        auto dist{ std::distance(v.begin(), v.end()) };
+
+        REQUIRE(dist == 5);
     }
 }
 

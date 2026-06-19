@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <initializer_list>
+#include <iterator>
 #include <utility>
 
 #include "mylib/memory.h"
@@ -61,42 +62,28 @@ namespace mylib
         T& operator[](size_t i) noexcept;
         const T& operator[](size_t i) const noexcept;
 
+        // ИТЕРАТОРЫ
+        class iterator;
+        class const_iterator;
+        // Обратные итераторы – используем std::reverse_iterator
+        using reverse_iterator       = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-        class iterator final
-        {
-        private:
-            T* m_ptr;
+        iterator begin() noexcept;
+        const_iterator begin() const noexcept;
+        const_iterator cbegin() const noexcept;
 
-        public:
-            using iterator_category = std::random_access_iterator_tag;
-            using value_type        = T;
-            using difference_type   = std::ptrdiff_t;
-            using pointer           = T*;
-            using reference         = T&;
+        iterator end() noexcept;
+        const_iterator end() const noexcept;
+        const_iterator cend() const noexcept;
 
-            explicit iterator(pointer ptr = nullptr) noexcept : m_ptr{ ptr } {}
+        reverse_iterator rbegin() noexcept;
+        const_reverse_iterator rbegin() const noexcept;
+        const_reverse_iterator crbegin() const noexcept;
 
-            reference operator*()  const noexcept { return *m_ptr; }
-            pointer   operator->() const noexcept { return  m_ptr; }
-
-            iterator& operator++() noexcept { ++m_ptr; return *this; }
-            iterator operator++(int) noexcept
-            {
-                iterator tmp(*this);
-                ++m_ptr;
-                return tmp;
-            }
-
-            iterator& operator--() noexcept { --m_ptr; return *this; }
-            iterator operator--(int) noexcept
-            {
-                iterator tmp(*this);
-                --m_ptr;
-                return tmp;
-            }
-
-
-        };
+        reverse_iterator rend() noexcept;
+        const_reverse_iterator rend() const noexcept;
+        const_reverse_iterator crend() const noexcept;
     };
 
 } // end namespace
@@ -466,6 +453,259 @@ const T& mylib::Vector<T>::operator[](size_t i) const noexcept
     assert(i < size());
 
     return m_data[i];
+}
+
+
+
+template<typename T>
+class mylib::Vector<T>::iterator final
+{
+private:
+    T* m_ptr;
+
+public:
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type        = T;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = T*;
+    using reference         = T&;
+
+    explicit iterator(T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
+
+    // Разыменование
+    T& operator*()  const noexcept { return *m_ptr; }
+    T* operator->() const noexcept { return  m_ptr; }
+
+
+    // Инкремент/декремент
+    iterator& operator++() noexcept
+    {
+        ++m_ptr;
+        return *this;
+    }
+
+    iterator operator++(int) noexcept
+    {
+        iterator tmp(*this);
+        ++m_ptr;
+        return tmp;
+    }
+
+    iterator& operator--() noexcept
+    {
+        --m_ptr;
+        return *this;
+    }
+
+    iterator operator--(int) noexcept
+    {
+        iterator tmp(*this);
+        --m_ptr;
+        return tmp;
+    }
+
+
+    // Арифметика
+    iterator& operator+=(std::ptrdiff_t n) noexcept
+    {
+        m_ptr += n;
+        return *this;
+    }
+
+    iterator& operator-=(std::ptrdiff_t n) noexcept
+    {
+        m_ptr -= n;
+        return *this;
+    }
+
+    iterator operator+(std::ptrdiff_t n) noexcept { return iterator(m_ptr + n); }
+    iterator operator-(std::ptrdiff_t n) noexcept { return iterator(m_ptr - n); }
+    friend iterator operator+(std::ptrdiff_t n, const iterator& it) noexcept { return it + n; }
+
+    std::ptrdiff_t operator-(const iterator& other) const noexcept { return m_ptr - other.m_ptr; }
+
+    // Сравнение
+    auto operator<=>(const iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
+    bool operator==(const iterator& other) const noexcept { return m_ptr == other.m_ptr; }
+
+    // Доступ по индексу
+    T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
+};
+
+
+
+
+template<typename T>
+class mylib::Vector<T>::const_iterator final
+{
+private:
+    const T* m_ptr;
+
+public:
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type        = T;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = const T*;
+    using reference         = const T&;
+
+    explicit const_iterator(const T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
+
+    const_iterator(const iterator& other) noexcept : m_ptr{ other.operator->() } {}
+
+    // Разыменование
+    const T& operator*()  const noexcept { return *m_ptr; }
+    const T* operator->() const noexcept { return  m_ptr; }
+
+
+    // Инкремент/декремент
+    const_iterator& operator++() noexcept
+    {
+        ++m_ptr;
+        return *this;
+    }
+
+    const_iterator operator++(int) noexcept
+    {
+        const_iterator tmp(*this);
+        ++m_ptr;
+        return tmp;
+    }
+
+    const_iterator& operator--() noexcept
+    {
+        --m_ptr;
+        return *this;
+    }
+
+    const_iterator operator--(int) noexcept
+    {
+        const_iterator tmp(*this);
+        --m_ptr;
+        return tmp;
+    }
+
+
+    // Арифметика
+    const_iterator& operator+=(std::ptrdiff_t n) noexcept
+    {
+        m_ptr += n;
+        return *this;
+    }
+
+    const_iterator& operator-=(std::ptrdiff_t n) noexcept
+    {
+        m_ptr -= n;
+        return *this;
+    }
+
+    const_iterator operator+(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr + n); }
+    const_iterator operator-(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr - n); }
+    friend const_iterator operator+(std::ptrdiff_t n, const const_iterator& it) noexcept { return it + n; }
+
+    std::ptrdiff_t operator-(const const_iterator& other) const noexcept { return m_ptr - other.m_ptr; }
+
+    // Сравнение
+    auto operator<=>(const const_iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
+    bool operator== (const const_iterator& other) const noexcept { return m_ptr == other.m_ptr; }
+
+    // Доступ по индексу
+    const T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
+};
+
+
+
+template<typename T>
+mylib::Vector<T>::iterator mylib::Vector<T>::begin() noexcept
+{
+    return iterator{ m_data };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_iterator mylib::Vector<T>::begin() const noexcept
+{
+    return const_iterator{ m_data };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_iterator mylib::Vector<T>::cbegin() const noexcept
+{
+    return const_iterator{ m_data };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::iterator mylib::Vector<T>::end() noexcept
+{
+    return iterator{ m_data + m_size };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_iterator mylib::Vector<T>::end() const noexcept
+{
+    return const_iterator{ m_data + m_size };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_iterator mylib::Vector<T>::cend() const noexcept
+{
+    return const_iterator{ m_data + m_size };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rbegin() noexcept
+{
+    return reverse_iterator{ end() };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rbegin() const noexcept
+{
+    return const_reverse_iterator{ end() };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crbegin() const noexcept
+{
+    return const_reverse_iterator{ cend() };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rend() noexcept
+{
+    return reverse_iterator{ begin() };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rend() const noexcept
+{
+    return const_reverse_iterator{ begin() };
+}
+
+
+
+template<typename T>
+mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crend() const noexcept
+{
+    return const_reverse_iterator{ cbegin() };
 }
 
 
