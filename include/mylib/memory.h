@@ -24,6 +24,7 @@ namespace mylib
         void rawDelete(T* array)
         {
             ::operator delete(array, std::align_val_t{ alignof(T) });
+            array = nullptr;
         }
 
         template<typename T>
