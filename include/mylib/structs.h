@@ -44,17 +44,17 @@ namespace mylib
     {
         T* ptr;
         size_t count; // количество объектов в буфере
-        bool commited;
+        bool committed;
 
         BufferGuard(T* thePtr, size_t theCount = 0) noexcept
             : ptr{ thePtr }
             , count{ theCount }
-            , commited{ false }
+            , committed{ false }
         {}
 
         ~BufferGuard() noexcept
         {
-            if(!commited && ptr)
+            if(!committed && ptr)
             {
                 memory::rawDestruct(ptr, count);
             }
@@ -67,7 +67,7 @@ namespace mylib
 
         void commit() noexcept
         {
-            commited = true;
+            committed = true;
             ptr = nullptr;
         }
     };
