@@ -371,6 +371,43 @@ bool mylib::Vector<T>::empty() const noexcept
 
 
 template<typename T>
+T& mylib::Vector<T>::operator[](size_t i) noexcept
+{
+    assert(i < size());
+
+    return m_data[i];
+}
+
+
+
+template<typename T>
+const T& mylib::Vector<T>::operator[](size_t i) const noexcept
+{
+    assert(i < size());
+
+    return m_data[i];
+}
+
+
+
+template<typename T>
+bool mylib::Vector<T>::operator==(const Vector<T>& other) const noexcept
+{
+    return comparators::LexicographicComparator<Vector<T>>{}.isEqual(*this, other);
+}
+
+
+
+
+template<typename T>
+auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const noexcept
+{
+    return *this <=> other;
+}
+
+
+
+template<typename T>
 void mylib::Vector<T>::push_back(const T& element)
 {
     if(m_size == m_capacity)
@@ -538,43 +575,6 @@ void mylib::Vector<T>::swap(Vector& other) noexcept
     std::swap(m_data, other.m_data);
     std::swap(m_size, other.m_size);
     std::swap(m_capacity, other.m_capacity);
-}
-
-
-
-template<typename T>
-T& mylib::Vector<T>::operator[](size_t i) noexcept
-{
-    assert(i < size());
-
-    return m_data[i];
-}
-
-
-
-template<typename T>
-const T& mylib::Vector<T>::operator[](size_t i) const noexcept
-{
-    assert(i < size());
-
-    return m_data[i];
-}
-
-
-
-template<typename T>
-bool mylib::Vector<T>::operator==(const Vector<T>& other) const noexcept
-{
-    return comparators::LexicographicComparator<Vector<T>>{}.isEqual(*this, other);
-}
-
-
-
-
-template<typename T>
-auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const noexcept
-{
-    return *this <=> other;
 }
 
 
