@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <format>
 #include <initializer_list>
 #include <iterator>
 #include <utility>
@@ -27,9 +28,11 @@ namespace mylib
         size_t calculateNewCapacity(size_t requiredSize) const noexcept;
         void constructElements(size_t from, size_t to, const T& value = T());
         void constructElementsFromRange(size_t from, const T* src, size_t count);
-        void destroyElements(size_t from, size_t to) noexcept;
         void deallocate() noexcept;
-        void reallocateBuffer(size_t newCapacity, size_t newSize, const T& value = T());
+        void destroyElements(size_t from, size_t to) noexcept;
+
+        template<typename... ARGS>
+        void reallocateBuffer(size_t newCapacity, size_t newSize, ARGS&&... args);
         void release() noexcept;
         void swap(Vector& other) noexcept;
 
@@ -37,30 +40,33 @@ namespace mylib
         Vector() noexcept;
         explicit Vector(size_t size, const T& value = T());
         Vector(const std::initializer_list<T>& list);
-
         Vector(const Vector<T>& other);
         Vector<T>& operator=(const Vector<T>& other);
-
         Vector(Vector<T>&& other) noexcept;
         Vector<T>& operator=(Vector<T>&& other) noexcept;
-
         ~Vector() noexcept;
 
         void append(const T& item);
-
+        T& at(size_t i);
+        const T& at(size_t i) const;
+        size_t capacity() const noexcept { return m_capacity; }
         T* data() noexcept;
         const T* data() const noexcept;
 
-        size_t size() const noexcept;
-
+        template<typename... ARGS>
+        void emplace_back(ARGS&&... args);
         bool empty() const noexcept;
-
+        void push_back(const T& element);
+        void push_back(T&& element);
         void resize(size_t newSize, const T& value = T());
-
-        size_t capacity() const noexcept { return m_capacity; }
+        void reserve(size_t newCap);
+        void shrink_to_fit();
+        size_t size() const noexcept;
 
         T& operator[](size_t i) noexcept;
         const T& operator[](size_t i) const noexcept;
+        bool operator==(const Vector<T>& other) const noexcept;
+        auto operator<=>(const Vector<T>& other) const noexcept;
 
         // ИТЕРАТОРЫ
         class iterator;
@@ -142,6 +148,7 @@ mylib::Vector<T>::Vector(const std::initializer_list<T>& list)
 }
 
 
+
 template<typename T>
 mylib::Vector<T>::Vector(const Vector<T>& other)
     : m_capacity{ other.m_capacity }
@@ -168,6 +175,7 @@ mylib::Vector<T>::Vector(const Vector<T>& other)
 }
 
 
+
 template<typename T>
 mylib::Vector<T>& mylib::Vector<T>::operator=(const Vector<T>& other)
 {
@@ -179,6 +187,7 @@ mylib::Vector<T>& mylib::Vector<T>::operator=(const Vector<T>& other)
 
     return *this;
 }
+
 
 
 template<typename T>
@@ -223,6 +232,26 @@ void mylib::Vector<T>::append(const T& item)
 
 
 template<typename T>
+T& mylib::Vector<T>::at(size_t i)
+{
+    if(!(i < m_size))
+        throw std::out_of_range(std::format("An index must be less then the size. You have index: {}, size: {}", i, m_size));
+    return m_data[i];
+}
+
+
+
+template<typename T>
+const T& mylib::Vector<T>::at(size_t i) const
+{
+    if(!(i < m_size))
+        throw std::out_of_range(std::format("An index must be less then the size. You have index: {}, size: {}", i, m_size));
+    return m_data[i];
+}
+
+
+
+template<typename T>
 size_t mylib::Vector<T>::calculateNewCapacity(size_t requiredSize) const noexcept
 {
     size_t reqCap{ MinCapacity };
@@ -253,6 +282,7 @@ void mylib::Vector<T>::constructElements(size_t from, size_t to, const T& value)
         throw;
     }
 }
+
 
 
 template<typename T>
@@ -318,14 +348,61 @@ void mylib::Vector<T>::destroyElements(size_t from, size_t to) noexcept
 
 
 template<typename T>
+template<typename... ARGS>
+void mylib::Vector<T>::emplace_back(ARGS&&... args)
+{
+    if(m_size == m_capacity)
+    {
+        reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, std::forward<ARGS>(args)...);
+        return;
+    }
+
+    new (&m_data[m_size]) T(std::forward<ARGS>(args)...);
+    ++m_size;
+}
+
+
+template<typename T>
 bool mylib::Vector<T>::empty() const noexcept
 {
     return 0 == m_size;
 }
 
 
+
 template<typename T>
-void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, const T& value)
+void mylib::Vector<T>::push_back(const T& element)
+{
+    if(m_size == m_capacity)
+    {
+        reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, element);
+        return;
+    }
+
+    new (&m_data[m_size]) T{ element };
+    ++m_size;
+}
+
+
+
+template<typename T>
+void mylib::Vector<T>::push_back(T&& element)
+{
+    if(m_size == m_capacity)
+    {
+        reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, std::forward<T>(element));
+        return;
+    }
+
+    new (&m_data[m_size]) T{ std::move(element) };
+    ++m_size;
+}
+
+
+
+template<typename T>
+template<typename... ARGS>
+void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS&&... args)
 {
     T* newData{ memory::rawMemory<T>(newCapacity) };
 
@@ -334,27 +411,33 @@ void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, cons
     size_t oldSize{ m_size };
     size_t copyCount{ std::min(newSize, oldSize) };
 
-    size_t constructCount{ (newSize > oldSize) ? (newSize - oldSize) : 0 };
+    size_t newElementsCount{ (newSize > oldSize) ? (newSize - oldSize) : 0 };
 
     // Копирование старых элементов
 
-    if(m_data != nullptr)
+    if(m_data)
     {
         for(size_t i{}; i < copyCount; ++i)
         {
-            new (&newData[i]) T(m_data[i]);
+            new (&newData[i]) T(std::move_if_noexcept(m_data[i]));
             guard.addConstructed();
         }
     }
 
     // Создание новых элементов
-
-    for(size_t i{}; i < constructCount; ++i)
+    if(newElementsCount > 0)
     {
-        new (&newData[oldSize + i]) T(value);
+        // Создаём первый новый элемент из переданных аргументов
+        new (&newData[oldSize]) T(std::forward<ARGS>(args)...);
         guard.addConstructed();
-    }
 
+        // Копируем первый элемент для остальных новых элементов (если их больше одного)
+        for(size_t i{ 1 }; i < newElementsCount; ++i)
+        {
+            new (&newData[oldSize + i]) T{ newData[oldSize] }; // копия первого
+            guard.addConstructed();
+        }
+    }
 
     // Успех: освободить старые данные
     if(m_data)
@@ -380,6 +463,17 @@ void mylib::Vector<T>::release() noexcept
 }
 
 
+
+template<typename T>
+void mylib::Vector<T>::reserve(size_t newCap)
+{
+    if(m_capacity < newCap)
+    {
+        reallocateBuffer(newCap, m_size, T{});
+    }
+}
+
+
 template<typename T>
 void mylib::Vector<T>::resize(size_t newSize, const T& value)
 {
@@ -398,6 +492,7 @@ void mylib::Vector<T>::resize(size_t newSize, const T& value)
         else
         {
             destroyElements(newSize, m_size);
+            m_size = newSize;
         }
     }
     else // Увеличение размера
@@ -405,6 +500,7 @@ void mylib::Vector<T>::resize(size_t newSize, const T& value)
         if(newSize <= m_capacity)
         {
             constructElements(m_size, newSize, value);
+            m_size = newSize;
         }
         else
         {
@@ -413,8 +509,6 @@ void mylib::Vector<T>::resize(size_t newSize, const T& value)
             reallocateBuffer(newCapacity, newSize, value);
         }
     }
-
-    m_size = newSize;
 }
 
 
@@ -425,6 +519,17 @@ size_t mylib::Vector<T>::size() const noexcept
     return m_size;
 }
 
+
+
+
+template<typename T>
+void mylib::Vector<T>::shrink_to_fit()
+{
+    if(m_capacity > m_size)
+    {
+        reallocateBuffer(m_size, m_size, T{});
+    }
+}
 
 
 template<typename T>
@@ -453,6 +558,23 @@ const T& mylib::Vector<T>::operator[](size_t i) const noexcept
     assert(i < size());
 
     return m_data[i];
+}
+
+
+
+template<typename T>
+bool mylib::Vector<T>::operator==(const Vector<T>& other) const noexcept
+{
+    return comparators::LexicographicComparator<Vector<T>>{}.isEqual(*this, other);
+}
+
+
+
+
+template<typename T>
+auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const noexcept
+{
+    return *this <=> other;
 }
 
 
