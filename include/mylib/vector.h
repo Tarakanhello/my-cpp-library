@@ -235,7 +235,8 @@ template<typename T>
 T& mylib::Vector<T>::at(size_t i)
 {
     if(!(i < m_size))
-        throw std::out_of_range(std::format("An index must be less then the size. You have index: {}, size: {}", i, m_size));
+        throw std::out_of_range(std::format("An index must be less then the size. "
+                                            "You have index: {}, size: {}", i, m_size));
     return m_data[i];
 }
 
@@ -245,7 +246,8 @@ template<typename T>
 const T& mylib::Vector<T>::at(size_t i) const
 {
     if(!(i < m_size))
-        throw std::out_of_range(std::format("An index must be less then the size. You have index: {}, size: {}", i, m_size));
+        throw std::out_of_range(std::format("An index must be less then the size."
+                                            "You have index: {}, size: {}", i, m_size));
     return m_data[i];
 }
 
