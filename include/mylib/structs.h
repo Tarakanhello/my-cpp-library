@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <compare>
 #include <utility>
 
 #include "mylib/memory.h"
@@ -380,7 +381,7 @@ namespace mylib
                 {
                     return std::strong_ordering::less;
                 }
-                if(left.size() > right.size())
+                if(right.size() < left.size())
                 {
                     return std::strong_ordering::greater;
                 }

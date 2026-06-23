@@ -65,7 +65,7 @@ namespace mylib
 
         T& operator[](size_t i) noexcept;
         const T& operator[](size_t i) const noexcept;
-        bool operator==(const Vector<T>& other) const noexcept;
+        bool operator==(const Vector<T>& other) const;
         auto operator<=>(const Vector<T>& other) const;
 
         // ИТЕРАТОРЫ
@@ -393,7 +393,7 @@ const T& mylib::Vector<T>::operator[](size_t i) const noexcept
 
 
 template<typename T>
-bool mylib::Vector<T>::operator==(const Vector<T>& other) const noexcept
+bool mylib::Vector<T>::operator==(const Vector<T>& other) const
 {
     return comparators::LexicographicComparator<Vector<T>>{}.isEqual(*this, other);
 }
