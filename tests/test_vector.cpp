@@ -362,7 +362,7 @@ TEST_CASE("Vector capacity growth", "[vector][capacity]")
         mylib::Vector<int> intVec(20);
         for(const auto& i : intVec)
         {
-            REQUIRE( i == 0);
+            REQUIRE(i == 0);
         }
     }
 }
