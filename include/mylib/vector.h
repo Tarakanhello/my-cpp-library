@@ -153,7 +153,6 @@ namespace mylib
         /**
          * @brief Добавляет элемент в конец (перегрузка для lvalue).
          * @param item Элемент для добавления.
-         * @note Использует resize, что может быть неоптимально, но надёжно.
          */
         void append(const T& item);
 
@@ -170,14 +169,14 @@ namespace mylib
          * @brief Возвращает текущую ёмкость.
          * @return Количество элементов, которое может вместить вектор без перераспределения.
          */
-        size_t capacity() const noexcept { return m_capacity; }
+        constexpr size_t capacity() const noexcept { return m_capacity; }
 
         /**
          * @brief Возвращает указатель на внутренний массив.
          * @return Указатель на данные (может быть nullptr для пустого вектора).
          */
         T* data() noexcept;
-        const T* data() const noexcept;
+        constexpr const T* data() const noexcept;
 
         /**
          * @brief Конструирует элемент в конце вектора из переданных аргументов.
@@ -191,7 +190,7 @@ namespace mylib
          * @brief Проверяет, пуст ли вектор.
          * @return true, если size() == 0.
          */
-        bool empty() const noexcept;
+        constexpr bool empty() const noexcept;
 
         /**
          * @brief Вставляет элемент в конец (перегрузка для rvalue).
@@ -233,7 +232,7 @@ namespace mylib
          * @brief Возвращает текущий размер.
          * @return Количество элементов.
          */
-        size_t size() const noexcept;
+        constexpr size_t size() const noexcept;
 
         /**
          * @brief Доступ к элементу без проверки границ.
@@ -418,7 +417,7 @@ mylib::Vector<T>::~Vector() noexcept
 template<typename T>
 void mylib::Vector<T>::append(const T& item)
 {
-    resize(m_size + 1, item);
+    push_back(item);
 }
 
 
@@ -508,7 +507,7 @@ T* mylib::Vector<T>::data() noexcept
 
 
 template<typename T>
-const T* mylib::Vector<T>::data() const noexcept
+constexpr const T* mylib::Vector<T>::data() const noexcept
 {
     return m_data;
 }
@@ -557,7 +556,7 @@ void mylib::Vector<T>::emplace_back(ARGS&&... args)
 
 
 template<typename T>
-bool mylib::Vector<T>::empty() const noexcept
+constexpr bool mylib::Vector<T>::empty() const noexcept
 {
     return 0 == m_size;
 }
@@ -745,7 +744,7 @@ void mylib::Vector<T>::resize(size_t newSize, const T& value)
 
 
 template<typename T>
-size_t mylib::Vector<T>::size() const noexcept
+constexpr size_t mylib::Vector<T>::size() const noexcept
 {
     return m_size;
 }
