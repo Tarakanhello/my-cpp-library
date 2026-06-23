@@ -512,21 +512,26 @@ TEST_CASE("Vector::reserve and shrink_to_fit", "[vector][reserve][shrink_to_fit]
         mylib::Vector<int> v;
         REQUIRE(v.capacity() == 0);
 
-        v.reserve(10);
-        REQUIRE(v.capacity() >= 10);
+        v.reserve(100);
+        REQUIRE(v.capacity() >= 100);
+        size_t cap{ v.capacity() };
+        v.push_back(1);
+        REQUIRE(v.capacity() == cap);
 
         v.reserve(5); // меньше текущей – ничего не меняет
-        size_t cap{ v.capacity() };
+        REQUIRE(v.capacity() == cap);
+
+        cap = v.capacity();
         v.reserve(cap + 1); // больше – увеличивает
         REQUIRE(v.capacity() >= cap + 1);
 
         // Проверяем, что элементы не повреждены
-        v.push_back(1);
         v.push_back(2);
+        v.push_back(3);
         v.reserve(100);
         REQUIRE(v[0] == 1);
         REQUIRE(v[1] == 2);
-        REQUIRE(v.size() == 2);
+        REQUIRE(v.size() == 3);
     }
 
     SECTION("shrink_to_fit reduces capacity to size")
