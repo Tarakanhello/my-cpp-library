@@ -14,58 +14,250 @@
 
 namespace mylib
 {
+    /**
+     * @brief Динамический массив, аналогичный std::vector.
+     * @tparam T Тип хранимых элементов.
+     *
+     * Обеспечивает автоматическое управление памятью, поддержку итераторов
+     * и строгую гарантию безопасности исключений для основных операций.
+     *
+     * @note Наследует ArithmeticType для возможности использования арифметических операций,
+     *       но они не реализованы – наследование оставлено для расширяемости.
+     */
     template<typename T>
     class Vector final : public mylib::ArithmeticType<Vector<T>>
     {
     private:
+        /** @brief Минимальная ёмкость при первом выделении памяти. */
         enum{ MinCapacity = 8 };
 
-        size_t m_capacity{};
-        size_t m_size{};
+        size_t m_capacity{};    ///< Текущая выделенная ёмкость (количество элементов).
+        size_t m_size{};        ///< Текущий размер (количество элементов).
+        T* m_data{ nullptr };   ///< Указатель на массив элементов.
 
-        T* m_data{ nullptr };
-
+        /**
+         * @brief Вычисляет новую ёмкость, достаточную для хранения requiredSize элементов.
+         * @param requiredSize Необходимый размер.
+         * @return Новая ёмкость (не менее MinCapacity и не менее requiredSize, степень двойки).
+         */
         size_t calculateNewCapacity(size_t requiredSize) const noexcept;
+
+        /**
+         * @brief Конструирует элементы в диапазоне [from, to) со значением value.
+         * @param from Начальный индекс.
+         * @param to   Конечный индекс (не включается).
+         * @param value Значение для копирования.
+         * @throw Любое исключение, брошенное конструктором T. При ошибке уже созданные элементы уничтожаются.
+         */
         void constructElements(size_t from, size_t to, const T& value = T());
+
+        /**
+         * @brief Конструирует count элементов из диапазона, начиная с src, в позицию from.
+         * @param from Индекс в массиве m_data, куда копировать.
+         * @param src  Указатель на исходный массив.
+         * @param count Количество элементов.
+         * @throw Любое исключение, брошенное конструктором T. При ошибке созданные элементы уничтожаются.
+         */
         void constructElementsFromRange(size_t from, const T* src, size_t count);
+
+        /**
+         * @brief Освобождает память и уничтожает все элементы.
+         * @note noexcept – гарантирует, что не бросит исключение.
+         */
         void deallocate() noexcept;
+
+        /**
+         * @brief Уничтожает элементы в диапазоне [from, to).
+         * @param from Начальный индекс.
+         * @param to   Конечный индекс (не включается).
+         * @note noexcept – вызов деструкторов не должен бросать исключения.
+         */
         void destroyElements(size_t from, size_t to) noexcept;
 
+        /**
+         * @brief Перевыделяет буфер с новой ёмкостью и размером.
+         * @tparam ARGS Типы аргументов для создания новых элементов.
+         * @param newCapacity Новая ёмкость (должна быть >= newSize).
+         * @param newSize     Новый размер.
+         * @param args        Аргументы для конструирования первого нового элемента (если newSize > oldSize).
+         *
+         * Обеспечивает строгую гарантию безопасности исключений:
+         * - старые данные не повреждаются при сбое,
+         * - при успехе старые данные освобождаются.
+         */
         template<typename... ARGS>
         void reallocateBuffer(size_t newCapacity, size_t newSize, ARGS&&... args);
+
+        /**
+         * @brief Освобождает указатель и обнуляет размер/ёмкость (без уничтожения элементов).
+         * @note Используется в move-операциях для "обнуления" перемещаемого объекта.
+         */
         void release() noexcept;
+
+        /**
+         * @brief Меняет содержимое с другим вектором за O(1).
+         * @param other Другой вектор.
+         */
         void swap(Vector& other) noexcept;
 
     public:
+        /**
+         * @brief Конструктор по умолчанию. Создаёт пустой вектор.
+         */
         Vector() noexcept;
+
+        /**
+         * @brief Конструктор, создающий вектор с size элементами, инициализированными значением value.
+         * @param size Количество элементов.
+         * @param value Значение для инициализации (по умолчанию T()).
+         */
         explicit Vector(size_t size, const T& value = T());
+
+        /**
+         * @brief Конструктор из std::initializer_list.
+         * @param list Список инициализации.
+         */
         Vector(const std::initializer_list<T>& list);
+
+        /**
+         * @brief Конструктор копирования.
+         * @param other Вектор для копирования.
+         */
         Vector(const Vector<T>& other);
+
+        /**
+         * @brief Оператор присваивания копированием (через copy-and-swap).
+         * @param other Вектор для копирования.
+         * @return Ссылка на *this.
+         */
         Vector<T>& operator=(const Vector<T>& other);
+
+        /**
+         * @brief Конструктор перемещения.
+         * @param other Вектор, из которого перемещаются данные.
+         */
         Vector(Vector<T>&& other) noexcept;
+
+        /**
+         * @brief Оператор присваивания перемещением.
+         * @param other Вектор, из которого перемещаются данные.
+         * @return Ссылка на *this.
+         */
         Vector<T>& operator=(Vector<T>&& other) noexcept;
+
+        /**
+         * @brief Деструктор. Уничтожает все элементы и освобождает память.
+         */
         ~Vector() noexcept;
 
+        /**
+         * @brief Добавляет элемент в конец (перегрузка для lvalue).
+         * @param item Элемент для добавления.
+         * @note Использует resize, что может быть неоптимально, но надёжно.
+         */
         void append(const T& item);
+
+        /**
+         * @brief Доступ к элементу с проверкой границ.
+         * @param i Индекс элемента.
+         * @return Ссылка на элемент.
+         * @throw std::out_of_range если i >= size().
+         */
         T& at(size_t i);
         const T& at(size_t i) const;
+
+        /**
+         * @brief Возвращает текущую ёмкость.
+         * @return Количество элементов, которое может вместить вектор без перераспределения.
+         */
         size_t capacity() const noexcept { return m_capacity; }
+
+        /**
+         * @brief Возвращает указатель на внутренний массив.
+         * @return Указатель на данные (может быть nullptr для пустого вектора).
+         */
         T* data() noexcept;
         const T* data() const noexcept;
 
+        /**
+         * @brief Конструирует элемент в конце вектора из переданных аргументов.
+         * @tparam ARGS Типы аргументов конструктора T.
+         * @param args Аргументы для конструктора T.
+         */
         template<typename... ARGS>
         void emplace_back(ARGS&&... args);
+
+        /**
+         * @brief Проверяет, пуст ли вектор.
+         * @return true, если size() == 0.
+         */
         bool empty() const noexcept;
+
+        /**
+         * @brief Вставляет элемент в конец (перегрузка для rvalue).
+         * @param element Элемент для добавления.
+         */
         void push_back(const T& element);
+
+        /**
+         * @brief Вставляет элемент в конец (перегрузка для rvalue).
+         * @param element Элемент для добавления (перемещается).
+         */
         void push_back(T&& element);
+
+        /**
+         * @brief Изменяет размер вектора.
+         * @param newSize Новый размер.
+         * @param value   Значение для инициализации новых элементов (если newSize > текущего).
+         * @note Если newSize меньше текущего, лишние элементы уничтожаются.
+         *       При уменьшении ёмкость может быть уменьшена, если newSize * 4 < capacity.
+         * @throw Любое исключение при конструировании элементов.
+         */
         void resize(size_t newSize, const T& value = T());
+
+        /**
+         * @brief Резервирует память для как минимум newCap элементов.
+         * @param newCap Желаемая ёмкость.
+         * @note Если newCap <= текущей ёмкости, ничего не делает.
+         * @throw std::bad_alloc при нехватке памяти.
+         */
         void reserve(size_t newCap);
+
+        /**
+         * @brief Уменьшает ёмкость до размера (shrink-to-fit).
+         * @throw std::bad_alloc при нехватке памяти (если требуется перераспределение).
+         */
         void shrink_to_fit();
+
+        /**
+         * @brief Возвращает текущий размер.
+         * @return Количество элементов.
+         */
         size_t size() const noexcept;
 
+        /**
+         * @brief Доступ к элементу без проверки границ.
+         * @param i Индекс элемента.
+         * @return Ссылка на элемент.
+         * @pre i < size() (проверяется через assert в отладочной сборке).
+         */
         T& operator[](size_t i) noexcept;
         const T& operator[](size_t i) const noexcept;
+
+        /**
+         * @brief Проверяет равенство двух векторов.
+         * @param other Вектор для сравнения.
+         * @return true, если size() равны и все элементы равны.
+         * @note Использует LexicographicComparator::isEqual.
+         */
         bool operator==(const Vector<T>& other) const;
+
+        /**
+         * @brief Трёхстороннее сравнение (лексикографическое).
+         * @param other Вектор для сравнения.
+         * @return std::strong_ordering::less, equal или greater.
+         * @note Использует LexicographicComparator::compare, что даёт один проход.
+         */
         auto operator<=>(const Vector<T>& other) const;
 
         // ИТЕРАТОРЫ
