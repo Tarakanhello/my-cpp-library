@@ -32,6 +32,16 @@ namespace
 
     };
 
+    class MyInt
+    {
+    private:
+        int m_int{};
+
+    public:
+        MyInt() = delete;
+        MyInt(int a) : m_int{ a } {}
+    };
+
 } // end namespace
 
 TEST_CASE("Vector construction and basis properties", "[vector][construction]")
@@ -343,6 +353,16 @@ TEST_CASE("Vector capacity growth", "[vector][capacity]")
         for (int i{}; i < 20; ++i)
         {
             REQUIRE(v[i] == i);
+        }
+
+        mylib::Vector<MyInt> myintVec{{ 1 }, { 2 }, { 3 }};
+        myintVec.reserve(100);
+        myintVec.shrink_to_fit();
+
+        mylib::Vector<int> intVec(20);
+        for(const auto& i : intVec)
+        {
+            REQUIRE( i == 0);
         }
     }
 }

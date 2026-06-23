@@ -75,6 +75,15 @@ namespace mylib
         void destroyElements(size_t from, size_t to) noexcept;
 
         /**
+         * @brief Перевыделяет буфер без создания новых элементов (newSize == m_size).
+         * @param newCapacity Новая ёмкость (должна быть >= newSize).
+         * @param newSize     Новый размер (должен совпадать с текущим m_size).
+         * @throws std::bad_alloc при нехватке памяти.
+         * @note Обеспечивает строгую гарантию безопасности исключений.
+         */
+        void reallocateBuffer(size_t newCapacity, size_t newSize);
+
+        /**
          * @brief Перевыделяет буфер с новой ёмкостью и размером.
          * @tparam ARGS Типы аргументов для создания новых элементов.
          * @param newCapacity Новая ёмкость (должна быть >= newSize).
@@ -631,6 +640,41 @@ void mylib::Vector<T>::push_back(T&& element)
 
 
 template<typename T>
+void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize)
+{
+    if(newCapacity == m_capacity && newSize == m_size)
+    {
+        return; // ничего не делаем
+    }
+
+    T* newData{ memory::rawMemory<T>(newCapacity) };
+    mylib::BufferGuard<T> guard{ newData, 0 };
+
+    size_t copyCount{ std::min(newSize, m_size) };
+    if(m_data)
+    {
+        for (size_t i{}; i < copyCount; ++i)
+        {
+            new (&newData[i]) T(std::move_if_noexcept(m_data[i]));
+            guard.addConstructed();
+        }
+    }
+
+    // Если всё успешно – уничтожаем старые элементы и освобождаем старую память
+    if(m_data)
+    {
+        memory::rawDestruct(m_data, m_size);
+    }
+
+    guard.commit(); // предотвращает двойное уничтожение
+
+    m_data = newData;
+    m_capacity = newCapacity;
+    m_size = newSize;
+}
+
+
+template<typename T>
 template<typename... ARGS>
 void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS&&... args)
 {
@@ -699,7 +743,7 @@ void mylib::Vector<T>::reserve(size_t newCap)
 {
     if(m_capacity < newCap)
     {
-        reallocateBuffer(newCap, m_size, T{});
+        reallocateBuffer(newCap, m_size);
     }
 }
 
@@ -757,7 +801,7 @@ void mylib::Vector<T>::shrink_to_fit()
 {
     if(m_capacity > m_size)
     {
-        reallocateBuffer(m_size, m_size, T{});
+        reallocateBuffer(m_size, m_size);
     }
 }
 
