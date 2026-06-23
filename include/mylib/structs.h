@@ -354,6 +354,39 @@ namespace mylib
             {
                 return vector.size();
             }
+
+
+            /**
+             * @brief Трёхстороннее сравнение двух контейнеров.
+             * @return std::strong_ordering::less, equal или greater.
+             */
+            constexpr std::strong_ordering compare(const VECTOR& left, const VECTOR& right) const
+            {
+                size_t minSize{ std::min(left.size(), right.size()) };
+
+                for(size_t i{}; i < minSize; ++i)
+                {
+                    if(left[i] < right[i])
+                    {
+                        return std::strong_ordering::less;
+                    }
+                    if(left[i] > right[i])
+                    {
+                        return std::strong_ordering::greater;
+                    }
+                }
+
+                if(left.size() < right.size())
+                {
+                    return std::strong_ordering::less;
+                }
+                if(left.size() > right.size())
+                {
+                    return std::strong_ordering::greater;
+                }
+
+                return std::strong_ordering::equal;
+            }
         };
 
         /**

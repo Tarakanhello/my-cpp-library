@@ -66,7 +66,7 @@ namespace mylib
         T& operator[](size_t i) noexcept;
         const T& operator[](size_t i) const noexcept;
         bool operator==(const Vector<T>& other) const noexcept;
-        auto operator<=>(const Vector<T>& other) const noexcept;
+        auto operator<=>(const Vector<T>& other) const;
 
         // ИТЕРАТОРЫ
         class iterator;
@@ -402,9 +402,9 @@ bool mylib::Vector<T>::operator==(const Vector<T>& other) const noexcept
 
 
 template<typename T>
-auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const noexcept
+auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const
 {
-    return *this <=> other;
+    return comparators::LexicographicComparator<Vector<T>>{}.compare(*this, other);
 }
 
 
