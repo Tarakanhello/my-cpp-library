@@ -185,13 +185,16 @@ namespace mylib
          */
         constexpr size_t capacity() const noexcept { return m_capacity; }
 
-
+        /**
+         * @brief Возвращает ссылку на последний элемент.
+         * @return Ссылка на последний элемент.
+         * @pre Вектор не должен быть пустым (проверяется через assert).
+         */
         constexpr T& back() noexcept
         {
             assert(!empty());
             return m_data[m_size - 1];
         }
-
         constexpr const T& back() const noexcept
         {
             assert(!empty());
@@ -244,14 +247,40 @@ namespace mylib
          */
         constexpr auto operator<=>(const Vector<T, ALLOCATOR>& other) const;
 
+        /**
+         * @brief Поэлементно прибавляет другой вектор к текущему.
+         * @param other Вектор, который нужно прибавить.
+         * @return Ссылка на *this.
+         * @throw std::invalid_argument если размеры векторов не совпадают.
+         */
         constexpr Vector& operator+=(const Vector<T, ALLOCATOR>& other);
 
+        /**
+         * @brief Поэлементно вычитает другой вектор из текущего.
+         * @param other Вектор, который нужно вычесть.
+         * @return Ссылка на *this.
+         * @throw std::invalid_argument если размеры векторов не совпадают.
+         */
         constexpr Vector& operator-=(const Vector<T, ALLOCATOR>& other);
 
+        /**
+         * @brief Поэлементно умножает текущий вектор на скаляр.
+         * @param scalar Скалярный множитель.
+         * @return Ссылка на *this.
+         */
         constexpr Vector& operator*=(const T& scalar);
 
+        /**
+         * @brief Унарный минус – возвращает вектор с отрицательными значениями каждого элемента.
+         * @return Новый вектор, содержащий -element для каждого элемента исходного.
+         */
         constexpr Vector operator-() const;
 
+        /**
+         * @brief Вычисляет евклидову норму вектора.
+         * @return Значение нормы (квадратный корень из скалярного произведения вектора на себя).
+         * @note Доступно только для векторов типа double (static_assert).
+         */
         double norm() const;
 
         /**
@@ -306,22 +335,122 @@ namespace mylib
         using reverse_iterator       = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
+        /**
+         * @brief Возвращает итератор на первый элемент.
+         */
         constexpr iterator begin() noexcept;
+
+        /**
+         * @brief Возвращает константный итератор на первый элемент.
+         */
         constexpr const_iterator begin() const noexcept;
+
+        /**
+         * @brief Возвращает константный итератор на первый элемент.
+         */
         constexpr const_iterator cbegin() const noexcept;
 
+        /**
+         * @brief Возвращает итератор на элемент, следующий за последним.
+         */
         constexpr iterator end() noexcept;
+
+        /**
+         * @brief Возвращает константный итератор на элемент, следующий за последним.
+         */
         constexpr const_iterator end() const noexcept;
+
+        /**
+         * @brief Возвращает константный итератор на элемент, следующий за последним.
+         */
         constexpr const_iterator cend() const noexcept;
 
+        /**
+         * @brief Возвращает обратный итератор на элемент, следующий за последним.
+         */
         constexpr reverse_iterator rbegin() noexcept;
+
+        /**
+         * @brief Возвращает константный обратный итератор на элемент, следующий за последним.
+         */
         constexpr const_reverse_iterator rbegin() const noexcept;
+
+        /**
+         * @brief Возвращает константный обратный итератор на элемент, следующий за последним.
+         */
         constexpr const_reverse_iterator crbegin() const noexcept;
 
+        /**
+         * @brief Возвращает обратный итератор на первый элемент.
+         */
         constexpr reverse_iterator rend() noexcept;
+
+        /**
+         * @brief Возвращает константный обратный итератор на первый элемент.
+         */
         constexpr const_reverse_iterator rend() const noexcept;
+
+        /**
+         * @brief Возвращает константный обратный итератор на первый элемент.
+         */
         constexpr const_reverse_iterator crend() const noexcept;
     };
+
+
+
+    /**
+     * @brief Умножение вектора на скаляр (вектор * скаляр).
+     * @param vec Вектор.
+     * @param scalar Скалярный множитель.
+     * @return Новый вектор, каждый элемент которого равен vec[i] * scalar.
+     */
+    template<typename T, typename ALLOCATOR>
+    constexpr Vector<T, ALLOCATOR> operator*(const  Vector<T, ALLOCATOR>& vec, const T& scalar)
+    {
+        Vector result{ vec };
+
+        return result *= scalar;
+    }
+
+
+    /**
+     * @brief Умножение скаляра на вектор (скаляр * вектор).
+     * @param scalar Скалярный множитель.
+     * @param vec Вектор.
+     * @return Новый вектор, каждый элемент которого равен scalar * vec[i].
+     */
+    template<typename T, typename ALLOCATOR>
+    constexpr Vector<T, ALLOCATOR> operator*(const T& scalar, const  Vector<T, ALLOCATOR>& vec)
+    {
+        return vec * scalar;
+    }
+
+
+
+    /**
+     * @brief Вычисляет скалярное произведение (dot product) двух векторов.
+     * @param a Первый вектор.
+     * @param b Второй вектор.
+     * @return Скалярное произведение (сумма произведений соответствующих элементов).
+     * @throw std::invalid_argument если размеры векторов не совпадают.
+     */
+    template<typename T, typename ALLOCATOR>
+    constexpr T dot(const Vector<T, ALLOCATOR>& a, const Vector<T, ALLOCATOR>& b)
+    {
+        if(a.size() != b.size())
+        {
+            throw std::invalid_argument("size mismatch");
+        }
+
+        T result{};
+
+        for(size_t i{}; i < a.size(); ++i)
+        {
+            result += a[i] * b[i];
+        }
+
+        return result;
+    }
 
 } // end namespace
 
@@ -703,46 +832,6 @@ constexpr mylib::Vector<T, ALLOCATOR>&  mylib::Vector<T, ALLOCATOR>::operator*=(
     }
 
     return *this;
-}
-
-
-
-template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR> operator*(const  mylib::Vector<T, ALLOCATOR>& vec, const T& scalar)
-{
-    mylib::Vector result{ vec };
-
-    return result *= scalar;
-}
-
-
-
-template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR> operator*(const T& scalar, const  mylib::Vector<T, ALLOCATOR>& vec)
-{
-    mylib::Vector result{ vec };
-
-    return result *= scalar;
-}
-
-
-
-template<typename T, typename ALLOCATOR>
-constexpr T dot(const mylib::Vector<T, ALLOCATOR>& a, const mylib::Vector<T, ALLOCATOR>& b)
-{
-    if(a.size() != b.size())
-    {
-        throw std::invalid_argument("size mismatch");
-    }
-
-    T result{};
-
-    for(size_t i{}; i < a.size(); ++i)
-    {
-        result += a[i] * b[i];
-    }
-
-    return result;
 }
 
 
