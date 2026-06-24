@@ -78,7 +78,11 @@ namespace mylib
         }
     };
 
+    template<typename T, typename U>
+    bool operator==(const MySimpleAllocator<T>&, const MySimpleAllocator<U>&) { return true; }
 
+    template<typename T, typename U>
+    bool operator!=(const MySimpleAllocator<T>&, const MySimpleAllocator<U>&) { return false; }
 } // end namespace mylib
 
 #endif // MEMORY_H_INCLUDED
