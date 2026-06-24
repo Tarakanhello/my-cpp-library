@@ -42,6 +42,32 @@ namespace
         MyInt(int a) : m_int{ a } {}
     };
 
+    template<typename T>
+    struct CountingAllocator : mylib::MySimpleAllocator<T>
+    {
+        static inline size_t allocateCount = 0;
+        static inline size_t deallocateCount = 0;
+
+        T* allocate(size_t size)
+        {
+            ++allocateCount;
+            return mylib::MySimpleAllocator<T>::allocate(size);
+        }
+
+        void deallocate(T* array, size_t size)
+        {
+            ++deallocateCount;
+            mylib::MySimpleAllocator<T>::deallocate(array, size);
+        }
+
+        static void reset()
+        {
+            allocateCount = 0;
+            deallocateCount = 0;
+        }
+    };
+
+
 } // end namespace
 
 TEST_CASE("Vector construction and basis properties", "[vector][construction]")
@@ -760,3 +786,98 @@ TEST_CASE("Vector comparisons with non-trivial types", "[vector][comparison][cus
     REQUIRE(v1 > v4);
 }
 
+
+
+TEST_CASE("Vector with custom allocator", "[vector][allocator]")
+{
+    using Alloc = CountingAllocator<int>;
+
+    // Обнуляем счётчики перед каждым тестом
+    Alloc::reset();
+
+    SECTION("default constructor does not allocate")
+    {
+        mylib::Vector<int, Alloc> v;
+        REQUIRE(v.size() == 0);
+        REQUIRE(v.capacity() == 0);
+        REQUIRE(Alloc::allocateCount == 0);
+        REQUIRE(Alloc::deallocateCount == 0);
+    }
+
+    SECTION("reserve uses allocator")
+    {
+        mylib::Vector<int, Alloc> v;
+        v.reserve(10);
+        REQUIRE(v.capacity() >= 10);
+        REQUIRE(Alloc::allocateCount == 1);
+        REQUIRE(Alloc::deallocateCount == 0);
+    }
+
+    SECTION("push_back allocates on first insertion")
+    {
+        mylib::Vector<int, Alloc> v;
+        v.push_back(42);
+        REQUIRE(v.size() == 1);
+        REQUIRE(v[0] == 42);
+        // При первом push_back выделяется ёмкость MinCapacity (8)
+        REQUIRE(Alloc::allocateCount == 1);
+        REQUIRE(Alloc::deallocateCount == 0);
+    }
+
+    SECTION("copy constructor uses allocator")
+    {
+        mylib::Vector<int, Alloc> v1;
+        v1.push_back(1);
+        v1.push_back(2);
+        // Сбрасываем счётчики, чтобы проверить именно копирование
+        Alloc::reset();
+
+        mylib::Vector<int, Alloc> v2(v1);
+        REQUIRE(v2.size() == 2);
+        REQUIRE(v2[0] == 1);
+        REQUIRE(v2[1] == 2);
+        REQUIRE(Alloc::allocateCount == 1); // выделена память для копии
+        REQUIRE(Alloc::deallocateCount == 0);
+    }
+
+    SECTION("move constructor does not allocate")
+    {
+        mylib::Vector<int, Alloc> v1;
+        v1.push_back(10);
+        // Сбрасываем счётчики
+        Alloc::reset();
+
+        mylib::Vector<int, Alloc> v2(std::move(v1));
+        REQUIRE(v2.size() == 1);
+        REQUIRE(v2[0] == 10);
+        REQUIRE(v1.size() == 0);
+        REQUIRE(v1.data() == nullptr);
+        // Перемещение не должно выделять новую память
+        REQUIRE(Alloc::allocateCount == 0);
+        REQUIRE(Alloc::deallocateCount == 0);
+    }
+
+    SECTION("destructor calls deallocate")
+    {
+        {
+            mylib::Vector<int, Alloc> v;
+            v.reserve(5);
+            REQUIRE(Alloc::allocateCount == 1);
+        } // v выходит из области видимости – должен вызваться деструктор
+        REQUIRE(Alloc::deallocateCount == 1);
+    }
+
+    SECTION("resize that shrinks calls deallocate")
+    {
+        mylib::Vector<int, Alloc> v;
+        for (int i = 0; i < 20; ++i)
+        {
+            v.push_back(i);
+        }
+        size_t alloc_before{ Alloc::allocateCount };
+        size_t dealloc_before{ Alloc::deallocateCount };
+        v.resize(5); // должно уменьшить ёмкость (с 32 до 8)
+        REQUIRE(Alloc::allocateCount > alloc_before); // выделение нового буфера
+        REQUIRE(Alloc::deallocateCount > dealloc_before); // освобождение старого
+    }
+}

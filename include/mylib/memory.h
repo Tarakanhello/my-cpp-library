@@ -46,7 +46,7 @@ namespace mylib
     } // end namespace memory
 
     template<typename T>
-    class MySimpleAllocator final
+    class MySimpleAllocator
     {
     public:
         using value_type = T;
