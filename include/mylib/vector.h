@@ -40,7 +40,7 @@ namespace mylib
          * @param requiredSize Необходимый размер.
          * @return Новая ёмкость (не менее MinCapacity и не менее requiredSize, степень двойки).
          */
-        size_t calculateNewCapacity(size_t requiredSize) const noexcept;
+        constexpr size_t calculateNewCapacity(size_t requiredSize) const noexcept;
 
         /**
          * @brief Конструирует элементы в диапазоне [from, to) со значением value.
@@ -49,7 +49,7 @@ namespace mylib
          * @param value Значение для копирования.
          * @throw Любое исключение, брошенное конструктором T. При ошибке уже созданные элементы уничтожаются.
          */
-        void constructElements(size_t from, size_t to, const T& value = T());
+        constexpr void constructElements(size_t from, size_t to, const T& value = T());
 
         /**
          * @brief Конструирует count элементов из диапазона, начиная с src, в позицию from.
@@ -58,7 +58,7 @@ namespace mylib
          * @param count Количество элементов.
          * @throw Любое исключение, брошенное конструктором T. При ошибке созданные элементы уничтожаются.
          */
-        void constructElementsFromRange(size_t from, const T* src, size_t count);
+        constexpr void constructElementsFromRange(size_t from, const T* src, size_t count);
 
         /**
          * @brief Освобождает память и уничтожает все элементы.
@@ -72,7 +72,7 @@ namespace mylib
          * @param to   Конечный индекс (не включается).
          * @note noexcept – вызов деструкторов не должен бросать исключения.
          */
-        void destroyElements(size_t from, size_t to) noexcept;
+        constexpr void destroyElements(size_t from, size_t to) noexcept;
 
         /**
          * @brief Перевыделяет буфер без создания новых элементов (newSize == m_size).
@@ -101,19 +101,19 @@ namespace mylib
          * @brief Освобождает указатель и обнуляет размер/ёмкость (без уничтожения элементов).
          * @note Используется в move-операциях для "обнуления" перемещаемого объекта.
          */
-        void release() noexcept;
+        constexpr void release() noexcept;
 
         /**
          * @brief Меняет содержимое с другим вектором за O(1).
          * @param other Другой вектор.
          */
-        void swap(Vector& other) noexcept;
+        constexpr void swap(Vector& other) noexcept;
 
     public:
         /**
          * @brief Конструктор по умолчанию. Создаёт пустой вектор.
          */
-        Vector() noexcept;
+        constexpr Vector() noexcept;
 
         /**
          * @brief Конструктор, создающий вектор с size элементами, инициализированными значением value.
@@ -132,7 +132,7 @@ namespace mylib
          * @brief Конструктор копирования.
          * @param other Вектор для копирования.
          */
-        Vector(const Vector<T>& other);
+        constexpr Vector(const Vector<T>& other);
 
         /**
          * @brief Оператор присваивания копированием (через copy-and-swap).
@@ -145,7 +145,7 @@ namespace mylib
          * @brief Конструктор перемещения.
          * @param other Вектор, из которого перемещаются данные.
          */
-        Vector(Vector<T>&& other) noexcept;
+        constexpr Vector(Vector<T>&& other) noexcept;
 
         /**
          * @brief Оператор присваивания перемещением.
@@ -171,8 +171,8 @@ namespace mylib
          * @return Ссылка на элемент.
          * @throw std::out_of_range если i >= size().
          */
-        T& at(size_t i);
-        const T& at(size_t i) const;
+        constexpr T& at(size_t i);
+        constexpr const T& at(size_t i) const;
 
         /**
          * @brief Возвращает текущую ёмкость.
@@ -184,7 +184,7 @@ namespace mylib
          * @brief Возвращает указатель на внутренний массив.
          * @return Указатель на данные (может быть nullptr для пустого вектора).
          */
-        T* data() noexcept;
+        constexpr T* data() noexcept;
         constexpr const T* data() const noexcept;
 
         /**
@@ -249,8 +249,8 @@ namespace mylib
          * @return Ссылка на элемент.
          * @pre i < size() (проверяется через assert в отладочной сборке).
          */
-        T& operator[](size_t i) noexcept;
-        const T& operator[](size_t i) const noexcept;
+        constexpr T& operator[](size_t i) noexcept;
+        constexpr const T& operator[](size_t i) const noexcept;
 
         /**
          * @brief Проверяет равенство двух векторов.
@@ -258,7 +258,7 @@ namespace mylib
          * @return true, если size() равны и все элементы равны.
          * @note Использует LexicographicComparator::isEqual.
          */
-        bool operator==(const Vector<T>& other) const;
+        constexpr bool operator==(const Vector<T>& other) const;
 
         /**
          * @brief Трёхстороннее сравнение (лексикографическое).
@@ -266,7 +266,7 @@ namespace mylib
          * @return std::strong_ordering::less, equal или greater.
          * @note Использует LexicographicComparator::compare, что даёт один проход.
          */
-        auto operator<=>(const Vector<T>& other) const;
+        constexpr auto operator<=>(const Vector<T>& other) const;
 
         // ИТЕРАТОРЫ
         class iterator;
@@ -275,21 +275,21 @@ namespace mylib
         using reverse_iterator       = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-        iterator begin() noexcept;
-        const_iterator begin() const noexcept;
-        const_iterator cbegin() const noexcept;
+        constexpr iterator begin() noexcept;
+        constexpr const_iterator begin() const noexcept;
+        constexpr const_iterator cbegin() const noexcept;
 
-        iterator end() noexcept;
-        const_iterator end() const noexcept;
-        const_iterator cend() const noexcept;
+        constexpr iterator end() noexcept;
+        constexpr const_iterator end() const noexcept;
+        constexpr const_iterator cend() const noexcept;
 
-        reverse_iterator rbegin() noexcept;
-        const_reverse_iterator rbegin() const noexcept;
-        const_reverse_iterator crbegin() const noexcept;
+        constexpr reverse_iterator rbegin() noexcept;
+        constexpr const_reverse_iterator rbegin() const noexcept;
+        constexpr const_reverse_iterator crbegin() const noexcept;
 
-        reverse_iterator rend() noexcept;
-        const_reverse_iterator rend() const noexcept;
-        const_reverse_iterator crend() const noexcept;
+        constexpr reverse_iterator rend() noexcept;
+        constexpr const_reverse_iterator rend() const noexcept;
+        constexpr const_reverse_iterator crend() const noexcept;
     };
 
 } // end namespace
@@ -297,7 +297,7 @@ namespace mylib
 
 
 template<typename T>
-mylib::Vector<T>::Vector() noexcept
+constexpr mylib::Vector<T>::Vector() noexcept
     : m_capacity{ 0 }
     , m_size{ 0 }
     , m_data{ nullptr }
@@ -350,7 +350,7 @@ mylib::Vector<T>::Vector(const std::initializer_list<T>& list)
 
 
 template<typename T>
-mylib::Vector<T>::Vector(const Vector<T>& other)
+constexpr mylib::Vector<T>::Vector(const Vector<T>& other)
     : m_capacity{ other.m_capacity }
     , m_size{ other.m_size }
 {
@@ -391,7 +391,7 @@ mylib::Vector<T>& mylib::Vector<T>::operator=(const Vector<T>& other)
 
 
 template<typename T>
-mylib::Vector<T>::Vector(Vector<T>&& other) noexcept
+constexpr mylib::Vector<T>::Vector(Vector<T>&& other) noexcept
     : m_capacity{ other.m_capacity }
     , m_size{ other.m_size }
     , m_data{ other.m_data }
@@ -432,7 +432,7 @@ void mylib::Vector<T>::append(const T& item)
 
 
 template<typename T>
-T& mylib::Vector<T>::at(size_t i)
+constexpr T& mylib::Vector<T>::at(size_t i)
 {
     if(!(i < m_size))
         throw std::out_of_range(std::format("An index must be less then the size. "
@@ -443,7 +443,7 @@ T& mylib::Vector<T>::at(size_t i)
 
 
 template<typename T>
-const T& mylib::Vector<T>::at(size_t i) const
+constexpr const T& mylib::Vector<T>::at(size_t i) const
 {
     if(!(i < m_size))
         throw std::out_of_range(std::format("An index must be less then the size."
@@ -454,7 +454,7 @@ const T& mylib::Vector<T>::at(size_t i) const
 
 
 template<typename T>
-size_t mylib::Vector<T>::calculateNewCapacity(size_t requiredSize) const noexcept
+constexpr size_t mylib::Vector<T>::calculateNewCapacity(size_t requiredSize) const noexcept
 {
     size_t reqCap{ MinCapacity };
     while(reqCap < requiredSize )
@@ -468,7 +468,7 @@ size_t mylib::Vector<T>::calculateNewCapacity(size_t requiredSize) const noexcep
 
 
 template<typename T>
-void mylib::Vector<T>::constructElements(size_t from, size_t to, const T& value)
+constexpr void mylib::Vector<T>::constructElements(size_t from, size_t to, const T& value)
 {
     size_t i{ from };
     try
@@ -488,7 +488,7 @@ void mylib::Vector<T>::constructElements(size_t from, size_t to, const T& value)
 
 
 template<typename T>
-void mylib::Vector<T>::constructElementsFromRange(size_t from, const T* src, size_t count)
+constexpr void mylib::Vector<T>::constructElementsFromRange(size_t from, const T* src, size_t count)
 {
     size_t i{ 0 };
     try
@@ -508,7 +508,7 @@ void mylib::Vector<T>::constructElementsFromRange(size_t from, const T* src, siz
 
 
 template<typename T>
-T* mylib::Vector<T>::data() noexcept
+constexpr T* mylib::Vector<T>::data() noexcept
 {
     return m_data;
 }
@@ -539,7 +539,7 @@ void mylib::Vector<T>::deallocate() noexcept
 
 
 template<typename T>
-void mylib::Vector<T>::destroyElements(size_t from, size_t to) noexcept
+constexpr void mylib::Vector<T>::destroyElements(size_t from, size_t to) noexcept
 {
     for(size_t i{ from }; i < to; ++i)
     {
@@ -573,7 +573,7 @@ constexpr bool mylib::Vector<T>::empty() const noexcept
 
 
 template<typename T>
-T& mylib::Vector<T>::operator[](size_t i) noexcept
+constexpr T& mylib::Vector<T>::operator[](size_t i) noexcept
 {
     assert(i < size());
 
@@ -583,7 +583,7 @@ T& mylib::Vector<T>::operator[](size_t i) noexcept
 
 
 template<typename T>
-const T& mylib::Vector<T>::operator[](size_t i) const noexcept
+constexpr const T& mylib::Vector<T>::operator[](size_t i) const noexcept
 {
     assert(i < size());
 
@@ -593,7 +593,7 @@ const T& mylib::Vector<T>::operator[](size_t i) const noexcept
 
 
 template<typename T>
-bool mylib::Vector<T>::operator==(const Vector<T>& other) const
+constexpr bool mylib::Vector<T>::operator==(const Vector<T>& other) const
 {
     return comparators::LexicographicComparator<Vector<T>>{}.isEqual(*this, other);
 }
@@ -602,7 +602,7 @@ bool mylib::Vector<T>::operator==(const Vector<T>& other) const
 
 
 template<typename T>
-auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const
+constexpr auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const
 {
     return comparators::LexicographicComparator<Vector<T>>{}.compare(*this, other);
 }
@@ -729,7 +729,7 @@ void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS
 
 
 template<typename T>
-void mylib::Vector<T>::release() noexcept
+constexpr void mylib::Vector<T>::release() noexcept
 {
     m_data = nullptr;
     m_size = 0;
@@ -807,7 +807,7 @@ void mylib::Vector<T>::shrink_to_fit()
 
 
 template<typename T>
-void mylib::Vector<T>::swap(Vector& other) noexcept
+constexpr void mylib::Vector<T>::swap(Vector& other) noexcept
 {
     std::swap(m_data, other.m_data);
     std::swap(m_size, other.m_size);
@@ -829,34 +829,34 @@ public:
     using pointer           = T*;
     using reference         = T&;
 
-    explicit iterator(T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
+    explicit constexpr  iterator(T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
 
     // Разыменование
-    T& operator*()  const noexcept { return *m_ptr; }
-    T* operator->() const noexcept { return  m_ptr; }
+    constexpr T& operator*()  const noexcept { return *m_ptr; }
+    constexpr T* operator->() const noexcept { return  m_ptr; }
 
 
     // Инкремент/декремент
-    iterator& operator++() noexcept
+    constexpr iterator& operator++() noexcept
     {
         ++m_ptr;
         return *this;
     }
 
-    iterator operator++(int) noexcept
+    constexpr iterator operator++(int) noexcept
     {
         iterator tmp(*this);
         ++m_ptr;
         return tmp;
     }
 
-    iterator& operator--() noexcept
+    constexpr iterator& operator--() noexcept
     {
         --m_ptr;
         return *this;
     }
 
-    iterator operator--(int) noexcept
+    constexpr iterator operator--(int) noexcept
     {
         iterator tmp(*this);
         --m_ptr;
@@ -865,30 +865,30 @@ public:
 
 
     // Арифметика
-    iterator& operator+=(std::ptrdiff_t n) noexcept
+    constexpr iterator& operator+=(std::ptrdiff_t n) noexcept
     {
         m_ptr += n;
         return *this;
     }
 
-    iterator& operator-=(std::ptrdiff_t n) noexcept
+    constexpr iterator& operator-=(std::ptrdiff_t n) noexcept
     {
         m_ptr -= n;
         return *this;
     }
 
-    iterator operator+(std::ptrdiff_t n) noexcept { return iterator(m_ptr + n); }
-    iterator operator-(std::ptrdiff_t n) noexcept { return iterator(m_ptr - n); }
-    friend iterator operator+(std::ptrdiff_t n, const iterator& it) noexcept { return it + n; }
+    constexpr iterator operator+(std::ptrdiff_t n) noexcept { return iterator(m_ptr + n); }
+    constexpr iterator operator-(std::ptrdiff_t n) noexcept { return iterator(m_ptr - n); }
+    friend constexpr  iterator operator+(std::ptrdiff_t n, const iterator& it) noexcept { return it + n; }
 
-    std::ptrdiff_t operator-(const iterator& other) const noexcept { return m_ptr - other.m_ptr; }
+    constexpr std::ptrdiff_t operator-(const iterator& other) const noexcept { return m_ptr - other.m_ptr; }
 
     // Сравнение
-    auto operator<=>(const iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
-    bool operator==(const iterator& other) const noexcept { return m_ptr == other.m_ptr; }
+    constexpr auto operator<=>(const iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
+    constexpr bool operator==(const iterator& other) const noexcept { return m_ptr == other.m_ptr; }
 
     // Доступ по индексу
-    T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
+    constexpr T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
 };
 
 
@@ -907,36 +907,36 @@ public:
     using pointer           = const T*;
     using reference         = const T&;
 
-    explicit const_iterator(const T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
+    explicit constexpr  const_iterator(const T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
 
-    const_iterator(const iterator& other) noexcept : m_ptr{ other.operator->() } {}
+    constexpr const_iterator(const iterator& other) noexcept : m_ptr{ other.operator->() } {}
 
     // Разыменование
-    const T& operator*()  const noexcept { return *m_ptr; }
-    const T* operator->() const noexcept { return  m_ptr; }
+    constexpr const T& operator*()  const noexcept { return *m_ptr; }
+    constexpr const T* operator->() const noexcept { return  m_ptr; }
 
 
     // Инкремент/декремент
-    const_iterator& operator++() noexcept
+    constexpr const_iterator& operator++() noexcept
     {
         ++m_ptr;
         return *this;
     }
 
-    const_iterator operator++(int) noexcept
+    constexpr const_iterator operator++(int) noexcept
     {
         const_iterator tmp(*this);
         ++m_ptr;
         return tmp;
     }
 
-    const_iterator& operator--() noexcept
+    constexpr const_iterator& operator--() noexcept
     {
         --m_ptr;
         return *this;
     }
 
-    const_iterator operator--(int) noexcept
+    constexpr const_iterator operator--(int) noexcept
     {
         const_iterator tmp(*this);
         --m_ptr;
@@ -945,36 +945,36 @@ public:
 
 
     // Арифметика
-    const_iterator& operator+=(std::ptrdiff_t n) noexcept
+    constexpr const_iterator& operator+=(std::ptrdiff_t n) noexcept
     {
         m_ptr += n;
         return *this;
     }
 
-    const_iterator& operator-=(std::ptrdiff_t n) noexcept
+    constexpr const_iterator& operator-=(std::ptrdiff_t n) noexcept
     {
         m_ptr -= n;
         return *this;
     }
 
-    const_iterator operator+(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr + n); }
-    const_iterator operator-(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr - n); }
-    friend const_iterator operator+(std::ptrdiff_t n, const const_iterator& it) noexcept { return it + n; }
+    constexpr const_iterator operator+(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr + n); }
+    constexpr const_iterator operator-(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr - n); }
+    friend constexpr const_iterator operator+(std::ptrdiff_t n, const const_iterator& it) noexcept { return it + n; }
 
-    std::ptrdiff_t operator-(const const_iterator& other) const noexcept { return m_ptr - other.m_ptr; }
+    constexpr std::ptrdiff_t operator-(const const_iterator& other) const noexcept { return m_ptr - other.m_ptr; }
 
     // Сравнение
-    auto operator<=>(const const_iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
-    bool operator== (const const_iterator& other) const noexcept { return m_ptr == other.m_ptr; }
+    constexpr auto operator<=>(const const_iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
+    constexpr bool operator== (const const_iterator& other) const noexcept { return m_ptr == other.m_ptr; }
 
     // Доступ по индексу
-    const T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
+    constexpr const T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
 };
 
 
 
 template<typename T>
-mylib::Vector<T>::iterator mylib::Vector<T>::begin() noexcept
+constexpr mylib::Vector<T>::iterator mylib::Vector<T>::begin() noexcept
 {
     return iterator{ m_data };
 }
@@ -982,7 +982,7 @@ mylib::Vector<T>::iterator mylib::Vector<T>::begin() noexcept
 
 
 template<typename T>
-mylib::Vector<T>::const_iterator mylib::Vector<T>::begin() const noexcept
+constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::begin() const noexcept
 {
     return const_iterator{ m_data };
 }
@@ -990,7 +990,7 @@ mylib::Vector<T>::const_iterator mylib::Vector<T>::begin() const noexcept
 
 
 template<typename T>
-mylib::Vector<T>::const_iterator mylib::Vector<T>::cbegin() const noexcept
+constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::cbegin() const noexcept
 {
     return const_iterator{ m_data };
 }
@@ -998,7 +998,7 @@ mylib::Vector<T>::const_iterator mylib::Vector<T>::cbegin() const noexcept
 
 
 template<typename T>
-mylib::Vector<T>::iterator mylib::Vector<T>::end() noexcept
+constexpr mylib::Vector<T>::iterator mylib::Vector<T>::end() noexcept
 {
     return iterator{ m_data + m_size };
 }
@@ -1006,7 +1006,7 @@ mylib::Vector<T>::iterator mylib::Vector<T>::end() noexcept
 
 
 template<typename T>
-mylib::Vector<T>::const_iterator mylib::Vector<T>::end() const noexcept
+constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::end() const noexcept
 {
     return const_iterator{ m_data + m_size };
 }
@@ -1014,7 +1014,7 @@ mylib::Vector<T>::const_iterator mylib::Vector<T>::end() const noexcept
 
 
 template<typename T>
-mylib::Vector<T>::const_iterator mylib::Vector<T>::cend() const noexcept
+constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::cend() const noexcept
 {
     return const_iterator{ m_data + m_size };
 }
@@ -1022,7 +1022,7 @@ mylib::Vector<T>::const_iterator mylib::Vector<T>::cend() const noexcept
 
 
 template<typename T>
-mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rbegin() noexcept
+constexpr mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rbegin() noexcept
 {
     return reverse_iterator{ end() };
 }
@@ -1030,7 +1030,7 @@ mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rbegin() noexcept
 
 
 template<typename T>
-mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rbegin() const noexcept
+constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rbegin() const noexcept
 {
     return const_reverse_iterator{ end() };
 }
@@ -1038,7 +1038,7 @@ mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rbegin() const noexce
 
 
 template<typename T>
-mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crbegin() const noexcept
+constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crbegin() const noexcept
 {
     return const_reverse_iterator{ cend() };
 }
@@ -1046,7 +1046,7 @@ mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crbegin() const noexc
 
 
 template<typename T>
-mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rend() noexcept
+constexpr mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rend() noexcept
 {
     return reverse_iterator{ begin() };
 }
@@ -1054,7 +1054,7 @@ mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rend() noexcept
 
 
 template<typename T>
-mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rend() const noexcept
+constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rend() const noexcept
 {
     return const_reverse_iterator{ begin() };
 }
@@ -1062,7 +1062,7 @@ mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rend() const noexcept
 
 
 template<typename T>
-mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crend() const noexcept
+constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crend() const noexcept
 {
     return const_reverse_iterator{ cbegin() };
 }
