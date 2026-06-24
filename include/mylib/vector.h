@@ -2,6 +2,7 @@
 #define VECTOR_H
 
 #include <algorithm>
+#include <memory>
 #include <cassert>
 #include <format>
 #include <initializer_list>
@@ -24,13 +25,14 @@ namespace mylib
      * @note Наследует ArithmeticType для возможности использования арифметических операций,
      *       но они не реализованы – наследование оставлено для расширяемости.
      */
-    template<typename T>
-    class Vector final : public mylib::ArithmeticType<Vector<T>>
+    template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
+    class Vector final : public mylib::ArithmeticType<Vector<T, ALLOCATOR>>
     {
     private:
         /** @brief Минимальная ёмкость при первом выделении памяти. */
         enum{ MinCapacity = 8 };
 
+        ALLOCATOR m_allocator{};
         size_t m_capacity{};    ///< Текущая выделенная ёмкость (количество элементов).
         size_t m_size{};        ///< Текущий размер (количество элементов).
         T* m_data{ nullptr };   ///< Указатель на массив элементов.
@@ -120,39 +122,39 @@ namespace mylib
          * @param size Количество элементов.
          * @param value Значение для инициализации (по умолчанию T()).
          */
-        explicit Vector(size_t size, const T& value = T());
+        Vector(size_t size, const T& value = T(), const ALLOCATOR& alloc = ALLOCATOR());
 
         /**
          * @brief Конструктор из std::initializer_list.
          * @param list Список инициализации.
          */
-        Vector(const std::initializer_list<T>& list);
+        Vector(const std::initializer_list<T>& list, const ALLOCATOR& alloc = ALLOCATOR());
 
         /**
          * @brief Конструктор копирования.
          * @param other Вектор для копирования.
          */
-        constexpr Vector(const Vector<T>& other);
+        Vector(const Vector<T, ALLOCATOR>& other);
 
         /**
          * @brief Оператор присваивания копированием (через copy-and-swap).
          * @param other Вектор для копирования.
          * @return Ссылка на *this.
          */
-        Vector<T>& operator=(const Vector<T>& other);
+        Vector<T, ALLOCATOR>& operator=(const Vector<T, ALLOCATOR>& other);
 
         /**
          * @brief Конструктор перемещения.
          * @param other Вектор, из которого перемещаются данные.
          */
-        constexpr Vector(Vector<T>&& other) noexcept;
+        Vector(Vector<T, ALLOCATOR>&& other) noexcept;
 
         /**
          * @brief Оператор присваивания перемещением.
          * @param other Вектор, из которого перемещаются данные.
          * @return Ссылка на *this.
          */
-        Vector<T>& operator=(Vector<T>&& other) noexcept;
+        Vector<T, ALLOCATOR>& operator=(Vector<T, ALLOCATOR>&& other) noexcept;
 
         /**
          * @brief Деструктор. Уничтожает все элементы и освобождает память.
@@ -258,7 +260,7 @@ namespace mylib
          * @return true, если size() равны и все элементы равны.
          * @note Использует LexicographicComparator::isEqual.
          */
-        constexpr bool operator==(const Vector<T>& other) const;
+        constexpr bool operator==(const Vector<T, ALLOCATOR>& other) const;
 
         /**
          * @brief Трёхстороннее сравнение (лексикографическое).
@@ -266,7 +268,7 @@ namespace mylib
          * @return std::strong_ordering::less, equal или greater.
          * @note Использует LexicographicComparator::compare, что даёт один проход.
          */
-        constexpr auto operator<=>(const Vector<T>& other) const;
+        constexpr auto operator<=>(const Vector<T, ALLOCATOR>& other) const;
 
         // ИТЕРАТОРЫ
         class iterator;
@@ -296,20 +298,22 @@ namespace mylib
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::Vector() noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::Vector() noexcept
     : m_capacity{ 0 }
     , m_size{ 0 }
     , m_data{ nullptr }
+    , m_allocator{}
 {}
 
 
 
-template<typename T>
-mylib::Vector<T>::Vector(size_t size, const T& value)
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>::Vector(size_t size, const T& value, const ALLOCATOR& alloc)
     : m_capacity{ 0 }
     , m_size{ 0 }
     , m_data{ nullptr }
+    , m_allocator{ alloc }
 {
     if(size == 0)
         return;
@@ -320,11 +324,12 @@ mylib::Vector<T>::Vector(size_t size, const T& value)
 
 
 
-template<typename T>
-mylib::Vector<T>::Vector(const std::initializer_list<T>& list)
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>::Vector(const std::initializer_list<T>& list, const ALLOCATOR& alloc)
     : m_capacity{ 0 }
     , m_size{ 0 }
     , m_data{ nullptr }
+    , m_allocator{ alloc }
 {
     if(list.size() == 0)
     {
@@ -332,7 +337,7 @@ mylib::Vector<T>::Vector(const std::initializer_list<T>& list)
     }
 
     m_capacity = calculateNewCapacity(list.size());
-    m_data = memory::rawMemory<T>(m_capacity);
+    m_data = m_allocator.allocate(m_capacity);
     try
     {
         constructElementsFromRange(0, list.begin(), list.size());
@@ -340,7 +345,7 @@ mylib::Vector<T>::Vector(const std::initializer_list<T>& list)
     }
     catch (...)
     {
-        memory::rawDelete(m_data);
+        m_allocator.deallocate(m_data, m_capacity);
         m_data = nullptr;
         m_capacity = 0;
         throw;
@@ -349,24 +354,25 @@ mylib::Vector<T>::Vector(const std::initializer_list<T>& list)
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::Vector(const Vector<T>& other)
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>::Vector(const Vector<T, ALLOCATOR>& other)
     : m_capacity{ other.m_capacity }
     , m_size{ other.m_size }
+    , m_allocator{ other.m_allocator }
 {
     if(m_capacity == 0)
     {
         return;
     }
 
-    m_data = memory::rawMemory<T>(m_capacity);
+    m_data = m_allocator.allocate(m_capacity);
     try
     {
         constructElementsFromRange(0, other.m_data, other.m_size);
     }
     catch (...)
     {
-        memory::rawDelete(m_data);
+        m_allocator.deallocate(m_data, m_capacity);
         m_data = nullptr;
         m_capacity = 0;
         m_size = 0;
@@ -376,8 +382,8 @@ constexpr mylib::Vector<T>::Vector(const Vector<T>& other)
 
 
 
-template<typename T>
-mylib::Vector<T>& mylib::Vector<T>::operator=(const Vector<T>& other)
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>& mylib::Vector<T, ALLOCATOR>::operator=(const Vector<T, ALLOCATOR>& other)
 {
     if(this != &other)
     {
@@ -390,19 +396,20 @@ mylib::Vector<T>& mylib::Vector<T>::operator=(const Vector<T>& other)
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::Vector(Vector<T>&& other) noexcept
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>::Vector(Vector<T, ALLOCATOR>&& other) noexcept
     : m_capacity{ other.m_capacity }
     , m_size{ other.m_size }
     , m_data{ other.m_data }
+    , m_allocator{ std::move(other.m_allocator) }
 {
     other.release();
 }
 
 
 
-template<typename T>
-mylib::Vector<T>& mylib::Vector<T>::operator=(Vector<T>&& other) noexcept
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>& mylib::Vector<T, ALLOCATOR>::operator=(Vector<T, ALLOCATOR>&& other) noexcept
 {
     if(this != &other)
     {
@@ -415,24 +422,24 @@ mylib::Vector<T>& mylib::Vector<T>::operator=(Vector<T>&& other) noexcept
 
 
 
-template<typename T>
-mylib::Vector<T>::~Vector() noexcept
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>::~Vector() noexcept
 {
     deallocate();
 }
 
 
 
-template<typename T>
-void mylib::Vector<T>::append(const T& item)
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::append(const T& item)
 {
     push_back(item);
 }
 
 
 
-template<typename T>
-constexpr T& mylib::Vector<T>::at(size_t i)
+template<typename T, typename ALLOCATOR>
+constexpr T& mylib::Vector<T, ALLOCATOR>::at(size_t i)
 {
     if(!(i < m_size))
         throw std::out_of_range(std::format("An index must be less then the size. "
@@ -442,8 +449,8 @@ constexpr T& mylib::Vector<T>::at(size_t i)
 
 
 
-template<typename T>
-constexpr const T& mylib::Vector<T>::at(size_t i) const
+template<typename T, typename ALLOCATOR>
+constexpr const T& mylib::Vector<T, ALLOCATOR>::at(size_t i) const
 {
     if(!(i < m_size))
         throw std::out_of_range(std::format("An index must be less then the size."
@@ -453,8 +460,8 @@ constexpr const T& mylib::Vector<T>::at(size_t i) const
 
 
 
-template<typename T>
-constexpr size_t mylib::Vector<T>::calculateNewCapacity(size_t requiredSize) const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr size_t mylib::Vector<T, ALLOCATOR>::calculateNewCapacity(size_t requiredSize) const noexcept
 {
     size_t reqCap{ MinCapacity };
     while(reqCap < requiredSize )
@@ -467,8 +474,8 @@ constexpr size_t mylib::Vector<T>::calculateNewCapacity(size_t requiredSize) con
 
 
 
-template<typename T>
-constexpr void mylib::Vector<T>::constructElements(size_t from, size_t to, const T& value)
+template<typename T, typename ALLOCATOR>
+constexpr void mylib::Vector<T, ALLOCATOR>::constructElements(size_t from, size_t to, const T& value)
 {
     size_t i{ from };
     try
@@ -487,8 +494,8 @@ constexpr void mylib::Vector<T>::constructElements(size_t from, size_t to, const
 
 
 
-template<typename T>
-constexpr void mylib::Vector<T>::constructElementsFromRange(size_t from, const T* src, size_t count)
+template<typename T, typename ALLOCATOR>
+constexpr void mylib::Vector<T, ALLOCATOR>::constructElementsFromRange(size_t from, const T* src, size_t count)
 {
     size_t i{ 0 };
     try
@@ -507,28 +514,29 @@ constexpr void mylib::Vector<T>::constructElementsFromRange(size_t from, const T
 
 
 
-template<typename T>
-constexpr T* mylib::Vector<T>::data() noexcept
+template<typename T, typename ALLOCATOR>
+constexpr T* mylib::Vector<T, ALLOCATOR>::data() noexcept
 {
     return m_data;
 }
 
 
 
-template<typename T>
-constexpr const T* mylib::Vector<T>::data() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr const T* mylib::Vector<T, ALLOCATOR>::data() const noexcept
 {
     return m_data;
 }
 
 
 
-template<typename T>
-void mylib::Vector<T>::deallocate() noexcept
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::deallocate() noexcept
 {
     if(m_data)
     {
-        memory::rawDestruct(m_data, m_size);
+        destroyElements(0, m_size);
+        m_allocator.deallocate(m_data, m_capacity);
         m_data = nullptr;
     }
 
@@ -538,8 +546,8 @@ void mylib::Vector<T>::deallocate() noexcept
 
 
 
-template<typename T>
-constexpr void mylib::Vector<T>::destroyElements(size_t from, size_t to) noexcept
+template<typename T, typename ALLOCATOR>
+constexpr void mylib::Vector<T, ALLOCATOR>::destroyElements(size_t from, size_t to) noexcept
 {
     for(size_t i{ from }; i < to; ++i)
     {
@@ -549,9 +557,9 @@ constexpr void mylib::Vector<T>::destroyElements(size_t from, size_t to) noexcep
 
 
 
-template<typename T>
+template<typename T, typename ALLOCATOR>
 template<typename... ARGS>
-void mylib::Vector<T>::emplace_back(ARGS&&... args)
+void mylib::Vector<T, ALLOCATOR>::emplace_back(ARGS&&... args)
 {
     if(m_size == m_capacity)
     {
@@ -564,16 +572,16 @@ void mylib::Vector<T>::emplace_back(ARGS&&... args)
 }
 
 
-template<typename T>
-constexpr bool mylib::Vector<T>::empty() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr bool mylib::Vector<T, ALLOCATOR>::empty() const noexcept
 {
     return 0 == m_size;
 }
 
 
 
-template<typename T>
-constexpr T& mylib::Vector<T>::operator[](size_t i) noexcept
+template<typename T, typename ALLOCATOR>
+constexpr T& mylib::Vector<T, ALLOCATOR>::operator[](size_t i) noexcept
 {
     assert(i < size());
 
@@ -582,8 +590,8 @@ constexpr T& mylib::Vector<T>::operator[](size_t i) noexcept
 
 
 
-template<typename T>
-constexpr const T& mylib::Vector<T>::operator[](size_t i) const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr const T& mylib::Vector<T, ALLOCATOR>::operator[](size_t i) const noexcept
 {
     assert(i < size());
 
@@ -592,25 +600,25 @@ constexpr const T& mylib::Vector<T>::operator[](size_t i) const noexcept
 
 
 
-template<typename T>
-constexpr bool mylib::Vector<T>::operator==(const Vector<T>& other) const
+template<typename T, typename ALLOCATOR>
+constexpr bool mylib::Vector<T, ALLOCATOR>::operator==(const Vector<T, ALLOCATOR>& other) const
 {
-    return comparators::LexicographicComparator<Vector<T>>{}.isEqual(*this, other);
+    return comparators::LexicographicComparator<Vector<T, ALLOCATOR>>{}.isEqual(*this, other);
 }
 
 
 
 
-template<typename T>
-constexpr auto mylib::Vector<T>::operator<=>(const Vector<T>& other) const
+template<typename T, typename ALLOCATOR>
+constexpr auto mylib::Vector<T, ALLOCATOR>::operator<=>(const Vector<T, ALLOCATOR>& other) const
 {
-    return comparators::LexicographicComparator<Vector<T>>{}.compare(*this, other);
+    return comparators::LexicographicComparator<Vector<T, ALLOCATOR>>{}.compare(*this, other);
 }
 
 
 
-template<typename T>
-void mylib::Vector<T>::push_back(const T& element)
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::push_back(const T& element)
 {
     if(m_size == m_capacity)
     {
@@ -624,8 +632,8 @@ void mylib::Vector<T>::push_back(const T& element)
 
 
 
-template<typename T>
-void mylib::Vector<T>::push_back(T&& element)
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::push_back(T&& element)
 {
     if(m_size == m_capacity)
     {
@@ -639,15 +647,15 @@ void mylib::Vector<T>::push_back(T&& element)
 
 
 
-template<typename T>
-void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize)
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::reallocateBuffer(size_t newCapacity, size_t newSize)
 {
     if(newCapacity == m_capacity && newSize == m_size)
     {
         return; // ничего не делаем
     }
 
-    T* newData{ memory::rawMemory<T>(newCapacity) };
+    T* newData{ m_allocator.allocate(newCapacity) };
     mylib::BufferGuard<T> guard{ newData, 0 };
 
     size_t copyCount{ std::min(newSize, m_size) };
@@ -663,7 +671,8 @@ void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize)
     // Если всё успешно – уничтожаем старые элементы и освобождаем старую память
     if(m_data)
     {
-        memory::rawDestruct(m_data, m_size);
+        destroyElements(0, m_size);
+        m_allocator.deallocate(m_data, m_capacity);
     }
 
     guard.commit(); // предотвращает двойное уничтожение
@@ -674,11 +683,11 @@ void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize)
 }
 
 
-template<typename T>
+template<typename T, typename ALLOCATOR>
 template<typename... ARGS>
-void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS&&... args)
+void mylib::Vector<T, ALLOCATOR>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS&&... args)
 {
-    T* newData{ memory::rawMemory<T>(newCapacity) };
+    T* newData{ m_allocator.allocate(newCapacity) };
 
     mylib::BufferGuard<T> guard{ newData, 0 };
 
@@ -716,7 +725,8 @@ void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS
     // Успех: освободить старые данные
     if(m_data)
     {
-        memory::rawDestruct(m_data, oldSize);
+        destroyElements(0, oldSize);
+        m_allocator.deallocate(m_data, m_capacity);
     }
 
     guard.commit();
@@ -728,8 +738,8 @@ void mylib::Vector<T>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS
 
 
 
-template<typename T>
-constexpr void mylib::Vector<T>::release() noexcept
+template<typename T, typename ALLOCATOR>
+constexpr void mylib::Vector<T, ALLOCATOR>::release() noexcept
 {
     m_data = nullptr;
     m_size = 0;
@@ -738,8 +748,8 @@ constexpr void mylib::Vector<T>::release() noexcept
 
 
 
-template<typename T>
-void mylib::Vector<T>::reserve(size_t newCap)
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::reserve(size_t newCap)
 {
     if(m_capacity < newCap)
     {
@@ -748,8 +758,8 @@ void mylib::Vector<T>::reserve(size_t newCap)
 }
 
 
-template<typename T>
-void mylib::Vector<T>::resize(size_t newSize, const T& value)
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value)
 {
     if(newSize == m_size)
     {
@@ -787,8 +797,8 @@ void mylib::Vector<T>::resize(size_t newSize, const T& value)
 
 
 
-template<typename T>
-constexpr size_t mylib::Vector<T>::size() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr size_t mylib::Vector<T, ALLOCATOR>::size() const noexcept
 {
     return m_size;
 }
@@ -796,8 +806,8 @@ constexpr size_t mylib::Vector<T>::size() const noexcept
 
 
 
-template<typename T>
-void mylib::Vector<T>::shrink_to_fit()
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::shrink_to_fit()
 {
     if(m_capacity > m_size)
     {
@@ -806,18 +816,19 @@ void mylib::Vector<T>::shrink_to_fit()
 }
 
 
-template<typename T>
-constexpr void mylib::Vector<T>::swap(Vector& other) noexcept
+template<typename T, typename ALLOCATOR>
+constexpr void mylib::Vector<T, ALLOCATOR>::swap(Vector& other) noexcept
 {
     std::swap(m_data, other.m_data);
     std::swap(m_size, other.m_size);
     std::swap(m_capacity, other.m_capacity);
+    std::swap(m_allocator, other.m_allocator);
 }
 
 
 
-template<typename T>
-class mylib::Vector<T>::iterator final
+template<typename T, typename ALLOCATOR>
+class mylib::Vector<T, ALLOCATOR>::iterator final
 {
 private:
     T* m_ptr;
@@ -894,8 +905,8 @@ public:
 
 
 
-template<typename T>
-class mylib::Vector<T>::const_iterator final
+template<typename T, typename ALLOCATOR>
+class mylib::Vector<T, ALLOCATOR>::const_iterator final
 {
 private:
     const T* m_ptr;
@@ -973,96 +984,96 @@ public:
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::iterator mylib::Vector<T>::begin() noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::iterator mylib::Vector<T, ALLOCATOR>::begin() noexcept
 {
     return iterator{ m_data };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::begin() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::begin() const noexcept
 {
     return const_iterator{ m_data };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::cbegin() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::cbegin() const noexcept
 {
     return const_iterator{ m_data };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::iterator mylib::Vector<T>::end() noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::iterator mylib::Vector<T, ALLOCATOR>::end() noexcept
 {
     return iterator{ m_data + m_size };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::end() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::end() const noexcept
 {
     return const_iterator{ m_data + m_size };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_iterator mylib::Vector<T>::cend() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::cend() const noexcept
 {
     return const_iterator{ m_data + m_size };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rbegin() noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::reverse_iterator mylib::Vector<T, ALLOCATOR>::rbegin() noexcept
 {
     return reverse_iterator{ end() };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rbegin() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_reverse_iterator mylib::Vector<T, ALLOCATOR>::rbegin() const noexcept
 {
     return const_reverse_iterator{ end() };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crbegin() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_reverse_iterator mylib::Vector<T, ALLOCATOR>::crbegin() const noexcept
 {
     return const_reverse_iterator{ cend() };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::reverse_iterator mylib::Vector<T>::rend() noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::reverse_iterator mylib::Vector<T, ALLOCATOR>::rend() noexcept
 {
     return reverse_iterator{ begin() };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::rend() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_reverse_iterator mylib::Vector<T, ALLOCATOR>::rend() const noexcept
 {
     return const_reverse_iterator{ begin() };
 }
 
 
 
-template<typename T>
-constexpr mylib::Vector<T>::const_reverse_iterator mylib::Vector<T>::crend() const noexcept
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>::const_reverse_iterator mylib::Vector<T, ALLOCATOR>::crend() const noexcept
 {
     return const_reverse_iterator{ cbegin() };
 }
