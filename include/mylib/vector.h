@@ -2,11 +2,12 @@
 #define VECTOR_H
 
 #include <algorithm>
-#include <memory>
 #include <cassert>
+#include <cmath>
 #include <format>
 #include <initializer_list>
 #include <iterator>
+#include <type_traits>
 #include <utility>
 
 #include "mylib/memory.h"
@@ -167,6 +168,8 @@ namespace mylib
          */
         void append(const T& item);
 
+        void appendVector(const Vector& vec);
+
         /**
          * @brief Доступ к элементу с проверкой границ.
          * @param i Индекс элемента.
@@ -181,6 +184,19 @@ namespace mylib
          * @return Количество элементов, которое может вместить вектор без перераспределения.
          */
         constexpr size_t capacity() const noexcept { return m_capacity; }
+
+
+        constexpr T& back() noexcept
+        {
+            assert(!empty());
+            return m_data[m_size - 1];
+        }
+
+        constexpr const T& back() const noexcept
+        {
+            assert(!empty());
+            return m_data[m_size - 1];
+        }
 
         /**
          * @brief Возвращает указатель на внутренний массив.
@@ -202,48 +218,6 @@ namespace mylib
          * @return true, если size() == 0.
          */
         constexpr bool empty() const noexcept;
-
-        /**
-         * @brief Вставляет элемент в конец (перегрузка для rvalue).
-         * @param element Элемент для добавления.
-         */
-        void push_back(const T& element);
-
-        /**
-         * @brief Вставляет элемент в конец (перегрузка для rvalue).
-         * @param element Элемент для добавления (перемещается).
-         */
-        void push_back(T&& element);
-
-        /**
-         * @brief Изменяет размер вектора.
-         * @param newSize Новый размер.
-         * @param value   Значение для инициализации новых элементов (если newSize > текущего).
-         * @note Если newSize меньше текущего, лишние элементы уничтожаются.
-         *       При уменьшении ёмкость может быть уменьшена, если newSize * 4 < capacity.
-         * @throw Любое исключение при конструировании элементов.
-         */
-        void resize(size_t newSize, const T& value = T());
-
-        /**
-         * @brief Резервирует память для как минимум newCap элементов.
-         * @param newCap Желаемая ёмкость.
-         * @note Если newCap <= текущей ёмкости, ничего не делает.
-         * @throw std::bad_alloc при нехватке памяти.
-         */
-        void reserve(size_t newCap);
-
-        /**
-         * @brief Уменьшает ёмкость до размера (shrink-to-fit).
-         * @throw std::bad_alloc при нехватке памяти (если требуется перераспределение).
-         */
-        void shrink_to_fit();
-
-        /**
-         * @brief Возвращает текущий размер.
-         * @return Количество элементов.
-         */
-        constexpr size_t size() const noexcept;
 
         /**
          * @brief Доступ к элементу без проверки границ.
@@ -269,6 +243,61 @@ namespace mylib
          * @note Использует LexicographicComparator::compare, что даёт один проход.
          */
         constexpr auto operator<=>(const Vector<T, ALLOCATOR>& other) const;
+
+        constexpr Vector& operator+=(const Vector<T, ALLOCATOR>& other);
+
+        constexpr Vector& operator-=(const Vector<T, ALLOCATOR>& other);
+
+        constexpr Vector& operator*=(const T& scalar);
+
+        constexpr Vector operator-() const;
+
+        double norm() const;
+
+        /**
+         * @brief Вставляет элемент в конец (перегрузка для rvalue).
+         * @param element Элемент для добавления.
+         */
+        void push_back(const T& element);
+
+        /**
+         * @brief Вставляет элемент в конец (перегрузка для rvalue).
+         * @param element Элемент для добавления (перемещается).
+         */
+        void push_back(T&& element);    
+
+        /**
+         * @brief Резервирует память для как минимум newCap элементов.
+         * @param newCap Желаемая ёмкость.
+         * @note Если newCap <= текущей ёмкости, ничего не делает.
+         * @throw std::bad_alloc при нехватке памяти.
+         */
+        void reserve(size_t newCap);
+
+        /**
+         * @brief Изменяет размер вектора.
+         * @param newSize Новый размер.
+         * @param value   Значение для инициализации новых элементов (если newSize > текущего).
+         * @note Если newSize меньше текущего, лишние элементы уничтожаются.
+         *       При уменьшении ёмкость может быть уменьшена, если newSize * 4 < capacity.
+         * @throw Любое исключение при конструировании элементов.
+         */
+        void resize(size_t newSize, const T& value = T());
+
+        void reverse();
+        void reverse(size_t start, size_t end);
+
+        /**
+         * @brief Уменьшает ёмкость до размера (shrink-to-fit).
+         * @throw std::bad_alloc при нехватке памяти (если требуется перераспределение).
+         */
+        void shrink_to_fit();
+
+        /**
+         * @brief Возвращает текущий размер.
+         * @return Количество элементов.
+         */
+        constexpr size_t size() const noexcept;
 
         // ИТЕРАТОРЫ
         class iterator;
@@ -434,6 +463,18 @@ template<typename T, typename ALLOCATOR>
 void mylib::Vector<T, ALLOCATOR>::append(const T& item)
 {
     push_back(item);
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::appendVector(const Vector<T, ALLOCATOR>& vec)
+{
+    reserve(calculateNewCapacity(m_size + vec.size()));
+
+    constructElementsFromRange(m_size, vec.begin(), vec.size());
+
+    m_size = m_size + vec.size();
 }
 
 
@@ -618,6 +659,113 @@ constexpr auto mylib::Vector<T, ALLOCATOR>::operator<=>(const Vector<T, ALLOCATO
 
 
 template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>& mylib::Vector<T, ALLOCATOR>::operator+=(const Vector<T, ALLOCATOR>& other)
+{
+    if(size() != other.size())
+    {
+        throw std::invalid_argument("size mismatch");
+    }
+
+    for(size_t i{}; i < size(); ++i)
+    {
+        m_data[i] += other[i];
+    }
+
+    return *this;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>& mylib::Vector<T, ALLOCATOR>::operator-=(const Vector<T, ALLOCATOR>& other)
+{
+    if(size() != other.size())
+    {
+        throw std::invalid_argument("size mismatch");
+    }
+
+    for(size_t i{}; i < size(); ++i)
+    {
+        m_data[i] -= other[i];
+    }
+
+    return *this;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR>&  mylib::Vector<T, ALLOCATOR>::operator*=(const T& scalar)
+{
+    for(size_t i{}; i < size(); ++i)
+    {
+        m_data[i] *= scalar;
+    }
+
+    return *this;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR> operator*(const  mylib::Vector<T, ALLOCATOR>& vec, const T& scalar)
+{
+    mylib::Vector result{ vec };
+
+    return result *= scalar;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR> operator*(const T& scalar, const  mylib::Vector<T, ALLOCATOR>& vec)
+{
+    mylib::Vector result{ vec };
+
+    return result *= scalar;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+constexpr T dot(const mylib::Vector<T, ALLOCATOR>& a, const mylib::Vector<T, ALLOCATOR>& b)
+{
+    if(a.size() != b.size())
+    {
+        throw std::invalid_argument("size mismatch");
+    }
+
+    T result{};
+
+    for(size_t i{}; i < a.size(); ++i)
+    {
+        result += a[i] * b[i];
+    }
+
+    return result;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+constexpr mylib::Vector<T, ALLOCATOR> mylib::Vector<T, ALLOCATOR>::operator-() const
+{
+    Vector result{ *this };
+    return result *= -1;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+double mylib::Vector<T, ALLOCATOR>::norm() const
+{
+    static_assert(std::is_same_v<T, double>, "norm is only available for double vectors");
+    return std::sqrt(dot(*this, *this));
+}
+
+
+
+template<typename T, typename ALLOCATOR>
 void mylib::Vector<T, ALLOCATOR>::push_back(const T& element)
 {
     if(m_size == m_capacity)
@@ -792,6 +940,33 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value)
 
             reallocateBuffer(newCapacity, newSize, value);
         }
+    }
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::reverse()
+{
+    reverse(0, m_size);
+}
+
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::Vector<T, ALLOCATOR>::reverse(size_t start, size_t end)
+{
+    if( start >= end || end > m_size)
+    {
+        throw std::out_of_range("...");
+    }
+
+    while(start < end)
+    {
+        --end;
+        std::swap(m_data[start], m_data[end]);
+        ++start;
     }
 }
 
