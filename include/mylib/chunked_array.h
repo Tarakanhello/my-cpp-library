@@ -37,13 +37,12 @@ namespace mylib
         T* allocateBlock(); // выделяет новый блок через m_allocator.allocate(CHUNK_SIZE)
         void destroyBlock(T* block, size_t count); // уничтожает count элементов в блоке.
         void deallocateBlock(T* block); // m_allocator.deallocate(block, CHUNK_SIZE)
-        void destroyBlock();
 
     public:
         // Конструкторы:
         ChunkedArray();
         ChunkedArray(size_t, T = T(), ALLOCATOR = ALLOCATOR());
-        ChunkedArray(std::initializer_list<T>);
+        ChunkedArray(std::initializer_list<T>, ALLOCATOR = ALLOCATOR());
 
         ~ChunkedArray();
 
@@ -108,10 +107,8 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ChunkedArray(size_t size,
     : m_size{ size }
     , m_blockAllocator{ alloc }
 {
-    if(m_size)
-    {
-        createBlocks();
-    }
+
+    createBlocks();
 
     for(size_t i{}, j{}; auto& block : m_blocks)
     {
@@ -128,12 +125,21 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ChunkedArray(size_t size,
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
-mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ChunkedArray(std::initializer_list<T> list)
+mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ChunkedArray(std::initializer_list<T> list, ALLOCATOR alloc)
     : m_size{ list.size() }
+    , m_blockAllocator{ alloc }
 {
-    if(m_size)
-    {
+    createBlocks();
 
+    for(size_t i{}, j{}; auto& block : m_blocks)
+    {
+        T* newBlock{ allocateBlock() };
+        for(; i == blockIndex(j) && j < m_size; ++j)
+        {
+            new (&newBlock[offset(j)]) T(list.begin()[j]);
+        }
+        block = newBlock;
+        ++i;
     }
 }
 
@@ -152,22 +158,23 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::createBlocks()
 {
     if(!m_blocks.empty())
     {
-        for(size_t i{}, j{}; auto& block : m_blocks)
+        for(size_t i{}; i < m_size; ++i)
         {
-            for(; i == blockIndex(j) && j < m_size; ++j)
-            {
-                memory::rawDelete(block[offset(j)]);
-            }
-
-            deallocateBlock(block);
+            m_blocks[blockIndex(i)][offset(i)].~T();
         }
+        for(size_t i{}; i < m_blocks.size(); ++i)
+        {
+            deallocateBlock(m_blocks[i]);
+            m_blocks[i] = nullptr;
+        }
+
     }
 
-    if(!m_size)
+    if(m_size)
         m_blocks = mylib::Vector<T*, ALLOCATOR_ptr>((m_size - 1) / m_chunkSize + 1, nullptr);
     else
     {
-        m_blocks.~T();
+        m_blocks.clear();
     }
 }
 
