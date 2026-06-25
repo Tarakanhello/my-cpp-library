@@ -33,15 +33,19 @@ namespace mylib
         T* getBlock(size_t blockIndex) { return m_blocks[blockIndex]; }
         const T* getBlock(size_t blockIndex) const { return m_blocks[blockIndex]; }
 
+        void createBlocks();
         T* allocateBlock(); // выделяет новый блок через m_allocator.allocate(CHUNK_SIZE)
         void destroyBlock(T* block, size_t count); // уничтожает count элементов в блоке.
         void deallocateBlock(T* block); // m_allocator.deallocate(block, CHUNK_SIZE)
+        void destroyBlock();
 
     public:
         // Конструкторы:
         ChunkedArray();
         ChunkedArray(size_t, T = T(), ALLOCATOR = ALLOCATOR());
         ChunkedArray(std::initializer_list<T>);
+
+        ~ChunkedArray();
 
 
         // Доступ:
@@ -106,7 +110,7 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ChunkedArray(size_t size,
 {
     if(m_size)
     {
-        m_blocks = mylib::Vector<T*, ALLOCATOR_ptr>{ (m_size - 1) / m_chunkSize + 1, nullptr };
+        createBlocks();
     }
 
     for(size_t i{}, j{}; auto& block : m_blocks)
@@ -125,15 +129,46 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ChunkedArray(size_t size,
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ChunkedArray(std::initializer_list<T> list)
+    : m_size{ list.size() }
 {
+    if(m_size)
+    {
 
+    }
 }
+
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 T* mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::allocateBlock()
 {
     return m_blockAllocator.allocate(m_chunkSize);
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::createBlocks()
+{
+    if(!m_blocks.empty())
+    {
+        for(size_t i{}, j{}; auto& block : m_blocks)
+        {
+            for(; i == blockIndex(j) && j < m_size; ++j)
+            {
+                memory::rawDelete(block[offset(j)]);
+            }
+
+            deallocateBlock(block);
+        }
+    }
+
+    if(!m_size)
+        m_blocks = mylib::Vector<T*, ALLOCATOR_ptr>((m_size - 1) / m_chunkSize + 1, nullptr);
+    else
+    {
+        m_blocks.~T();
+    }
 }
 
 #endif // CHUNKED_ARRAY_H

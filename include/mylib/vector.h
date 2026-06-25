@@ -185,6 +185,8 @@ namespace mylib
          */
         constexpr size_t capacity() const noexcept { return m_capacity; }
 
+        void clear() noexcept { deallocate(); }
+
         /**
          * @brief Возвращает ссылку на последний элемент.
          * @return Ссылка на последний элемент.
