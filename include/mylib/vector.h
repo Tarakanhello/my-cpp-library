@@ -599,9 +599,15 @@ void mylib::Vector<T, ALLOCATOR>::append(const T& item)
 template<typename T, typename ALLOCATOR>
 void mylib::Vector<T, ALLOCATOR>::appendVector(const Vector<T, ALLOCATOR>& vec)
 {
+    if(this == &vec)
+    {
+        Vector copy{ vec };
+        appendVector(copy);
+        return;
+    }
     reserve(calculateNewCapacity(m_size + vec.size()));
 
-    constructElementsFromRange(m_size, vec.begin(), vec.size());
+    constructElementsFromRange(m_size, vec.data(), vec.size());
 
     m_size = m_size + vec.size();
 }
@@ -1048,6 +1054,11 @@ void mylib::Vector<T, ALLOCATOR>::reverse(size_t start, size_t end)
 {
     if( start >= end || end > m_size)
     {
+        if(start == end)
+        {
+            return;
+        }
+
         throw std::out_of_range("...");
     }
 

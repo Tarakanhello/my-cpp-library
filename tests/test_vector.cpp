@@ -881,3 +881,216 @@ TEST_CASE("Vector with custom allocator", "[vector][allocator]")
         REQUIRE(Alloc::deallocateCount > dealloc_before); // освобождение старого
     }
 }
+
+
+
+TEST_CASE("Vector::back()", "[vector][back]")
+{
+    mylib::Vector<int> v{ 1, 2, 3, 4 };
+    REQUIRE(v.back() == 4);
+    v.back() = 42;
+    REQUIRE(v.back() == 42);
+    REQUIRE(v[3] == 42);
+
+    const mylib::Vector<int> cv{ 10, 20, 30 };
+    REQUIRE(cv.back() == 30);
+}
+
+
+
+TEST_CASE("Vector::appendVector", "[vector][appendVector]")
+{
+    SECTION("Append another vector")
+    {
+        mylib::Vector<int> v1{ 1, 2, 3 };
+        mylib::Vector<int> v2{ 4, 5, 6 };
+        v1.appendVector(v2);
+        checkVector(v1, { 1, 2, 3, 4, 5, 6 });
+        REQUIRE(v1.size() == 6);
+        // Проверяем, что исходный v2 не изменился
+        checkVector(v2, { 4, 5, 6 });
+    }
+
+    SECTION("Append empty vector")
+    {
+        mylib::Vector<int> v1{ 1, 2, 3 };
+        mylib::Vector<int> v2;
+        v1.appendVector(v2);
+        checkVector(v1, { 1, 2, 3 });
+        REQUIRE(v1.size() == 3);
+    }
+
+    SECTION("Append to itself (self-append)")
+    {
+        mylib::Vector<int> v{ 1, 2, 3 };
+        v.appendVector(v);
+        // Ожидаем: {1,2,3,1,2,3}
+        checkVector(v, { 1, 2, 3, 1, 2, 3 });
+        REQUIRE(v.size() == 6);
+    }
+
+    SECTION("Append after reallocation (capacity growth)")
+    {
+        mylib::Vector<int> v;
+        for (int i = 0; i < 10; ++i)
+        {
+            v.push_back(i);
+        }
+        size_t oldCap{ v.capacity() };
+        mylib::Vector<int> add(5, 99);
+
+        v.appendVector(add);
+        REQUIRE(v.size() == 15);
+        REQUIRE(v.capacity() >= 15);
+        // Проверяем последние элементы
+        for (size_t i = 10; i < 15; ++i)
+        {
+            REQUIRE(v[i] == 99);
+        }
+        // Первые 10 остались
+        for (int i = 0; i < 10; ++i)
+        {
+            REQUIRE(v[i] == i);
+        }
+    }
+}
+
+
+
+TEST_CASE("Vector arithmetic operations", "[vector][arithmetic]")
+{
+    using V = mylib::Vector<int>;
+
+    SECTION("operator+= (element-wise addition)")
+    {
+        V a{ 1, 2, 3 };
+        V b{ 10, 20, 30 };
+        a += b;
+        checkVector(a, { 11, 22, 33 });
+
+        // Проверка исключения при несовпадении размеров
+        V c{ 1, 2 };
+        REQUIRE_THROWS_AS(a += c, std::invalid_argument);
+    }
+
+    SECTION("operator-= (element-wise subtraction)")
+    {
+        V a{ 10, 20, 30 };
+        V b{ 1, 2, 3 };
+        a -= b;
+        checkVector(a, { 9, 18, 27 });
+
+        V c{ 1 };
+        REQUIRE_THROWS_AS(a -= c, std::invalid_argument);
+    }
+
+    SECTION("operator*= (scalar multiplication)")
+    {
+        V a{ 1, 2, 3 };
+        a *= 2;
+        checkVector(a, { 2, 4, 6} );
+
+        a *= 0;
+        checkVector(a, { 0, 0, 0 });
+    }
+
+    SECTION("unary operator-")
+    {
+        V a{ 1, -2, 3 };
+        V b = -a;
+
+        checkVector(b, { -1, 2, -3 });
+
+        // Исходный не изменился
+        checkVector(a, { 1, -2, 3 });
+    }
+
+    SECTION("free operator* (vector * scalar and scalar * vector)")
+    {
+        V a{ 1, 2, 3 };
+        V b = a * 3;
+        checkVector(b, { 3, 6, 9 });
+
+        V c = 4 * a;
+        checkVector(c, { 4, 8, 12 });
+
+        // Проверка, что исходный не изменился
+        checkVector(a, { 1, 2, 3 });
+    }
+}
+
+
+
+TEST_CASE("Vector dot product and norm", "[vector][dot][norm]")
+{
+    SECTION("dot product")
+    {
+        mylib::Vector<int> a{ 1, 2, 3 };
+        mylib::Vector<int> b{ 4, 5, 6 };
+        int result{ mylib::dot(a, b) };
+
+        REQUIRE(result == 1*4 + 2*5 + 3*6); // 32
+
+        // Разные размеры -> исключение
+        mylib::Vector<int> c{ 1, 2 };
+        REQUIRE_THROWS_AS(mylib::dot(a, c), std::invalid_argument);
+
+        // Пустые векторы
+        mylib::Vector<int> empty1;
+        mylib::Vector<int> empty2;
+        REQUIRE(mylib::dot(empty1, empty2) == 0);
+    }
+
+    SECTION("norm() for double vectors")
+    {
+        mylib::Vector<double> v{3.0, 4.0};
+        double n{ v.norm() };
+        REQUIRE(n == 5.0); // sqrt(9+16)
+
+        mylib::Vector<double> v2{ 1.0, 1.0, 1.0 };
+        REQUIRE(v2.norm() == std::sqrt(3.0));
+    }
+}
+
+
+
+TEST_CASE("Vector::reverse", "[vector][reverse]")
+{
+    SECTION("reverse whole vector")
+    {
+        mylib::Vector<int> v{ 1, 2, 3, 4, 5 };
+        v.reverse();
+        checkVector(v, { 5, 4, 3, 2, 1 });
+
+        // Пустой вектор
+        mylib::Vector<int> empty;
+        empty.reverse(); // не должно быть ошибки
+        REQUIRE(empty.empty());
+
+        // Один элемент
+        mylib::Vector<int> single{ 42 };
+        single.reverse();
+        checkVector(single, { 42 });
+    }
+
+    SECTION("reverse range [start, end)")
+    {
+        mylib::Vector<int> v{ 1, 2, 3, 4, 5, 6 };
+
+        v.reverse(1, 5); // индексы 1..4 -> 2,3,4,5 -> 5,4,3,2
+        checkVector(v, { 1, 5, 4, 3, 2, 6 });
+
+        // Пустой диапазон (start == end) – ничего не делает
+        v.reverse(2, 2);
+        checkVector(v, { 1, 5, 4, 3, 2, 6 });
+
+        // Весь диапазон эквивалентен reverse()
+        v.reverse(0, v.size());
+        checkVector(v, { 6, 2, 3, 4, 5, 1 });
+
+        // Некорректные индексы – исключение
+        REQUIRE_THROWS_AS(v.reverse(5, 3), std::out_of_range);
+        REQUIRE_THROWS_AS(v.reverse(0, 10), std::out_of_range);
+        REQUIRE_THROWS_AS(v.reverse(v.size() + 1, v.size() + 2), std::out_of_range);
+    }
+}
