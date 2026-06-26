@@ -278,6 +278,8 @@ namespace mylib
          */
         constexpr Vector operator-() const;
 
+        explicit constexpr operator bool() const noexcept { return !empty(); }
+
         /**
          * @brief Вычисляет евклидову норму вектора.
          * @return Значение нормы (квадратный корень из скалярного произведения вектора на себя).
