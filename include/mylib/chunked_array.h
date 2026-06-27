@@ -105,20 +105,13 @@ namespace mylib
         explicit operator bool() noexcept { return !empty(); }
 
         // ITERATORS
-        /*
-         * Итератор должен хранить:
-         *   - указатель на текущий блок,
-         *   - смещение внутри блока,
-         *   - указатель на конец текущего блока,
-         *   - общий указатель на текущий элемент.
-         */
 
         class iterator
         {
         private:
-            T** m_currentChunkPtr;
+            T** m_chunkPtr;
+            T** m_chunksEnd;
             T* m_currentElementPtr;
-            T** m_endOfChunksPtr;
             size_t m_offset;
 
 
@@ -129,22 +122,19 @@ namespace mylib
             using pointer           = T*;
             using reference         = T&;
 
-            constexpr iterator(T** beginChunkPtr = nullptr,
-                               T** endOfChunksPtr = nullptr,
+            constexpr iterator(T** beginChunkPtr,
+                               T** chunksEnd,
                                size_t startIndex = 0) noexcept
-                : m_currentChunkPtr{ beginChunkPtr }
-                , m_endOfChunksPtr{ endOfChunksPtr }
-                , m_offset{ startIndex % CHUNK_SIZE }
+                : m_chunkPtr{ beginChunkPtr }
+                , m_chunksEnd{ chunksEnd }
+                , m_offset{ startIndex % m_chunkSize }
                 , m_currentElementPtr{ nullptr }
             {
-                if(m_currentChunkPtr && m_endOfChunksPtr && m_currentChunkPtr < m_endOfChunksPtr)
+                if(m_chunkPtr && m_chunksEnd && m_chunkPtr < m_chunksEnd)
                 {
-                    size_t blockIndex{ startIndex / CHUNK_SIZE };
-                    m_currentChunkPtr = m_currentChunkPtr + blockIndex;
-                    if(m_currentChunkPtr < endOfChunksPtr)
-                    {
-                        m_currentElementPtr = *m_currentChunkPtr + m_offset;
-                    }
+                    size_t blockIndex{ startIndex / m_chunkSize };
+                    m_chunkPtr = m_chunkPtr + blockIndex;
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
                 }
             }
 
@@ -162,15 +152,15 @@ namespace mylib
 
             constexpr iterator& operator++() noexcept
             {
-                assert(m_currentChunkPtr && m_endOfChunksPtr && m_currentElementPtr);
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
 
                 ++m_offset;
-                if(m_offset == CHUNK_SIZE)
+                if(m_offset == m_chunkSize)
                 {
-                    ++m_currentChunkPtr;
-                    if(m_currentChunkPtr < m_endOfChunksPtr)
+                    ++m_chunkPtr;
+                    if(m_chunkPtr < m_chunksEnd)
                     {
-                        m_currentElementPtr = *m_currentChunkPtr;
+                        m_currentElementPtr = *m_chunkPtr;
                     }
                     else
                     {
@@ -180,7 +170,7 @@ namespace mylib
                 }
                 else
                 {
-                    m_currentElementPtr = *m_currentChunkPtr + m_offset;
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
                 }
 
                 return *this;
@@ -195,18 +185,581 @@ namespace mylib
                 return tmp;
             }
 
+            constexpr iterator& operator--() noexcept
+            {
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
 
+                if(0 == m_offset)
+                {
+                    m_offset = m_chunkSize;
+                    --m_chunkPtr;
+                }
 
+                --m_offset;
 
+                if(m_chunkPtr < m_chunksEnd)
+                {
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+                else
+                {
+                    m_currentElementPtr = nullptr;
+                }
+
+                return *this;
+            }
+
+            constexpr iterator operator--(int) noexcept
+            {
+                iterator temp{ *this };
+
+                --(*this);
+
+                return temp;
+            }
+
+            constexpr iterator& operator+=(std::ptrdiff_t n) noexcept
+            {
+                if(0 == n)
+                {
+                    return *this;
+                }
+
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+                if(n < 0)
+                {
+                    return (*this -= -n);
+                }
+
+                while(n >= m_chunkSize)
+                {
+                    ++m_chunkPtr;
+                    n -= m_chunkSize;
+                    if(m_chunkPtr == m_chunksEnd)
+                    {
+                        m_currentElementPtr = nullptr;
+                        return *this;
+                    }
+                }
+
+                if(m_offset + n >= m_chunkSize)
+                {
+                    ++m_chunkPtr;
+                    m_offset = m_offset + n - m_chunkSize;
+                }
+                else
+                {
+                    m_offset += n;
+                }
+
+                if(m_chunkPtr < m_chunksEnd)
+                {
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+                else
+                {
+                    m_currentElementPtr = nullptr;
+                }
+
+                return *this;
+            }
+
+            constexpr iterator& operator-=(std::ptrdiff_t n) noexcept
+            {
+                if(0 == n)
+                {
+                    return *this;
+                }
+
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+                if(n < 0)
+                {
+                    return (*this += -n);
+                }
+
+                while(n >= m_chunkSize)
+                {
+                    --m_chunkPtr;
+                    n -= m_chunkSize;
+                    if(m_chunkPtr == m_chunksEnd)
+                    {
+                        m_currentElementPtr = nullptr;
+                        return *this;
+                    }
+                }
+
+                if(static_cast<std::ptrdiff_t>(m_offset) - n < 0)
+                {
+                    --m_chunkPtr;
+                    m_offset = m_offset - n + m_chunkSize;
+                }
+                else
+                {
+                    m_offset -= n;
+                }
+
+                if(m_chunkPtr < m_chunksEnd)
+                {
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+                else
+                {
+                    m_currentElementPtr = nullptr;
+                }
+
+                return *this;
+            }
+
+            constexpr iterator operator+(std::ptrdiff_t n) noexcept
+            {
+                iterator temp{ *this };
+                temp += n;
+                return temp;
+            }
+            constexpr iterator operator-(std::ptrdiff_t n) noexcept
+            {
+
+                iterator temp{ *this };
+                temp -= n;
+                return temp;
+
+            }
+
+            friend constexpr  iterator operator+(std::ptrdiff_t n, const iterator& it) noexcept { return it + n; }
+
+            constexpr std::ptrdiff_t operator-(const iterator& other) const noexcept
+            {
+                std::ptrdiff_t timesMultiply{ m_chunkPtr - other.m_chunkPtr };
+
+                std::ptrdiff_t offset{ static_cast<std::ptrdiff_t>(m_offset) - static_cast<std::ptrdiff_t>(other.m_offset) };
+
+                return timesMultiply * m_chunkSize + offset;
+            }
+
+            // Сравнение
+            constexpr auto operator<=>(const iterator& other) const noexcept
+            {
+                if(m_chunkPtr < other.m_chunkPtr)
+                {
+                    return std::strong_ordering::less;
+                }
+                else if(m_chunkPtr > other.m_chunkPtr)
+                {
+                    return std::strong_ordering::greater;
+                }
+                else
+                {
+                    if(m_currentElementPtr == other.m_currentElementPtr)
+                    {
+                        return std::strong_ordering::equal;
+                    }
+                    else if(m_currentElementPtr == nullptr)
+                    {
+                        return std::strong_ordering::greater;
+                    }
+                    else if(other.m_currentElementPtr == nullptr)
+                    {
+                        return std::strong_ordering::less;
+                    }
+                }
+
+                return m_offset <=> other.m_offset;
+            }
+
+            constexpr bool operator==(const iterator& other) const noexcept
+            {
+                return m_chunkPtr == other.m_chunkPtr && m_currentElementPtr == other.m_currentElementPtr;
+            }
+
+            // Доступ по индексу
+            constexpr T& operator[](std::ptrdiff_t n) const noexcept { return *(*this + n); }
         };
 
-        class const_iterator;
+        class const_iterator
+        {
+        private:
+            const T** m_chunkPtr;
+            const T** m_chunksEnd;
+            const T* m_currentElementPtr;
+            size_t m_offset;
+
+
+        public:
+            using iterator_category = std::random_access_iterator_tag;
+            using value_type        = T;
+            using difference_type   = std::ptrdiff_t;
+            using pointer           = const T*;
+            using reference         = const T&;
+
+            constexpr const_iterator(const T** beginChunkPtr,
+                               const T** chunksEnd,
+                               size_t startIndex = 0) noexcept
+                : m_chunkPtr{ beginChunkPtr }
+                , m_chunksEnd{ chunksEnd }
+                , m_offset{ startIndex % m_chunkSize }
+                , m_currentElementPtr{ nullptr }
+            {
+                if(m_chunkPtr && m_chunksEnd && m_chunkPtr < m_chunksEnd)
+                {
+                    size_t blockIndex{ startIndex / m_chunkSize };
+                    m_chunkPtr = m_chunkPtr + blockIndex;
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+            }
+
+            constexpr const_iterator(const iterator& other) noexcept
+                : m_chunkPtr{ other.m_chunkPtr }
+                , m_chunksEnd{ other.m_chunksEnd }
+                , m_offset{ other.m_offset }
+                , m_currentElementPtr{ other.m_currentElementPtr }
+            {}
+
+            constexpr const T& operator*() const noexcept
+            {
+                assert(m_currentElementPtr);
+                return *m_currentElementPtr;
+            }
+
+            constexpr const T* operator->() const noexcept
+            {
+                assert(m_currentElementPtr);
+                return m_currentElementPtr;
+            }
+
+            constexpr const_iterator& operator++() noexcept
+            {
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+                ++m_offset;
+                if(m_offset == m_chunkSize)
+                {
+                    ++m_chunkPtr;
+                    if(m_chunkPtr < m_chunksEnd)
+                    {
+                        m_currentElementPtr = *m_chunkPtr;
+                    }
+                    else
+                    {
+                        m_currentElementPtr = nullptr;
+                    }
+                    m_offset = 0;
+                }
+                else
+                {
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+
+                return *this;
+            }
+
+            constexpr const_iterator operator++(int) noexcept
+            {
+                const_iterator tmp(*this);
+
+                ++(*this);
+
+                return tmp;
+            }
+
+            constexpr const_iterator& operator--() noexcept
+            {
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+                if(0 == m_offset)
+                {
+                    m_offset = m_chunkSize;
+                    --m_chunkPtr;
+                }
+
+                --m_offset;
+
+                if(m_chunkPtr < m_chunksEnd)
+                {
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+                else
+                {
+                    m_currentElementPtr = nullptr;
+                }
+
+                return *this;
+            }
+
+            constexpr const_iterator operator--(int) noexcept
+            {
+                const_iterator temp{ *this };
+
+                --(*this);
+
+                return temp;
+            }
+
+            constexpr const_iterator& operator+=(std::ptrdiff_t n) noexcept
+            {
+                if(0 == n)
+                {
+                    return *this;
+                }
+
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+                if(n < 0)
+                {
+                    return (*this -= -n);
+                }
+
+                while(n >= m_chunkSize)
+                {
+                    ++m_chunkPtr;
+                    n -= m_chunkSize;
+                    if(m_chunkPtr == m_chunksEnd)
+                    {
+                        m_currentElementPtr = nullptr;
+                        return *this;
+                    }
+                }
+
+                if(m_offset + n >= m_chunkSize)
+                {
+                    ++m_chunkPtr;
+                    m_offset = m_offset + n - m_chunkSize;
+                }
+                else
+                {
+                    m_offset += n;
+                }
+
+                if(m_chunkPtr < m_chunksEnd)
+                {
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+                else
+                {
+                    m_currentElementPtr = nullptr;
+                }
+
+                return *this;
+            }
+
+            constexpr const_iterator& operator-=(std::ptrdiff_t n) noexcept
+            {
+                if(0 == n)
+                {
+                    return *this;
+                }
+
+                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+                if(n < 0)
+                {
+                    return (*this += -n);
+                }
+
+                while(n >= m_chunkSize)
+                {
+                    --m_chunkPtr;
+                    n -= m_chunkSize;
+                    if(m_chunkPtr == m_chunksEnd)
+                    {
+                        m_currentElementPtr = nullptr;
+                        return *this;
+                    }
+                }
+
+                if(static_cast<std::ptrdiff_t>(m_offset) - n < 0)
+                {
+                    --m_chunkPtr;
+                    m_offset = m_offset - n + m_chunkSize;
+                }
+                else
+                {
+                    m_offset -= n;
+                }
+
+                if(m_chunkPtr < m_chunksEnd)
+                {
+                    m_currentElementPtr = *m_chunkPtr + m_offset;
+                }
+                else
+                {
+                    m_currentElementPtr = nullptr;
+                }
+
+                return *this;
+            }
+
+            constexpr const_iterator operator+(std::ptrdiff_t n) noexcept
+            {
+                const_iterator temp{ *this };
+                temp += n;
+                return temp;
+            }
+            constexpr const_iterator operator-(std::ptrdiff_t n) noexcept
+            {
+
+                const_iterator temp{ *this };
+                temp -= n;
+                return temp;
+
+            }
+
+            friend constexpr  const_iterator operator+(std::ptrdiff_t n, const const_iterator& it) noexcept { return it + n; }
+
+            constexpr std::ptrdiff_t operator-(const const_iterator& other) const noexcept
+            {
+                std::ptrdiff_t timesMultiply{ m_chunkPtr - other.m_chunkPtr };
+
+                std::ptrdiff_t offset{ static_cast<std::ptrdiff_t>(m_offset) - static_cast<std::ptrdiff_t>(other.m_offset) };
+
+                return timesMultiply * m_chunkSize + offset;
+            }
+
+            // Сравнение
+            constexpr auto operator<=>(const const_iterator& other) const noexcept
+            {
+                if(m_chunkPtr < other.m_chunkPtr)
+                {
+                    return std::strong_ordering::less;
+                }
+                else if(m_chunkPtr > other.m_chunkPtr)
+                {
+                    return std::strong_ordering::greater;
+                }
+                else
+                {
+                    if(m_currentElementPtr == other.m_currentElementPtr)
+                    {
+                        return std::strong_ordering::equal;
+                    }
+                    else if(m_currentElementPtr == nullptr)
+                    {
+                        return std::strong_ordering::greater;
+                    }
+                    else if(other.m_currentElementPtr == nullptr)
+                    {
+                        return std::strong_ordering::less;
+                    }
+                }
+
+                return m_offset <=> other.m_offset;
+            }
+
+            constexpr bool operator==(const const_iterator& other) const noexcept
+            {
+                return m_chunkPtr == other.m_chunkPtr && m_currentElementPtr == other.m_currentElementPtr;
+            }
+
+            // Доступ по индексу
+            constexpr const T& operator[](std::ptrdiff_t n) const noexcept { return *(*this + n); }
+        };
 
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-        constexpr iterator begin() noexcept { return *m_arrayOfChunks.begin(); }
-        constexpr const_iterator begin() const noexcept { return *m_arrayOfChunks.begin(); }
+        /**
+         * @brief Возвращает итератор на первый элемент.
+         */
+        constexpr iterator begin() noexcept
+        {
+            return iterator{ m_arrayOfChunks.data(), m_arrayOfChunks.data() + m_arrayOfChunks.size() };
+        }
+
+        /**
+         * @brief Возвращает константный итератор на первый элемент.
+         */
+        constexpr const_iterator begin() const noexcept
+        {
+            return cbegin();
+        }
+
+        /**
+         * @brief Возвращает константный итератор на первый элемент.
+         */
+        constexpr const_iterator cbegin() const noexcept
+        {
+            return const_iterator{ m_arrayOfChunks.data(), m_arrayOfChunks.data() + m_arrayOfChunks.size() };
+        }
+
+        /**
+         * @brief Возвращает итератор на элемент, следующий за последним.
+         */
+        constexpr iterator end() noexcept
+        {
+            return iterator{ m_arrayOfChunks.data(), m_arrayOfChunks.data() + m_arrayOfChunks.size(), size() };
+        }
+
+        /**
+         * @brief Возвращает константный итератор на элемент, следующий за последним.
+         */
+        constexpr const_iterator end() const noexcept
+        {
+            return cend();
+        }
+
+        /**
+         * @brief Возвращает константный итератор на элемент, следующий за последним.
+         */
+        constexpr const_iterator cend() const noexcept
+        {
+            return const_iterator{ m_arrayOfChunks.data(), m_arrayOfChunks.data() + m_arrayOfChunks.size(), size() };
+
+        }
+
+        /**
+         * @brief Возвращает обратный итератор на элемент, следующий за последним.
+         */
+        constexpr reverse_iterator rbegin() noexcept
+        {
+            return end();
+
+        }
+
+        /**
+         * @brief Возвращает константный обратный итератор на элемент, следующий за последним.
+         */
+        constexpr const_reverse_iterator rbegin() const noexcept
+        {
+            return cend();
+
+        }
+
+        /**
+         * @brief Возвращает константный обратный итератор на элемент, следующий за последним.
+         */
+        constexpr const_reverse_iterator crbegin() const noexcept
+        {
+            return cend();
+
+        }
+
+        /**
+         * @brief Возвращает обратный итератор на первый элемент.
+         */
+        constexpr reverse_iterator rend() noexcept
+        {
+            return begin();
+        }
+
+        /**
+         * @brief Возвращает константный обратный итератор на первый элемент.
+         */
+        constexpr const_reverse_iterator rend() const noexcept
+        {
+            return cbegin();
+        }
+
+        /**
+         * @brief Возвращает константный обратный итератор на первый элемент.
+         */
+        constexpr const_reverse_iterator crend() const noexcept
+        {
+            return cbegin();
+        }
+
+
+
 
     }; // end class ChunkedArray
 
