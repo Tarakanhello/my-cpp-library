@@ -8,7 +8,6 @@
 #include "mylib/structs.h"
 #include "mylib/vector.h"
 
-void helloFromMyLib();
 
 
 
