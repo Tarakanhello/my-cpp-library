@@ -297,7 +297,7 @@ namespace mylib
          * @brief Вставляет элемент в конец (перегрузка для rvalue).
          * @param element Элемент для добавления (перемещается).
          */
-        void push_back(T&& element);    
+        void push_back(T&& element);
 
         /**
          * @brief Резервирует память для как минимум newCap элементов.
@@ -333,41 +333,41 @@ namespace mylib
         constexpr size_t size() const noexcept;
 
         // ИТЕРАТОРЫ
-        class iterator;
-        class const_iterator;
+        class Iterator;
+        class ConstIterator;
         // Обратные итераторы – используем std::reverse_iterator
-        using reverse_iterator       = std::reverse_iterator<iterator>;
-        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+        using reverse_iterator       = std::reverse_iterator<Iterator>;
+        using const_reverse_iterator = std::reverse_iterator<ConstIterator>;
 
         /**
          * @brief Возвращает итератор на первый элемент.
          */
-        constexpr iterator begin() noexcept;
+        constexpr Iterator begin() noexcept;
 
         /**
          * @brief Возвращает константный итератор на первый элемент.
          */
-        constexpr const_iterator begin() const noexcept;
+        constexpr ConstIterator begin() const noexcept;
 
         /**
          * @brief Возвращает константный итератор на первый элемент.
          */
-        constexpr const_iterator cbegin() const noexcept;
+        constexpr ConstIterator cbegin() const noexcept;
 
         /**
          * @brief Возвращает итератор на элемент, следующий за последним.
          */
-        constexpr iterator end() noexcept;
+        constexpr Iterator end() noexcept;
 
         /**
          * @brief Возвращает константный итератор на элемент, следующий за последним.
          */
-        constexpr const_iterator end() const noexcept;
+        constexpr ConstIterator end() const noexcept;
 
         /**
          * @brief Возвращает константный итератор на элемент, следующий за последним.
          */
-        constexpr const_iterator cend() const noexcept;
+        constexpr ConstIterator cend() const noexcept;
 
         /**
          * @brief Возвращает обратный итератор на элемент, следующий за последним.
@@ -1107,7 +1107,7 @@ constexpr void mylib::Vector<T, ALLOCATOR>::swap(Vector& other) noexcept
 
 
 template<typename T, typename ALLOCATOR>
-class mylib::Vector<T, ALLOCATOR>::iterator final
+class mylib::Vector<T, ALLOCATOR>::Iterator final
 {
 private:
     T* m_ptr;
@@ -1119,7 +1119,7 @@ public:
     using pointer           = T*;
     using reference         = T&;
 
-    explicit constexpr  iterator(T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
+    explicit constexpr  Iterator(T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
 
     // Разыменование
     constexpr T& operator*()  const noexcept { return *m_ptr; }
@@ -1127,55 +1127,55 @@ public:
 
 
     // Инкремент/декремент
-    constexpr iterator& operator++() noexcept
+    constexpr Iterator& operator++() noexcept
     {
         ++m_ptr;
         return *this;
     }
 
-    constexpr iterator operator++(int) noexcept
+    constexpr Iterator operator++(int) noexcept
     {
-        iterator tmp(*this);
+        Iterator tmp(*this);
         ++m_ptr;
         return tmp;
     }
 
-    constexpr iterator& operator--() noexcept
+    constexpr Iterator& operator--() noexcept
     {
         --m_ptr;
         return *this;
     }
 
-    constexpr iterator operator--(int) noexcept
+    constexpr Iterator operator--(int) noexcept
     {
-        iterator tmp(*this);
+        Iterator tmp(*this);
         --m_ptr;
         return tmp;
     }
 
 
     // Арифметика
-    constexpr iterator& operator+=(std::ptrdiff_t n) noexcept
+    constexpr Iterator& operator+=(std::ptrdiff_t n) noexcept
     {
         m_ptr += n;
         return *this;
     }
 
-    constexpr iterator& operator-=(std::ptrdiff_t n) noexcept
+    constexpr Iterator& operator-=(std::ptrdiff_t n) noexcept
     {
         m_ptr -= n;
         return *this;
     }
 
-    constexpr iterator operator+(std::ptrdiff_t n) noexcept { return iterator(m_ptr + n); }
-    constexpr iterator operator-(std::ptrdiff_t n) noexcept { return iterator(m_ptr - n); }
-    friend constexpr  iterator operator+(std::ptrdiff_t n, const iterator& it) noexcept { return it + n; }
+    constexpr Iterator operator+(std::ptrdiff_t n) noexcept { return Iterator(m_ptr + n); }
+    constexpr Iterator operator-(std::ptrdiff_t n) noexcept { return Iterator(m_ptr - n); }
+    friend constexpr  Iterator operator+(std::ptrdiff_t n, const Iterator& it) noexcept { return it + n; }
 
-    constexpr std::ptrdiff_t operator-(const iterator& other) const noexcept { return m_ptr - other.m_ptr; }
+    constexpr std::ptrdiff_t operator-(const Iterator& other) const noexcept { return m_ptr - other.m_ptr; }
 
     // Сравнение
-    constexpr auto operator<=>(const iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
-    constexpr bool operator==(const iterator& other) const noexcept { return m_ptr == other.m_ptr; }
+    constexpr auto operator<=>(const Iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
+    constexpr bool operator==(const Iterator& other) const noexcept { return m_ptr == other.m_ptr; }
 
     // Доступ по индексу
     constexpr T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
@@ -1185,7 +1185,7 @@ public:
 
 
 template<typename T, typename ALLOCATOR>
-class mylib::Vector<T, ALLOCATOR>::const_iterator final
+class mylib::Vector<T, ALLOCATOR>::ConstIterator final
 {
 private:
     const T* m_ptr;
@@ -1197,9 +1197,9 @@ public:
     using pointer           = const T*;
     using reference         = const T&;
 
-    explicit constexpr  const_iterator(const T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
+    explicit constexpr  ConstIterator(const T* ptr = nullptr) noexcept : m_ptr{ ptr } {}
 
-    constexpr const_iterator(const iterator& other) noexcept : m_ptr{ other.operator->() } {}
+    constexpr ConstIterator(const Iterator& other) noexcept : m_ptr{ other.operator->() } {}
 
     // Разыменование
     constexpr const T& operator*()  const noexcept { return *m_ptr; }
@@ -1207,55 +1207,55 @@ public:
 
 
     // Инкремент/декремент
-    constexpr const_iterator& operator++() noexcept
+    constexpr ConstIterator& operator++() noexcept
     {
         ++m_ptr;
         return *this;
     }
 
-    constexpr const_iterator operator++(int) noexcept
+    constexpr ConstIterator operator++(int) noexcept
     {
-        const_iterator tmp(*this);
+        ConstIterator tmp(*this);
         ++m_ptr;
         return tmp;
     }
 
-    constexpr const_iterator& operator--() noexcept
+    constexpr ConstIterator& operator--() noexcept
     {
         --m_ptr;
         return *this;
     }
 
-    constexpr const_iterator operator--(int) noexcept
+    constexpr ConstIterator operator--(int) noexcept
     {
-        const_iterator tmp(*this);
+        ConstIterator tmp(*this);
         --m_ptr;
         return tmp;
     }
 
 
     // Арифметика
-    constexpr const_iterator& operator+=(std::ptrdiff_t n) noexcept
+    constexpr ConstIterator& operator+=(std::ptrdiff_t n) noexcept
     {
         m_ptr += n;
         return *this;
     }
 
-    constexpr const_iterator& operator-=(std::ptrdiff_t n) noexcept
+    constexpr ConstIterator& operator-=(std::ptrdiff_t n) noexcept
     {
         m_ptr -= n;
         return *this;
     }
 
-    constexpr const_iterator operator+(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr + n); }
-    constexpr const_iterator operator-(std::ptrdiff_t n) noexcept { return const_iterator(m_ptr - n); }
-    friend constexpr const_iterator operator+(std::ptrdiff_t n, const const_iterator& it) noexcept { return it + n; }
+    constexpr ConstIterator operator+(std::ptrdiff_t n) noexcept { return ConstIterator(m_ptr + n); }
+    constexpr ConstIterator operator-(std::ptrdiff_t n) noexcept { return ConstIterator(m_ptr - n); }
+    friend constexpr ConstIterator operator+(std::ptrdiff_t n, const ConstIterator& it) noexcept { return it + n; }
 
-    constexpr std::ptrdiff_t operator-(const const_iterator& other) const noexcept { return m_ptr - other.m_ptr; }
+    constexpr std::ptrdiff_t operator-(const ConstIterator& other) const noexcept { return m_ptr - other.m_ptr; }
 
     // Сравнение
-    constexpr auto operator<=>(const const_iterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
-    constexpr bool operator== (const const_iterator& other) const noexcept { return m_ptr == other.m_ptr; }
+    constexpr auto operator<=>(const ConstIterator& other) const noexcept { return m_ptr <=> other.m_ptr; }
+    constexpr bool operator== (const ConstIterator& other) const noexcept { return m_ptr == other.m_ptr; }
 
     // Доступ по индексу
     constexpr const T& operator[](std::ptrdiff_t n) const noexcept { return m_ptr[n]; }
@@ -1264,49 +1264,49 @@ public:
 
 
 template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR>::iterator mylib::Vector<T, ALLOCATOR>::begin() noexcept
+constexpr mylib::Vector<T, ALLOCATOR>::Iterator mylib::Vector<T, ALLOCATOR>::begin() noexcept
 {
-    return iterator{ m_data };
+    return Iterator{ m_data };
 }
 
 
 
 template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::begin() const noexcept
+constexpr mylib::Vector<T, ALLOCATOR>::ConstIterator mylib::Vector<T, ALLOCATOR>::begin() const noexcept
 {
-    return const_iterator{ m_data };
+    return ConstIterator{ m_data };
 }
 
 
 
 template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::cbegin() const noexcept
+constexpr mylib::Vector<T, ALLOCATOR>::ConstIterator mylib::Vector<T, ALLOCATOR>::cbegin() const noexcept
 {
-    return const_iterator{ m_data };
+    return ConstIterator{ m_data };
 }
 
 
 
 template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR>::iterator mylib::Vector<T, ALLOCATOR>::end() noexcept
+constexpr mylib::Vector<T, ALLOCATOR>::Iterator mylib::Vector<T, ALLOCATOR>::end() noexcept
 {
-    return iterator{ m_data + m_size };
+    return Iterator{ m_data + m_size };
 }
 
 
 
 template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::end() const noexcept
+constexpr mylib::Vector<T, ALLOCATOR>::ConstIterator mylib::Vector<T, ALLOCATOR>::end() const noexcept
 {
-    return const_iterator{ m_data + m_size };
+    return ConstIterator{ m_data + m_size };
 }
 
 
 
 template<typename T, typename ALLOCATOR>
-constexpr mylib::Vector<T, ALLOCATOR>::const_iterator mylib::Vector<T, ALLOCATOR>::cend() const noexcept
+constexpr mylib::Vector<T, ALLOCATOR>::ConstIterator mylib::Vector<T, ALLOCATOR>::cend() const noexcept
 {
-    return const_iterator{ m_data + m_size };
+    return ConstIterator{ m_data + m_size };
 }
 
 

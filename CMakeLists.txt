@@ -15,6 +15,7 @@ endif()
 
 # Библиотека mylib
 add_library(mylib STATIC
+    src/mylib.cpp
     include/mylib/structs.h
     include/mylib/vector.h
     include/mylib/chunked_array.h
