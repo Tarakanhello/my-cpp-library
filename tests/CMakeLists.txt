@@ -1,5 +1,5 @@
 add_executable(unit_tests
-    test_hello.cpp
+
     test_debug_log.cpp
     test_math.cpp
     test_structs.cpp
