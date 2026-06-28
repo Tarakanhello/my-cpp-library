@@ -39,6 +39,7 @@ namespace mylib
                                                   ITERATOR first,
                                                   ITERATOR last);
         constexpr size_t chunkIndex(size_t i) const noexcept;
+        void deallocateArrayOfChunks() noexcept;
         void deallocateChunk(T* chunk) noexcept;
         void destroyAllChunks() noexcept;
         void destroyElements(size_t from, size_t to) noexcept;
@@ -310,7 +311,15 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 {
     allocateArrayOfChunks();
 
-    constructElements(0, size, value);
+    try
+    {
+        constructElements(0, size, value);
+    }
+    catch(...)
+    {
+        deallocateArrayOfChunks();
+        throw;
+    }
 }
 
 
@@ -323,7 +332,14 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 {
     allocateArrayOfChunks();
 
-    constructElementsFromRange(0, list.begin(), list.end());
+    try
+    {
+        constructElementsFromRange(0, list.begin(), list.end());
+    }
+    catch(...)
+    {
+        deallocateArrayOfChunks();
+    }
 }
 
 
@@ -336,7 +352,14 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 {
     allocateArrayOfChunks();
 
-    constructElementsFromRange(0, other.begin(), other.end());
+    try
+    {
+        constructElementsFromRange(0, other.begin(), other.end());
+    }
+    catch(...)
+    {
+        deallocateArrayOfChunks();
+    }
 }
 
 
@@ -818,6 +841,21 @@ constexpr void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     {
         destroyElements(from, i);
         throw;
+    }
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::deallocateArrayOfChunks() noexcept
+{
+    if(m_arrayOfChunks)
+    {
+        for(auto& chunk : m_arrayOfChunks)
+        {
+            m_chunkAllocator.deallocate(chunk);
+        }
+        m_arrayOfChunks.clear();
     }
 }
 
