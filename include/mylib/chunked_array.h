@@ -41,6 +41,7 @@ namespace mylib
         constexpr size_t chunkIndex(size_t i) const noexcept;
         void deallocateChunk(T* chunk) noexcept;
         void destroyAllChunks() noexcept;
+        void destroyElements(size_t from, size_t to) noexcept;
         constexpr T* getChunk(size_t chunkIndex) noexcept;
         constexpr const T* getChunk(size_t chunkIndex) const noexcept;
         constexpr size_t offsetInChunk(size_t i) const noexcept;
@@ -102,285 +103,7 @@ namespace mylib
         // ITERATORS
 
         class Iterator;
-
-        class ConstIterator
-        {
-        private:
-            const T** m_chunkPtr;
-            const T** m_chunksEnd;
-            const T* m_currentElementPtr;
-            size_t m_offset;
-
-
-        public:
-            using iterator_category = std::random_access_iterator_tag;
-            using value_type        = T;
-            using difference_type   = std::ptrdiff_t;
-            using pointer           = const T*;
-            using reference         = const T&;
-
-            constexpr ConstIterator(const T** beginChunkPtr,
-                               const T** chunksEnd,
-                               size_t startIndex = 0) noexcept
-                : m_chunkPtr{ beginChunkPtr }
-                , m_chunksEnd{ chunksEnd }
-                , m_offset{ startIndex % m_chunkSize }
-                , m_currentElementPtr{ nullptr }
-            {
-                if(m_chunkPtr && m_chunksEnd && m_chunkPtr < m_chunksEnd)
-                {
-                    size_t blockIndex{ startIndex / m_chunkSize };
-                    m_chunkPtr = m_chunkPtr + blockIndex;
-                    m_currentElementPtr = *m_chunkPtr + m_offset;
-                }
-            }
-
-            constexpr ConstIterator(const Iterator& other) noexcept
-                : m_chunkPtr{ other.m_chunkPtr }
-                , m_chunksEnd{ other.m_chunksEnd }
-                , m_offset{ other.m_offset }
-                , m_currentElementPtr{ other.m_currentElementPtr }
-            {}
-
-            constexpr const T& operator*() const noexcept
-            {
-                assert(m_currentElementPtr);
-                return *m_currentElementPtr;
-            }
-
-            constexpr const T* operator->() const noexcept
-            {
-                assert(m_currentElementPtr);
-                return m_currentElementPtr;
-            }
-
-            constexpr ConstIterator& operator++() noexcept
-            {
-                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
-
-                ++m_offset;
-                if(m_offset == m_chunkSize)
-                {
-                    ++m_chunkPtr;
-                    if(m_chunkPtr < m_chunksEnd)
-                    {
-                        m_currentElementPtr = *m_chunkPtr;
-                    }
-                    else
-                    {
-                        m_currentElementPtr = nullptr;
-                    }
-                    m_offset = 0;
-                }
-                else
-                {
-                    m_currentElementPtr = *m_chunkPtr + m_offset;
-                }
-
-                return *this;
-            }
-
-            constexpr ConstIterator operator++(int) noexcept
-            {
-                ConstIterator tmp(*this);
-
-                ++(*this);
-
-                return tmp;
-            }
-
-            constexpr ConstIterator& operator--() noexcept
-            {
-                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
-
-                if(0 == m_offset)
-                {
-                    m_offset = m_chunkSize;
-                    --m_chunkPtr;
-                }
-
-                --m_offset;
-
-                if(m_chunkPtr < m_chunksEnd)
-                {
-                    m_currentElementPtr = *m_chunkPtr + m_offset;
-                }
-                else
-                {
-                    m_currentElementPtr = nullptr;
-                }
-
-                return *this;
-            }
-
-            constexpr ConstIterator operator--(int) noexcept
-            {
-                ConstIterator temp{ *this };
-
-                --(*this);
-
-                return temp;
-            }
-
-            constexpr ConstIterator& operator+=(std::ptrdiff_t n) noexcept
-            {
-                if(0 == n)
-                {
-                    return *this;
-                }
-
-                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
-
-                if(n < 0)
-                {
-                    return (*this -= -n);
-                }
-
-                while(n >= m_chunkSize)
-                {
-                    ++m_chunkPtr;
-                    n -= m_chunkSize;
-                    if(m_chunkPtr == m_chunksEnd)
-                    {
-                        m_currentElementPtr = nullptr;
-                        return *this;
-                    }
-                }
-
-                if(m_offset + n >= m_chunkSize)
-                {
-                    ++m_chunkPtr;
-                    m_offset = m_offset + n - m_chunkSize;
-                }
-                else
-                {
-                    m_offset += n;
-                }
-
-                if(m_chunkPtr < m_chunksEnd)
-                {
-                    m_currentElementPtr = *m_chunkPtr + m_offset;
-                }
-                else
-                {
-                    m_currentElementPtr = nullptr;
-                }
-
-                return *this;
-            }
-
-            constexpr ConstIterator& operator-=(std::ptrdiff_t n) noexcept
-            {
-                if(0 == n)
-                {
-                    return *this;
-                }
-
-                assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
-
-                if(n < 0)
-                {
-                    return (*this += -n);
-                }
-
-                while(n >= m_chunkSize)
-                {
-                    --m_chunkPtr;
-                    n -= m_chunkSize;
-                    if(m_chunkPtr == m_chunksEnd)
-                    {
-                        m_currentElementPtr = nullptr;
-                        return *this;
-                    }
-                }
-
-                if(static_cast<std::ptrdiff_t>(m_offset) - n < 0)
-                {
-                    --m_chunkPtr;
-                    m_offset = m_offset - n + m_chunkSize;
-                }
-                else
-                {
-                    m_offset -= n;
-                }
-
-                if(m_chunkPtr < m_chunksEnd)
-                {
-                    m_currentElementPtr = *m_chunkPtr + m_offset;
-                }
-                else
-                {
-                    m_currentElementPtr = nullptr;
-                }
-
-                return *this;
-            }
-
-            constexpr ConstIterator operator+(std::ptrdiff_t n) noexcept
-            {
-                ConstIterator temp{ *this };
-                temp += n;
-                return temp;
-            }
-            constexpr ConstIterator operator-(std::ptrdiff_t n) noexcept
-            {
-
-                ConstIterator temp{ *this };
-                temp -= n;
-                return temp;
-
-            }
-
-            friend constexpr  ConstIterator operator+(std::ptrdiff_t n, const ConstIterator& it) noexcept { return it + n; }
-
-            constexpr std::ptrdiff_t operator-(const ConstIterator& other) const noexcept
-            {
-                std::ptrdiff_t timesMultiply{ m_chunkPtr - other.m_chunkPtr };
-
-                std::ptrdiff_t offset{ static_cast<std::ptrdiff_t>(m_offset) - static_cast<std::ptrdiff_t>(other.m_offset) };
-
-                return timesMultiply * m_chunkSize + offset;
-            }
-
-            // Сравнение
-            constexpr auto operator<=>(const ConstIterator& other) const noexcept
-            {
-                if(m_chunkPtr < other.m_chunkPtr)
-                {
-                    return std::strong_ordering::less;
-                }
-                else if(m_chunkPtr > other.m_chunkPtr)
-                {
-                    return std::strong_ordering::greater;
-                }
-                else
-                {
-                    if(m_currentElementPtr == other.m_currentElementPtr)
-                    {
-                        return std::strong_ordering::equal;
-                    }
-                    else if(m_currentElementPtr == nullptr)
-                    {
-                        return std::strong_ordering::greater;
-                    }
-                    else if(other.m_currentElementPtr == nullptr)
-                    {
-                        return std::strong_ordering::less;
-                    }
-                }
-
-                return m_offset <=> other.m_offset;
-            }
-
-            constexpr bool operator==(const ConstIterator& other) const noexcept
-            {
-                return m_chunkPtr == other.m_chunkPtr && m_currentElementPtr == other.m_currentElementPtr;
-            }
-
-            // Доступ по индексу
-            constexpr const T& operator[](std::ptrdiff_t n) const noexcept { return *(*this + n); }
-        };
-
+        class ConstIterator;
         using reverse_iterator = std::reverse_iterator<Iterator>;
         using const_reverse_iterator = std::reverse_iterator<ConstIterator>;
 
@@ -504,30 +227,70 @@ namespace mylib
         using pointer           = T*;
         using reference         = T&;
 
+        friend class ConstIterator;
+
         constexpr Iterator(T** beginChunkPtr,
                            T** chunksEnd,
                            size_t startIndex = 0) noexcept;
-
-        constexpr T& operator*() const noexcept;
-        constexpr T* operator->() const noexcept;
+        constexpr T&        operator*() const noexcept;
+        constexpr T*        operator->() const noexcept;
         constexpr Iterator& operator++() noexcept;
-        constexpr Iterator operator++(int) noexcept;
+        constexpr Iterator  operator++(int) noexcept;
         constexpr Iterator& operator--() noexcept;
-        constexpr Iterator operator--(int) noexcept;
+        constexpr Iterator  operator--(int) noexcept;
         constexpr Iterator& operator+=(std::ptrdiff_t n) noexcept;
         constexpr Iterator& operator-=(std::ptrdiff_t n) noexcept;
-        constexpr Iterator operator+(std::ptrdiff_t n) noexcept;
-        constexpr Iterator operator-(std::ptrdiff_t n) noexcept;
-        friend constexpr  Iterator operator+(std::ptrdiff_t n,
-                                             const Iterator& it) noexcept { return it + n; }
-        constexpr std::ptrdiff_t operator-(const Iterator& other) const noexcept;
-        constexpr auto operator<=>(const Iterator& other) const noexcept;
-        constexpr bool operator==(const Iterator& other) const noexcept;
-        constexpr T& operator[](std::ptrdiff_t n) const noexcept;
+        constexpr Iterator  operator+(std::ptrdiff_t n) noexcept;
+        constexpr Iterator  operator-(std::ptrdiff_t n) noexcept;
+        friend constexpr  Iterator  operator+(std::ptrdiff_t n,
+                                              const Iterator& it) noexcept { return it + n; }
+        constexpr std::ptrdiff_t    operator-(const Iterator& other) const noexcept;
+        constexpr auto      operator<=>(const Iterator& other) const noexcept;
+        constexpr bool      operator==(const Iterator& other) const noexcept;
+        constexpr T&        operator[](std::ptrdiff_t n) const noexcept;
     }; // end class Iterator
 
 
+    template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+    class ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ConstIterator
+    {
+    private:
+        const T** m_chunkPtr;
+        const T** m_chunksEnd;
+        const T* m_currentElementPtr;
+        size_t m_offset;
+
+    public:
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type        = T;
+        using difference_type   = std::ptrdiff_t;
+        using pointer           = const T*;
+        using reference         = const T&;
+
+        constexpr ConstIterator(const T** beginChunkPtr,
+                                const T** chunksEnd,
+                                size_t startIndex = 0) noexcept;
+        constexpr ConstIterator(const Iterator& other) noexcept;
+        constexpr const T& operator*() const noexcept;
+        constexpr const T* operator->() const noexcept;
+        constexpr ConstIterator& operator++() noexcept;
+        constexpr ConstIterator operator++(int) noexcept;
+        constexpr ConstIterator& operator--() noexcept;
+        constexpr ConstIterator operator--(int) noexcept;
+        constexpr ConstIterator& operator+=(std::ptrdiff_t n) noexcept;
+        constexpr ConstIterator& operator-=(std::ptrdiff_t n) noexcept;
+        constexpr ConstIterator operator+(std::ptrdiff_t n) noexcept;
+        constexpr ConstIterator operator-(std::ptrdiff_t n) noexcept;
+        friend constexpr  ConstIterator operator+(std::ptrdiff_t n,
+                                                 const ConstIterator& it) noexcept {return it + n; }
+        constexpr std::ptrdiff_t operator-(const ConstIterator& other) const noexcept;
+        constexpr auto operator<=>(const ConstIterator& other) const noexcept;
+        constexpr bool operator==(const ConstIterator& other) const noexcept;
+        constexpr const T& operator[](std::ptrdiff_t n) const noexcept;
+    }; // end class ConstIterator
 } // end namespace mylib
+
+
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
@@ -649,9 +412,24 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     {
         m_arrayOfChunks = mylib::Vector<T*,
                         ALLOCATOR_ptr>((m_size - 1) / m_chunkSize + 1, nullptr);
-        for(auto& chunk : m_arrayOfChunks)
+        size_t count{};
+        try
         {
-            chunk = allocateChunk();
+            for(auto& chunk : m_arrayOfChunks)
+            {
+                chunk = allocateChunk();
+                ++count;
+            }
+        }
+        catch(...)
+        {
+            for(size_t i{}; i < count; ++i)
+            {
+                deallocateChunk(m_arrayOfChunks[i]);
+            }
+
+            m_arrayOfChunks.clear();
+            throw;
         }
     }
 }
@@ -668,14 +446,357 @@ constexpr size_t mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::ConstIterator(const T** beginChunkPtr,
+                                 const T** chunksEnd,
+                                 size_t startIndex) noexcept
+    : m_chunkPtr{ beginChunkPtr }
+    , m_chunksEnd{ chunksEnd }
+    , m_offset{ startIndex % m_chunkSize }
+    , m_currentElementPtr{ nullptr }
+{
+    if(m_chunkPtr && m_chunksEnd && m_chunkPtr < m_chunksEnd)
+    {
+        size_t blockIndex{ startIndex / m_chunkSize };
+        m_chunkPtr = m_chunkPtr + blockIndex;
+        m_currentElementPtr = *m_chunkPtr + m_offset;
+    }
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::ConstIterator(const Iterator& other) noexcept
+    : m_chunkPtr{ other.m_chunkPtr }
+    , m_chunksEnd{ other.m_chunksEnd }
+    , m_offset{ other.m_offset }
+    , m_currentElementPtr{ other.m_currentElementPtr }
+{}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr const T& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator*() const noexcept
+{
+    assert(m_currentElementPtr);
+    return *m_currentElementPtr;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr const T* mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator->() const noexcept
+{
+    assert(m_currentElementPtr);
+    return m_currentElementPtr;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator++() noexcept
+{
+    assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+    ++m_offset;
+    if(m_offset == m_chunkSize)
+    {
+        ++m_chunkPtr;
+        if(m_chunkPtr < m_chunksEnd)
+        {
+            m_currentElementPtr = *m_chunkPtr;
+        }
+        else
+        {
+            m_currentElementPtr = nullptr;
+        }
+        m_offset = 0;
+    }
+    else
+    {
+        m_currentElementPtr = *m_chunkPtr + m_offset;
+    }
+
+    return *this;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator++(int) noexcept
+{
+    ConstIterator tmp(*this);
+
+    ++(*this);
+
+    return tmp;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator--() noexcept
+{
+    assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+    if(0 == m_offset)
+    {
+        m_offset = m_chunkSize;
+        --m_chunkPtr;
+    }
+
+    --m_offset;
+
+    if(m_chunkPtr < m_chunksEnd)
+    {
+        m_currentElementPtr = *m_chunkPtr + m_offset;
+    }
+    else
+    {
+        m_currentElementPtr = nullptr;
+    }
+
+    return *this;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator--(int) noexcept
+{
+    ConstIterator temp{ *this };
+
+    --(*this);
+
+    return temp;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator+=(std::ptrdiff_t n) noexcept
+{
+    if(0 == n)
+    {
+        return *this;
+    }
+
+    assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+    if(n < 0)
+    {
+        return (*this -= -n);
+    }
+
+    while(n >= m_chunkSize)
+    {
+        ++m_chunkPtr;
+        n -= m_chunkSize;
+        if(m_chunkPtr == m_chunksEnd)
+        {
+            m_currentElementPtr = nullptr;
+            return *this;
+        }
+    }
+
+    if(m_offset + n >= m_chunkSize)
+    {
+        ++m_chunkPtr;
+        m_offset = m_offset + n - m_chunkSize;
+    }
+    else
+    {
+        m_offset += n;
+    }
+
+    if(m_chunkPtr < m_chunksEnd)
+    {
+        m_currentElementPtr = *m_chunkPtr + m_offset;
+    }
+    else
+    {
+        m_currentElementPtr = nullptr;
+    }
+
+    return *this;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator-=(std::ptrdiff_t n) noexcept
+{
+    if(0 == n)
+    {
+        return *this;
+    }
+
+    assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
+
+    if(n < 0)
+    {
+        return (*this += -n);
+    }
+
+    while(n >= m_chunkSize)
+    {
+        --m_chunkPtr;
+        n -= m_chunkSize;
+        if(m_chunkPtr == m_chunksEnd)
+        {
+            m_currentElementPtr = nullptr;
+            return *this;
+        }
+    }
+
+    if(static_cast<std::ptrdiff_t>(m_offset) - n < 0)
+    {
+        --m_chunkPtr;
+        m_offset = m_offset - n + m_chunkSize;
+    }
+    else
+    {
+        m_offset -= n;
+    }
+
+    if(m_chunkPtr < m_chunksEnd)
+    {
+        m_currentElementPtr = *m_chunkPtr + m_offset;
+    }
+    else
+    {
+        m_currentElementPtr = nullptr;
+    }
+
+    return *this;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator+(std::ptrdiff_t n) noexcept
+{
+    ConstIterator temp{ *this };
+    temp += n;
+    return temp;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator-(std::ptrdiff_t n) noexcept
+{
+
+    ConstIterator temp{ *this };
+    temp -= n;
+    return temp;
+
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr std::ptrdiff_t mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator-(const ConstIterator& other) const noexcept
+{
+    std::ptrdiff_t timesMultiply{ m_chunkPtr - other.m_chunkPtr };
+
+    std::ptrdiff_t offset{ static_cast<std::ptrdiff_t>(m_offset) - static_cast<std::ptrdiff_t>(other.m_offset) };
+
+    return timesMultiply * m_chunkSize + offset;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr auto mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator<=>(const ConstIterator& other) const noexcept
+{
+    if(m_chunkPtr < other.m_chunkPtr)
+    {
+        return std::strong_ordering::less;
+    }
+    else if(m_chunkPtr > other.m_chunkPtr)
+    {
+        return std::strong_ordering::greater;
+    }
+    else
+    {
+        if(m_currentElementPtr == other.m_currentElementPtr)
+        {
+            return std::strong_ordering::equal;
+        }
+        else if(m_currentElementPtr == nullptr)
+        {
+            return std::strong_ordering::greater;
+        }
+        else if(other.m_currentElementPtr == nullptr)
+        {
+            return std::strong_ordering::less;
+        }
+    }
+
+    return m_offset <=> other.m_offset;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr bool mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator==(const ConstIterator& other) const noexcept
+{
+    return m_chunkPtr == other.m_chunkPtr && m_currentElementPtr == other.m_currentElementPtr;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr const T& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ConstIterator::operator[](std::ptrdiff_t n) const noexcept
+{
+    return *(*this + n);
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     constructElements(size_t from, size_t to, const T& value)
 {
-    for(size_t i{ from }; i < to; ++i)
+    size_t i{ from };
+    try
     {
-        new (&m_arrayOfChunks[chunkIndex(i)][offsetInChunk(i)]) T(value);
+        for(; i < to; ++i)
+        {
+            new (&m_arrayOfChunks[chunkIndex(i)][offsetInChunk(i)]) T(value);
+        }
+    }
+    catch(...)
+    {
+        destroyElements(from, i);
+        throw;
     }
 }
+
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
@@ -684,11 +805,19 @@ constexpr void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     constructElementsFromRange(size_t from, ITERATOR first, ITERATOR last)
 {
     size_t i{ from };
-    while(first != last)
+    try
     {
-        new (&m_arrayOfChunks[chunkIndex(i)][offsetInChunk(i)]) T (*first);
-        ++first;
-        ++i;
+        while(first != last)
+        {
+            new (&m_arrayOfChunks[chunkIndex(i)][offsetInChunk(i)]) T (*first);
+            ++first;
+            ++i;
+        }
+    }
+    catch(...)
+    {
+        destroyElements(from, i);
+        throw;
     }
 }
 
@@ -698,7 +827,7 @@ template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     deallocateChunk(T* chunk) noexcept
 {
-    m_chunkAllocator.deallocate(chunk);
+    m_chunkAllocator.deallocate(chunk, m_chunkSize);
 }
 
 
@@ -720,6 +849,18 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         }
     }
 }
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::destroyElements(size_t from, size_t to) noexcept
+{
+    for(size_t i{ from }; i < to; ++i)
+    {
+        m_arrayOfChunks[chunkIndex(i)][offsetInChunk(i)].~T();
+    }
+}
+
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
@@ -754,15 +895,6 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         m_chunkPtr = m_chunkPtr + blockIndex;
         m_currentElementPtr = *m_chunkPtr + m_offset;
     }
-}
-
-
-
-template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
-constexpr size_t mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-    offsetInChunk(size_t i) const noexcept
-{
-    return i % m_chunkSize;
 }
 
 
@@ -821,7 +953,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-        Iterator::operator++(int) noexcept
+    Iterator::operator++(int) noexcept
 {
     Iterator tmp(*this);
 
@@ -835,7 +967,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-        Iterator::operator--() noexcept
+    Iterator::operator--() noexcept
 {
     assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
 
@@ -864,7 +996,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-        Iterator::operator--(int) noexcept
+    Iterator::operator--(int) noexcept
 {
     Iterator temp{ *this };
 
@@ -878,7 +1010,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-        Iterator::operator+=(std::ptrdiff_t n) noexcept
+    Iterator::operator+=(std::ptrdiff_t n) noexcept
 {
     if(0 == n)
     {
@@ -930,7 +1062,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-        Iterator::operator-=(std::ptrdiff_t n) noexcept
+    Iterator::operator-=(std::ptrdiff_t n) noexcept
 {
     if(0 == n)
     {
@@ -982,7 +1114,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-        Iterator::operator+(std::ptrdiff_t n) noexcept
+    Iterator::operator+(std::ptrdiff_t n) noexcept
 {
     Iterator temp{ *this };
     temp += n;
@@ -994,7 +1126,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-        Iterator::operator-(std::ptrdiff_t n) noexcept
+    Iterator::operator-(std::ptrdiff_t n) noexcept
 {
 
     Iterator temp{ *this };
@@ -1067,6 +1199,34 @@ constexpr T& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     return *(*this + n);
 }
 
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr size_t mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    offsetInChunk(size_t i) const noexcept
+{
+    return i % m_chunkSize;
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr T& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    operator[](size_t i) noexcept
+{
+    assert(i < size());
+    return m_arrayOfChunks[chunkIndex(i)][offsetInChunk(i)];
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+constexpr const T& mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    operator[](size_t i) const noexcept
+{
+    assert(i < size());
+    return m_arrayOfChunks[chunkIndex(i)][offsetInChunk(i)];
+}
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
