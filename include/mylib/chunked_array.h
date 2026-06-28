@@ -339,6 +339,7 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     catch(...)
     {
         deallocateArrayOfChunks();
+        throw;
     }
 }
 
@@ -359,6 +360,7 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     catch(...)
     {
         deallocateArrayOfChunks();
+        throw;
     }
 }
 
@@ -853,7 +855,7 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::deallocateArrayOfChunks() no
     {
         for(auto& chunk : m_arrayOfChunks)
         {
-            m_chunkAllocator.deallocate(chunk);
+            deallocateChunk(chunk);
         }
         m_arrayOfChunks.clear();
     }
