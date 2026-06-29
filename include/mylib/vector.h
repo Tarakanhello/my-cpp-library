@@ -287,6 +287,8 @@ namespace mylib
          */
         double norm() const;
 
+        T pop_back() noexcept;
+
         /**
          * @brief Вставляет элемент в конец (перегрузка для rvalue).
          * @param element Элемент для добавления.
@@ -860,6 +862,25 @@ double mylib::Vector<T, ALLOCATOR>::norm() const
 {
     static_assert(std::is_same_v<T, double>, "norm is only available for double vectors");
     return std::sqrt(dot(*this, *this));
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+T mylib::Vector<T, ALLOCATOR>::pop_back() noexcept
+{
+    assert(!empty());
+
+    T temp{ back() };
+
+    resize(size() - 1);
+
+    if(empty())
+    {
+        clear();
+    }
+
+    return std::move(temp);
 }
 
 
