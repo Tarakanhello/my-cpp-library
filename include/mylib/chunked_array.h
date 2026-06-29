@@ -1605,23 +1605,27 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         m_arrayOfChunks.reserve(newBlocksNeeded);
 
         size_t blocksAdded{ 0 };
-        try
+
+        for(size_t i{ currentBlocks }; i < newBlocksNeeded; ++i)
         {
-            for(size_t i{ currentBlocks }; i < newBlocksNeeded; ++i)
+            T* newChunk{ nullptr };
+            try
             {
-                T* newChunk{ allocateChunk() };
+                newChunk = allocateChunk();
                 m_arrayOfChunks.push_back(newChunk); // может выбросить исключение
                 ++blocksAdded;
             }
+            catch(...)
+            {
+                if(newChunk)
+                {
+                    deallocateChunk(newChunk);
+                }
+                removeLastBlocks(blocksAdded);
+                throw;
+            }
         }
-        catch(...)
-        {
-            // Если выделение или push_back выбросили исключение,
-            // освобождаем уже выделенные новые блоки и пробрасываем дальше.
-            // Старые блоки не тронуты – строгая гарантия.
-            removeLastBlocks(blocksAdded);
-            throw;
-        }
+
 
 
         size_t constructed{ 0 };
