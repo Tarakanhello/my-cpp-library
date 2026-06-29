@@ -91,16 +91,8 @@ namespace mylib
 
 
         void resize(size_t newSize, const T& value = T());
-
-        //Когда m_size == CHUNK_SIZE * m_arrayOfChunks.size() – нужно добавить новый блок.
-        // При добавлении нового блока нужно выделить память для блока через аллокатор.
-        // Если выделение блока выбрасывает исключение, старые данные не повреждаются.
-        // При освобождении блока нужно вызвать деструкторы элементов (если они есть) и освободить память.
-
         void reserve(size_t newCapacity);
-
         void shrink_to_fit();
-
         size_t size() const noexcept { return m_size; }
         constexpr bool empty() const noexcept { return size() == 0; }
         size_t blockCount() const noexcept { return m_arrayOfChunks.size(); }
@@ -674,6 +666,12 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 {
     assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
 
+    if (m_chunkPtr == m_chunkBegin && m_offset == 0)
+    {
+        m_currentElementPtr = nullptr;
+        return *this;
+    }
+
     if(0 == m_offset)
     {
         m_offset = m_chunkSize;
@@ -682,7 +680,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 
     --m_offset;
 
-    if(m_chunkPtr < m_chunksEnd)
+    if(m_chunkPtr >= m_chunkBegin && m_chunkPtr < m_chunksEnd)
     {
         m_currentElementPtr = *m_chunkPtr + m_offset;
     }
@@ -806,7 +804,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         m_offset -= n;
     }
 
-    if(m_chunkPtr > m_chunkBegin)
+    if(m_chunkPtr >= m_chunkBegin && m_chunkPtr < m_chunksEnd)
     {
         m_currentElementPtr = *m_chunkPtr + m_offset;
     }
@@ -1200,6 +1198,13 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
 {
     assert(m_chunkPtr && m_currentElementPtr && m_chunkPtr < m_chunksEnd);
 
+    if (m_chunkPtr == m_chunkBegin && m_offset == 0)
+    {
+        // уже на первом элементе первого блока – декремент невозможен
+        m_currentElementPtr = nullptr;
+        return *this;
+    }
+
     if(0 == m_offset)
     {
         m_offset = m_chunkSize;
@@ -1208,7 +1213,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
 
     --m_offset;
 
-    if(m_chunkPtr < m_chunksEnd)
+    if(m_chunkPtr >= m_chunkBegin && m_chunkPtr < m_chunksEnd)
     {
         m_currentElementPtr = *m_chunkPtr + m_offset;
     }
@@ -1332,7 +1337,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
         m_offset -= n;
     }
 
-    if(m_chunkPtr > m_chunkBegin)
+    if(m_chunkPtr >= m_chunkBegin && m_chunkPtr < m_chunksEnd)
     {
         m_currentElementPtr = *m_chunkPtr + m_offset;
     }
@@ -1488,7 +1493,7 @@ T mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         clear();
     }
 
-    return std::move(temp);
+    return temp;
 }
 
 
@@ -1580,9 +1585,11 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     {
         destroyElements(newSize, size());
 
-        while(chunkIndex(newSize - 1) + 1 != m_arrayOfChunks.size())
+        size_t neededBlocks{ chunkIndex(newSize - 1) + 1 };
+
+        if (m_arrayOfChunks.size() > neededBlocks)
         {
-            deallocateChunk(m_arrayOfChunks.pop_back());
+            removeLastBlocks(m_arrayOfChunks.size() - neededBlocks);
         }
 
         m_size = newSize;
@@ -1649,6 +1656,44 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     for(size_t i{}; i < count; ++i)
     {
         deallocateChunk(m_arrayOfChunks.pop_back());
+    }
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    reserve(size_t newCapacity)
+{
+    if(newCapacity <= size())
+    {
+        return;
+    }
+
+    size_t newSize{ chunkIndex(newCapacity - 1) + 1 };
+    m_arrayOfChunks.reserve(newSize);
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    shrink_to_fit()
+{
+    if(empty())
+    {
+        clear();
+        return;
+    }
+
+    size_t needed{ chunkIndex(m_size - 1) + 1 };   // сколько чанков нужно для m_size элементов
+    size_t current{ m_arrayOfChunks.size() };
+
+    if(needed < current)
+    {
+        removeLastBlocks(current - needed);
+
+        m_arrayOfChunks.shrink_to_fit();
     }
 }
 

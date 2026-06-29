@@ -880,7 +880,7 @@ T mylib::Vector<T, ALLOCATOR>::pop_back() noexcept
         clear();
     }
 
-    return std::move(temp);
+    return temp;
 }
 
 
