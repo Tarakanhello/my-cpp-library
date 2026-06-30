@@ -183,6 +183,32 @@ namespace mylib
         ChunkedArray(const ChunkedArray& other);
 
         /**
+     * @brief Конструктор из произвольного контейнера, поддерживающего итераторы.
+     * @tparam CONTAINER Тип контейнера (должен иметь методы begin() и end()).
+     * @param container Контейнер, элементы которого копируются в новый ChunkedArray.
+     * @param alloc Аллокатор для выделения блоков.
+     *
+     * Создаёт массив, содержащий копии всех элементов из переданного контейнера.
+     * Количество элементов определяется как std::distance(container.begin(), container.end()).
+     *
+     * @note Конструктор участвует в разрешении перегрузки только если:
+     *       - CONTAINER имеет begin() и end() (возвращают итераторы),
+     *       - CONTAINER не является самим ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>
+     *         (чтобы не конфликтовать с конструктором копирования).
+     *
+     * @throw std::bad_alloc при нехватке памяти для выделения блоков.
+     * @throw Любое исключение, брошенное конструктором T при копировании элементов.
+     *       В случае ошибки все выделенные блоки освобождаются.
+     */
+        template<typename CONTAINER>
+        requires requires(CONTAINER c)
+        {
+            c.begin();
+            c.end();
+        } && (!std::same_as<CONTAINER, ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>>)
+        ChunkedArray(const CONTAINER& container, ALLOCATOR alloc = ALLOCATOR());
+
+        /**
          * @brief Оператор присваивания копированием (через copy-and-swap).
          * @param other Массив для копирования.
          * @return Ссылка на *this.
@@ -581,6 +607,34 @@ mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     try
     {
         constructElementsFromRange(0, other.begin(), other.end());
+    }
+    catch(...)
+    {
+        deallocateArrayOfChunks();
+        throw;
+    }
+}
+
+
+
+template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
+template<typename CONTAINER>
+requires requires(CONTAINER c)
+{
+    c.begin();
+    c.end();
+} && (!std::same_as<CONTAINER, mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>>)
+mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
+    ChunkedArray(const CONTAINER& container, ALLOCATOR alloc)
+    : m_chunkAllocator{ alloc }
+{
+    m_size = std::distance(container.begin(), container.end());
+
+    allocateArrayOfChunks();
+
+    try
+    {
+        constructElementsFromRange(0, container.begin(), container.end());
     }
     catch(...)
     {
