@@ -398,16 +398,22 @@ namespace mylib
     }; // end class ChunkedArray
 
 
-
+    /**
+     * @brief Итератор произвольного доступа для ChunkedArray.
+     *
+     * Позволяет обходить элементы, хранящиеся в блоках. При достижении конца текущего блока
+     * автоматически переключается на следующий блок. Поддерживает все операции
+     * RandomAccessIterator: инкремент, декремент, арифметику, сравнение и доступ по индексу.
+     */
     template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
     class ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
     {
     private:
-        T** m_chunkBegin;
-        T** m_chunkPtr;
-        T** m_chunksEnd;
-        T* m_currentElementPtr;
-        size_t m_offset;
+        T** m_chunkBegin;       ///< Указатель на первый блок в массиве блоков.
+        T** m_chunkPtr;         ///< Указатель на текущий блок.
+        T** m_chunksEnd;        ///< Указатель на конец массива блоков (за последним блоком).
+        T* m_currentElementPtr; ///< Указатель на текущий элемент внутри блока.
+        size_t m_offset;        ///< Смещение текущего элемента внутри блока (0..CHUNK_SIZE-1).
 
     public:
         using iterator_category = std::random_access_iterator_tag;
@@ -418,6 +424,13 @@ namespace mylib
 
         friend class ConstIterator;
 
+        /**
+         * @brief Конструирует итератор, указывающий на элемент с индексом startIndex.
+         * @param beginChunkPtr Указатель на первый блок в массиве блоков.
+         * @param chunksEnd    Указатель на конец массива блоков.
+         * @param startIndex   Индекс элемента, на который должен указывать итератор (по умолчанию 0).
+         * @note Если startIndex выходит за пределы допустимого диапазона, поведение не определено.
+         */
         constexpr Iterator(T** beginChunkPtr,
                            T** chunksEnd,
                            size_t startIndex = 0) noexcept;
@@ -440,15 +453,26 @@ namespace mylib
     }; // end class Iterator
 
 
+
+    /**
+     * @brief Константный итератор произвольного доступа для ChunkedArray.
+     *
+     * Предоставляет доступ только для чтения к элементам, хранящимся в блоках.
+     * Автоматически переключается между блоками при достижении их границ.
+     * Поддерживает все операции RandomAccessIterator: инкремент, декремент,
+     * арифметику, сравнение и доступ по индексу.
+     *
+     * @note Может быть неявно создан из неконстантного Iterator.
+     */
     template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
     class ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ConstIterator
     {
     private:
-        const T** m_chunkBegin;
-        const T** m_chunkPtr;
-        const T** m_chunksEnd;
-        const T* m_currentElementPtr;
-        size_t m_offset;
+        const T** m_chunkBegin;         ///< Указатель на первый блок в массиве блоков.
+        const T** m_chunkPtr;           ///< Указатель на текущий блок.
+        const T** m_chunksEnd;          ///< Указатель на конец массива блоков (за последним блоком).
+        const T* m_currentElementPtr;   ///< Указатель на текущий элемент внутри блока.
+        size_t m_offset;                ///< Смещение текущего элемента внутри блока (0..CHUNK_SIZE-1).
 
     public:
         using iterator_category = std::random_access_iterator_tag;
@@ -457,9 +481,21 @@ namespace mylib
         using pointer           = const T*;
         using reference         = const T&;
 
+        /**
+         * @brief Конструирует итератор, указывающий на элемент с индексом startIndex.
+         * @param beginChunkPtr Указатель на первый блок в массиве блоков.
+         * @param chunksEnd    Указатель на конец массива блоков (за последним блоком).
+         * @param startIndex   Индекс элемента, на который должен указывать итератор (по умолчанию 0).
+         * @note Если startIndex выходит за пределы допустимого диапазона, поведение не определено.
+         */
         constexpr ConstIterator(const T** beginChunkPtr,
                                 const T** chunksEnd,
                                 size_t startIndex = 0) noexcept;
+
+        /**
+         * @brief Конвертирующий конструктор из неконстантного итератора.
+         * @param other Неконстантный итератор.
+         */
         constexpr ConstIterator(const Iterator& other) noexcept;
         constexpr const T& operator*() const noexcept;
         constexpr const T* operator->() const noexcept;
