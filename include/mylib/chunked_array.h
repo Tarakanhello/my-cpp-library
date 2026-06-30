@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "mylib/memory.h"
-#include "mylib/structs.h"
 #include "mylib/vector.h"
 
 
@@ -18,88 +17,319 @@
 namespace mylib
 {
 
+    /**
+     * @brief Блочный массив (chunked array) – динамический массив, разбитый на блоки фиксированного размера.
+     * @tparam T Тип хранимых элементов.
+     * @tparam CHUNK_SIZE Размер одного блока (количество элементов). По умолчанию 32.
+     * @tparam ALLOCATOR Аллокатор для выделения памяти под элементы (не для указателей).
+     *
+     * Позволяет эффективно вставлять/удалять элементы в конце без перераспределения всей памяти.
+     * В отличие от Vector, не требует копирования элементов при росте – добавляются только новые блоки.
+     * Поддерживает строгую гарантию безопасности исключений для основных операций.
+     */
     template<typename T,
              size_t CHUNK_SIZE = 32,
              typename ALLOCATOR = mylib::MySimpleAllocator<T>>
-    class ChunkedArray final : public mylib::ArithmeticType<T>
+    class ChunkedArray final
     {
     private:
+        /** @brief Тип аллокатора для массива указателей на блоки. */
         using ALLOCATOR_ptr = typename std::allocator_traits<ALLOCATOR>::
                                                     template rebind_alloc<T*>;
 
-        size_t m_size{};
-        constexpr static size_t m_chunkSize{ CHUNK_SIZE };
-        ALLOCATOR m_chunkAllocator{};
-        mylib::Vector<T*, ALLOCATOR_ptr> m_arrayOfChunks{};
+        size_t m_size{};                                    ///< Количество элементов.
+        constexpr static size_t m_chunkSize{ CHUNK_SIZE };  ///< Размер блока (константа времени компиляции).
+        ALLOCATOR m_chunkAllocator{};                       ///< Аллокатор для выделения блоков.
+        mylib::Vector<T*, ALLOCATOR_ptr> m_arrayOfChunks{}; ///< Вектор указателей на блоки.
 
+        /**
+         * @brief Выделяет массив указателей на блоки и инициализирует каждый блок.
+         * @throw std::bad_alloc при нехватке памяти; при ошибке уже выделенные блоки освобождаются.
+         */
         void allocateArrayOfChunks();
+
+        /**
+         * @brief Выделяет один блок памяти для элементов.
+         * @return Указатель на выделенный блок.
+         * @throw std::bad_alloc при нехватке памяти.
+         */
         T* allocateChunk();
+
+        /**
+         * @brief Вставляет элемент в конец (внутренняя реализация для lvalue и rvalue).
+         * @tparam ARGS Типы аргументов для конструирования элемента.
+         * @param args Аргументы, передаваемые конструктору T.
+         * @throw Любое исключение при конструировании или выделении памяти.
+         */
         template<typename... ARGS>
         void append(ARGS&&... args);
+
+        /**
+         * @brief Конструирует элементы в диапазоне [from, to) со значением value.
+         * @param from Начальный индекс.
+         * @param to   Конечный индекс (не включается).
+         * @param value Значение для копирования.
+         * @throw Любое исключение, брошенное конструктором T. При ошибке уже созданные элементы уничтожаются.
+         */
         void constructElements(size_t from, size_t to, const T& value = T());
+
+        /**
+         * @brief Конструирует элементы из диапазона [first, last) начиная с индекса from.
+         * @tparam ITERATOR Тип итератора (должен поддерживать operator* и инкремент).
+         * @param from Индекс, с которого начинается вставка.
+         * @param first Начало диапазона.
+         * @param last Конец диапазона.
+         * @throw Любое исключение при конструировании; при ошибке созданные элементы уничтожаются.
+         */
         template<typename ITERATOR>
         void constructElementsFromRange(size_t from,
-                                                  ITERATOR first,
-                                                  ITERATOR last);
+                                        ITERATOR first,
+                                        ITERATOR last);
+
+        /**
+         * @brief Вычисляет индекс блока для заданного индекса элемента.
+         * @param i Индекс элемента.
+         * @return Номер блока.
+         */
         constexpr size_t chunkIndex(size_t i) const noexcept;
+
+        /**
+         * @brief Освобождает все блоки и массив указателей (без уничтожения элементов).
+         * @note Предполагается, что элементы уже уничтожены.
+         */
         void deallocateArrayOfChunks() noexcept;
+
+        /**
+         * @brief Освобождает один блок памяти.
+         * @param chunk Указатель на блок.
+         */
         void deallocateChunk(T* chunk) noexcept;
+
+        /**
+         * @brief Уничтожает все элементы во всех блоках и освобождает память блоков.
+         * @note noexcept – деструкторы и deallocate не должны бросать исключения.
+         */
         void destroyAllChunks() noexcept;
+
+        /**
+         * @brief Уничтожает элементы в диапазоне индексов [from, to).
+         * @param from Начальный индекс.
+         * @param to   Конечный индекс (не включается).
+         * @note noexcept – вызов деструкторов не должен бросать исключения.
+         */
         void destroyElements(size_t from, size_t to) noexcept;
+
+        /**
+         * @brief Возвращает указатель на блок по его индексу.
+         * @param chunkIndex Индекс блока.
+         * @return Указатель на блок.
+         */
         constexpr T* getChunk(size_t chunkIndex) noexcept;
         constexpr const T* getChunk(size_t chunkIndex) const noexcept;
+
+        /**
+         * @brief Вычисляет смещение внутри блока для заданного индекса элемента.
+         * @param i Индекс элемента.
+         * @return Смещение внутри блока.
+         */
         constexpr size_t offsetInChunk(size_t i) const noexcept;
+
+        /**
+         * @brief Освобождает указатели на блоки и обнуляет размер (без уничтожения элементов).
+         * @note Используется в move-операциях.
+         */
         void release() noexcept;
+
+        /**
+         * @brief Удаляет последние count блоков из массива указателей и освобождает их память.
+         * @param count Количество удаляемых блоков.
+         * @note Предполагается, что элементы в этих блоках уже уничтожены.
+         */
         void removeLastBlocks(size_t count) noexcept;
+
+        /**
+         * @brief Обменивает содержимое с другим объектом.
+         * @param other Другой ChunkedArray.
+         */
         void swap(ChunkedArray& other) noexcept;
 
     public:
-        // Конструкторы:
-        ChunkedArray();
-        ChunkedArray(size_t, T = T(), ALLOCATOR = ALLOCATOR());
-        ChunkedArray(std::initializer_list<T>, ALLOCATOR = ALLOCATOR());
-        ChunkedArray(const ChunkedArray&);
-        ChunkedArray& operator=(const ChunkedArray&);
-        ChunkedArray(ChunkedArray&&) noexcept;
-        ChunkedArray& operator=(ChunkedArray&&) noexcept;
+        // ==================== КОНСТРУКТОРЫ И ДЕСТРУКТОР ====================
 
+        /**
+         * @brief Конструктор по умолчанию. Создаёт пустой массив.
+         */
+        ChunkedArray();
+
+        /**
+         * @brief Конструктор, создающий массив с size элементами, инициализированными значением value.
+         * @param size Количество элементов.
+         * @param value Значение для инициализации (по умолчанию T()).
+         * @param alloc Аллокатор.
+         */
+        ChunkedArray(size_t size, T value = T(), ALLOCATOR alloc = ALLOCATOR());
+
+        /**
+         * @brief Конструктор из std::initializer_list.
+         * @param list Список инициализации.
+         * @param alloc Аллокатор.
+         */
+        ChunkedArray(std::initializer_list<T> list, ALLOCATOR alloc = ALLOCATOR());
+
+        /**
+         * @brief Конструктор копирования.
+         * @param other Массив для копирования.
+         */
+        ChunkedArray(const ChunkedArray& other);
+
+        /**
+         * @brief Оператор присваивания копированием (через copy-and-swap).
+         * @param other Массив для копирования.
+         * @return Ссылка на *this.
+         */
+        ChunkedArray& operator=(const ChunkedArray& other);
+
+        /**
+         * @brief Конструктор перемещения.
+         * @param other Массив, из которого перемещаются данные.
+         */
+        ChunkedArray(ChunkedArray&& other) noexcept;
+
+        /**
+         * @brief Оператор присваивания перемещением.
+         * @param other Массив, из которого перемещаются данные.
+         * @return Ссылка на *this.
+         */
+        ChunkedArray& operator=(ChunkedArray&& other) noexcept;
+
+        /**
+         * @brief Деструктор. Уничтожает все элементы и освобождает память блоков.
+         */
         ~ChunkedArray();
 
-        // Доступ:
-        constexpr T& at(size_t);
-        constexpr const T& at(size_t) const;
+         // ==================== ДОСТУП К ЭЛЕМЕНТАМ ====================
 
-        constexpr T& operator[](size_t) noexcept;
-        constexpr const T& operator[](size_t) const noexcept;
+        /**
+         * @brief Доступ к элементу с проверкой границ.
+         * @param i Индекс элемента.
+         * @return Ссылка на элемент.
+         * @throw std::out_of_range если i >= size().
+         */
+        constexpr T& at(size_t i);
+        constexpr const T& at(size_t i) const;
 
+        /**
+         * @brief Доступ к элементу без проверки границ.
+         * @param i Индекс элемента.
+         * @return Ссылка на элемент.
+         * @pre i < size() (проверяется через assert в отладочной сборке).
+         */
+        constexpr T& operator[](size_t i) noexcept;
+        constexpr const T& operator[](size_t i) const noexcept;
+
+
+        /**
+         * @brief Возвращает ссылку на первый элемент.
+         * @return Ссылка на первый элемент.
+         * @pre Массив не пуст (assert).
+         */
         constexpr T& front() noexcept;
         constexpr const T& front() const noexcept;
 
+        /**
+         * @brief Возвращает ссылку на последний элемент.
+         * @return Ссылка на последний элемент.
+         * @pre Массив не пуст (assert).
+         */
         constexpr T& back() noexcept;
         constexpr const T& back() const noexcept;
 
-        // Вставка:
-        void push_back(const T&);
-        void push_back(T&&);
+        // ==================== ВСТАВКА ====================
 
+        /**
+         * @brief Добавляет элемент в конец (копирование).
+         * @param value Добавляемый элемент.
+         */
+        void push_back(const T& value);
+
+        /**
+         * @brief Добавляет элемент в конец (перемещение).
+         * @param value Добавляемый элемент.
+         */
+        void push_back(T&& value);
+
+        /**
+         * @brief Конструирует элемент в конце из переданных аргументов.
+         * @tparam ARGS Типы аргументов конструктора T.
+         * @param args Аргументы для конструирования.
+         */
         template<typename... ARGS>
         void emplace_back(ARGS&&... args);
 
-        // Удаление:
-        T pop_back(); // удалить последний элемент; если блок стал пустым – освободить блок и удалить указатель.
+        // ==================== УДАЛЕНИЕ ====================
+
+        /**
+         * @brief Удаляет последний элемент.
+         * @return Удалённый элемент (копия).
+         * @pre Массив не пуст (assert).
+         * @note Если блок становится пустым, он освобождается.
+         */
+        T pop_back();
+
+        /**
+         * @brief Очищает массив (удаляет все элементы и освобождает память блоков).
+         */
         void clear();
 
+         // ==================== ИЗМЕНЕНИЕ РАЗМЕРА И ЁМКОСТИ ====================
 
+        /**
+         * @brief Изменяет размер массива.
+         * @param newSize Новый размер.
+         * @param value Значение для инициализации новых элементов (если newSize > текущего).
+         * @note При увеличении добавляются новые блоки; при уменьшении лишние блоки освобождаются.
+         * @throw Любое исключение при конструировании или выделении памяти.
+         */
         void resize(size_t newSize, const T& value = T());
+
+        /**
+         * @brief Резервирует память для как минимум newCapacity элементов (резервирует блоки).
+         * @param newCapacity Желаемая ёмкость.
+         * @note Если newCapacity <= size(), ничего не делает.
+         * @throw std::bad_alloc при нехватке памяти.
+         */
         void reserve(size_t newCapacity);
+
+        /**
+         * @brief Уменьшает количество блоков до минимально необходимого для текущего размера.
+         * @throw std::bad_alloc при нехватке памяти (если требуется перераспределение).
+         */
         void shrink_to_fit();
+
+        // ==================== СВОЙСТВА ====================
+
+        /**
+         * @brief Возвращает текущий размер (количество элементов).
+         */
         size_t size() const noexcept { return m_size; }
+
+        /**
+         * @brief Проверяет, пуст ли массив.
+         * @return true, если size() == 0.
+         */
         constexpr bool empty() const noexcept { return size() == 0; }
+
+        /**
+         * @brief Возвращает количество выделенных блоков.
+         */
         size_t blockCount() const noexcept { return m_arrayOfChunks.size(); }
 
+        /**
+         * @brief Явное приведение к bool: true, если массив не пуст.
+         */
         explicit operator bool() const noexcept { return !empty(); }
 
-        // ITERATORS
+        // ==================== ИТЕРАТОРЫ ====================
 
         class Iterator;
         class ConstIterator;
