@@ -1094,3 +1094,23 @@ TEST_CASE("Vector::reverse", "[vector][reverse]")
         REQUIRE_THROWS_AS(v.reverse(v.size() + 1, v.size() + 2), std::out_of_range);
     }
 }
+
+
+
+TEST_CASE("Vector throws on too large size", "[vector][overflow]")
+{
+    using V = mylib::Vector<int>;
+
+    SECTION("resize to huge size should throw length_error")
+    {
+        V v;
+        const size_t huge{ std::numeric_limits<size_t>::max() / 2 + 1 };
+        REQUIRE_THROWS_AS(v.resize(huge), std::length_error);
+    }
+
+    SECTION("push_back after reaching near-limit capacity should throw")
+    {
+        V v;
+        REQUIRE_THROWS_AS(v.reserve(std::numeric_limits<size_t>::max() / 2), std::length_error);
+    }
+}

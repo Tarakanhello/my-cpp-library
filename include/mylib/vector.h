@@ -7,6 +7,7 @@
 #include <format>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -43,7 +44,7 @@ namespace mylib
          * @param requiredSize Необходимый размер.
          * @return Новая ёмкость (не менее MinCapacity и не менее requiredSize, степень двойки).
          */
-        constexpr size_t calculateNewCapacity(size_t requiredSize) const noexcept;
+        constexpr size_t calculateNewCapacity(size_t requiredSize) const;
 
         /**
          * @brief Конструирует элементы в диапазоне [from, to) со значением value.
@@ -76,6 +77,11 @@ namespace mylib
          * @note noexcept – вызов деструкторов не должен бросать исключения.
          */
         constexpr void destroyElements(size_t from, size_t to) noexcept;
+
+        static constexpr size_t maxSize() noexcept
+        {
+            return std::numeric_limits<size_t>::max() / sizeof(T);
+        }
 
         /**
          * @brief Перевыделяет буфер без создания новых элементов (newSize == m_size).
@@ -611,6 +617,10 @@ void mylib::Vector<T, ALLOCATOR>::appendVector(const Vector<T, ALLOCATOR>& vec)
         appendVector(copy);
         return;
     }
+    if (m_size > maxSize() - vec.size())
+    {
+        throw std::length_error("Vector size overflow");
+    }
     reserve(calculateNewCapacity(m_size + vec.size()));
 
     constructElementsFromRange(m_size, vec.data(), vec.size());
@@ -643,11 +653,20 @@ constexpr const T& mylib::Vector<T, ALLOCATOR>::at(size_t i) const
 
 
 template<typename T, typename ALLOCATOR>
-constexpr size_t mylib::Vector<T, ALLOCATOR>::calculateNewCapacity(size_t requiredSize) const noexcept
+constexpr size_t mylib::Vector<T, ALLOCATOR>::calculateNewCapacity(size_t requiredSize) const
 {
+    if(requiredSize > maxSize())
+    {
+        throw std::length_error("Vector size exceeds maximum possible size");
+    }
+
     size_t reqCap{ MinCapacity };
     while(reqCap < requiredSize )
     {
+        if(reqCap > maxSize() / 2)
+        {
+            throw std::length_error("Vector capacity overflow");
+        }
         reqCap *= 2;
     }
 
@@ -745,6 +764,11 @@ void mylib::Vector<T, ALLOCATOR>::emplace_back(ARGS&&... args)
 {
     if(m_size == m_capacity)
     {
+        if (m_size == maxSize())
+        {
+            throw std::length_error("Vector max size reached");
+        }
+
         reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, std::forward<ARGS>(args)...);
         return;
     }
@@ -890,6 +914,10 @@ void mylib::Vector<T, ALLOCATOR>::push_back(const T& element)
 {
     if(m_size == m_capacity)
     {
+        if (m_size == maxSize())
+        {
+            throw std::length_error("Vector max size reached");
+        }
         reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, element);
         return;
     }
@@ -905,6 +933,10 @@ void mylib::Vector<T, ALLOCATOR>::push_back(T&& element)
 {
     if(m_size == m_capacity)
     {
+        if (m_size == maxSize())
+        {
+            throw std::length_error("Vector max size reached");
+        }
         reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, std::forward<T>(element));
         return;
     }
@@ -955,6 +987,11 @@ template<typename T, typename ALLOCATOR>
 template<typename... ARGS>
 void mylib::Vector<T, ALLOCATOR>::reallocateBuffer(size_t newCapacity, size_t newSize, ARGS&&... args)
 {
+    if (newSize > maxSize())
+    {
+        throw std::length_error("Vector size exceeds maximum possible size");
+    }
+
     T* newData{ m_allocator.allocate(newCapacity) };
 
     mylib::BufferGuard<T> guard{ newData, 0 };
@@ -1019,6 +1056,11 @@ constexpr void mylib::Vector<T, ALLOCATOR>::release() noexcept
 template<typename T, typename ALLOCATOR>
 void mylib::Vector<T, ALLOCATOR>::reserve(size_t newCap)
 {
+    if (newCap > maxSize())
+    {
+        throw std::length_error("Vector capacity exceeds maximum possible size");
+    }
+
     if(m_capacity < newCap)
     {
         reallocateBuffer(newCap, m_size);
@@ -1036,7 +1078,7 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value)
     else if(newSize < m_size) // Уменьшение размера
     {
         // Проверяем, нужно ли уменьшить ёмкость
-        if(m_capacity > MinCapacity && newSize * 4 < m_capacity)
+        if(m_capacity > MinCapacity && newSize < m_capacity / 4)
         {
             size_t newCapacity{ calculateNewCapacity(newSize) };
             reallocateBuffer(newCapacity, newSize, value);
