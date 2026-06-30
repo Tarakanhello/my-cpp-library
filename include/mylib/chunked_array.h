@@ -350,6 +350,8 @@ namespace mylib
          */
         size_t blockCount() const noexcept { return m_arrayOfChunks.size(); }
 
+        size_t capacity() const noexcept { return m_arrayOfChunks.capacity() * m_chunkSize; }
+
         /**
          * @brief Явное приведение к bool: true, если массив не пуст.
          */
@@ -468,8 +470,8 @@ namespace mylib
         constexpr Iterator  operator--(int) noexcept;
         constexpr Iterator& operator+=(std::ptrdiff_t n) noexcept;
         constexpr Iterator& operator-=(std::ptrdiff_t n) noexcept;
-        constexpr Iterator  operator+(std::ptrdiff_t n) noexcept;
-        constexpr Iterator  operator-(std::ptrdiff_t n) noexcept;
+        constexpr Iterator  operator+(std::ptrdiff_t n) const noexcept;
+        constexpr Iterator  operator-(std::ptrdiff_t n) const noexcept;
         friend constexpr  Iterator  operator+(std::ptrdiff_t n,
                                               const Iterator& it) noexcept { return it + n; }
         constexpr std::ptrdiff_t    operator-(const Iterator& other) const noexcept;
@@ -531,8 +533,8 @@ namespace mylib
         constexpr ConstIterator operator--(int) noexcept;
         constexpr ConstIterator& operator+=(std::ptrdiff_t n) noexcept;
         constexpr ConstIterator& operator-=(std::ptrdiff_t n) noexcept;
-        constexpr ConstIterator operator+(std::ptrdiff_t n) noexcept;
-        constexpr ConstIterator operator-(std::ptrdiff_t n) noexcept;
+        constexpr ConstIterator operator+(std::ptrdiff_t n) const noexcept;
+        constexpr ConstIterator operator-(std::ptrdiff_t n) const noexcept;
         friend constexpr  ConstIterator operator+(std::ptrdiff_t n,
                                                  const ConstIterator& it) noexcept {return it + n; }
         constexpr std::ptrdiff_t operator-(const ConstIterator& other) const noexcept;
@@ -1141,7 +1143,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     ConstIterator mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-    ConstIterator::operator+(std::ptrdiff_t n) noexcept
+    ConstIterator::operator+(std::ptrdiff_t n) const noexcept
 {
     ConstIterator temp{ *this };
     temp += n;
@@ -1153,7 +1155,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     ConstIterator mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-    ConstIterator::operator-(std::ptrdiff_t n) noexcept
+    ConstIterator::operator-(std::ptrdiff_t n) const noexcept
 {
 
     ConstIterator temp{ *this };
@@ -1674,7 +1676,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-    Iterator::operator+(std::ptrdiff_t n) noexcept
+    Iterator::operator+(std::ptrdiff_t n) const noexcept
 {
     Iterator temp{ *this };
     temp += n;
@@ -1686,7 +1688,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-    Iterator::operator-(std::ptrdiff_t n) noexcept
+    Iterator::operator-(std::ptrdiff_t n) const noexcept
 {
 
     Iterator temp{ *this };
@@ -1839,7 +1841,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     rbegin() noexcept
 {
-    return end();
+    return ReverseIterator(end());
 
 }
 
@@ -1850,7 +1852,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::constReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     rbegin() const noexcept
 {
-    return cend();
+    return constReverseIterator(cend());
 
 }
 
@@ -1871,7 +1873,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     rend() noexcept
 {
-    return begin();
+    return ReverseIterator(begin());
 }
 
 
@@ -1881,7 +1883,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::constReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     rend() const noexcept
 {
-    return cbegin();
+    return constReverseIterator(cbegin());
 }
 
 
@@ -2010,13 +2012,11 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         return;
     }
 
-    size_t needed{ chunkIndex(m_size - 1) + 1 };   // сколько чанков нужно для m_size элементов
-    size_t current{ m_arrayOfChunks.size() };
+    size_t needed{ m_arrayOfChunks.size() };   // сколько чанков нужно для m_size элементов
+    size_t current{ m_arrayOfChunks.capacity() };
 
     if(needed < current)
     {
-        removeLastBlocks(current - needed);
-
         m_arrayOfChunks.shrink_to_fit();
     }
 }
