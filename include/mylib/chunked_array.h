@@ -494,9 +494,9 @@ namespace mylib
     class ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ConstIterator
     {
     private:
-        const T** m_chunkBegin;         ///< Указатель на первый блок в массиве блоков.
-        const T** m_chunkPtr;           ///< Указатель на текущий блок.
-        const T** m_chunksEnd;          ///< Указатель на конец массива блоков (за последним блоком).
+        const T* const* m_chunkBegin;         ///< Указатель на первый блок в массиве блоков.
+        const T* const* m_chunkPtr;           ///< Указатель на текущий блок.
+        const T* const* m_chunksEnd;          ///< Указатель на конец массива блоков (за последним блоком).
         const T* m_currentElementPtr;   ///< Указатель на текущий элемент внутри блока.
         size_t m_offset;                ///< Смещение текущего элемента внутри блока (0..CHUNK_SIZE-1).
 
@@ -514,8 +514,8 @@ namespace mylib
          * @param startIndex   Индекс элемента, на который должен указывать итератор (по умолчанию 0).
          * @note Если startIndex выходит за пределы допустимого диапазона, поведение не определено.
          */
-        constexpr ConstIterator(const T** beginChunkPtr,
-                                const T** chunksEnd,
+        constexpr ConstIterator(const T* const* beginChunkPtr,
+                                const T* const* chunksEnd,
                                 size_t startIndex = 0) noexcept;
 
         /**
@@ -883,8 +883,8 @@ constexpr size_t mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
 constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
-    ConstIterator::ConstIterator(const T** beginChunkPtr,
-                                 const T** chunksEnd,
+    ConstIterator::ConstIterator(const T* const* beginChunkPtr,
+                                 const T* const* chunksEnd,
                                  size_t startIndex) noexcept
     : m_chunkBegin{ beginChunkPtr }
     , m_chunkPtr{ beginChunkPtr }

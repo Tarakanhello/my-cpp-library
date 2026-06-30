@@ -4,6 +4,7 @@ add_executable(unit_tests
     test_math.cpp
     test_structs.cpp
     test_vector.cpp
+    test_chunked_array.cpp
 )
 target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 
