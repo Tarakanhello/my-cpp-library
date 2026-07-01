@@ -19,6 +19,7 @@ add_library(mylib STATIC
     include/mylib/structs.h
     include/mylib/vector.h
     include/mylib/chunked_array.h
+    include/mylib/list.h
 
 )
 target_include_directories(mylib PUBLIC include)
