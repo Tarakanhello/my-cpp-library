@@ -39,13 +39,13 @@ private:
 
     NODE_ALLOCATOR m_nodeAllocator{};
 
-    void cutNode(Node* node) noexcept
+    void cutNode(BaseNode* node) noexcept
     {
         node->next->prev = node->prev;
         node->prev->next = node->next;
     }
 
-    void insertBefore(Node* position, Node* newNode) noexcept
+    void insertBefore(BaseNode* position, BaseNode* newNode) noexcept
     {
         newNode->next = position;
         newNode->prev = position->prev;
@@ -53,7 +53,7 @@ private:
         position->prev = newNode;
     }
 
-    void insertAfter(Node* position, Node* newNode) noexcept
+    void insertAfter(BaseNode* position, BaseNode* newNode) noexcept
     {
         newNode->next = position->next;
         newNode->prev = position;
@@ -63,17 +63,23 @@ private:
 
     void destroyAll() noexcept
     {
-        Node* current{ m_sentinel.next };
+        Node* current{ static_cast<Node*>(m_sentinel.next) };
         while(current != &m_sentinel)
         {
             cutNode(current);
-            current->~Node();
+            destroyNode(current);
             deallocateNode(current);
+            current = static_cast<Node*>(m_sentinel.next);
         }
+
+        m_size = 0;
     }
 
-    Node* allocateNode() const { return m_nodeAllocator.allocate(1); }
-    void constructNode(Node* node, T value) { m_nodeAllocator.construct(node, value); }
+    Node* allocateNode() const { return ALLOC_TRAITS::allocate(m_nodeAllocator, 1); }
+    void constructNode(Node* node, const T& value) { ALLOC_TRAITS::construct(m_nodeAllocator, node, value); }
+    void constructNode(Node* node, T&& value) { ALLOC_TRAITS::construct(m_nodeAllocator, node, std::move(value)); }
+    void deallocateNode(Node* node) noexcept { ALLOC_TRAITS::deallocate(m_nodeAllocator, node, 1); }
+    void destroyNode(Node* node) { ALLOC_TRAITS::destroy(m_nodeAllocator, node); }
 
 public:
     List(const ALLOCATOR& alloc = ALLOCATOR())
@@ -89,7 +95,7 @@ public:
     {
         while(m_size < count)
         {
-            Node* newNode{ m_nodeAllocator.allocate(1) };
+            Node* newNode{ allocateNode() };
             try
             {
                 constructNode(newNode, value);
@@ -98,8 +104,9 @@ public:
             }
             catch (...)
             {
-                m_nodeAllocator.deallocate(newNode, 1);
                 destroyAll();
+                deallocateNode(newNode);
+                throw;
             }
         }
     }
@@ -110,7 +117,10 @@ public:
     List(InputIt first, InputIt last, const ALLOCATOR& alloc = ALLOCATOR());
     List(const List& other);
     List(List&& other) noexcept;
-    ~List() noexcept;
+    ~List() noexcept
+    {
+        destroyAll();
+    }
 
     List& operator=(const List& other);
     List& operator=(List&& other) noexcept;
