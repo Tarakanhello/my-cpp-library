@@ -39,8 +39,38 @@ private:
 
     NODE_ALLOCATOR m_nodeAllocator{};
 
-    const BaseNode* head() const noexcept { return m_sentinel.next; }
-    const BaseNode* tail() const noexcept { return m_sentinel.prev; }
+    void cutNode(Node* node) noexcept
+    {
+        node->next->prev = node->prev;
+        node->prev->next = node->next;
+    }
+
+    void insertBefore(Node* position, Node* newNode) noexcept
+    {
+        newNode->next = position;
+        newNode->prev = position->prev;
+        position->prev->next = newNode;
+        position->prev = newNode;
+    }
+
+    void insertAfter(Node* position, Node* newNode) noexcept
+    {
+        newNode->next = position->next;
+        newNode->prev = position;
+        position->next->prev = newNode;
+        position->next = newNode;
+    }
+
+    void destroyAll() noexcept
+    {
+        Node* current{ m_sentinel.next };
+        while(current != &m_sentinel)
+        {
+            cutNode(current);
+            current->~Node();
+            deallocateNode(current);
+        }
+    }
 
     Node* allocateNode() const { return m_nodeAllocator.allocate(1); }
     void constructNode(Node* node, T value) { m_nodeAllocator.construct(node, value); }
@@ -63,23 +93,13 @@ public:
             try
             {
                 constructNode(newNode, value);
-                if(m_size == 0)
-                {
-                    newNode->prev = &m_sentinel;
-                    newNode->next = &m_sentinel;
-                    m_sentinel.next = newNode;
-                    m_sentinel.prev = newNode;
-                }
-                else
-                {
-                    newNode->prev = tail();
-                    newNode->next = &m_sentinel;
-                    m_sentinel.prev = newNode;
-                }
+                insertAfter(&m_sentinel, newNode);
+                ++m_size;
             }
             catch (...)
             {
-
+                m_nodeAllocator.deallocate(newNode, 1);
+                destroyAll();
             }
         }
     }
