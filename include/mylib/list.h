@@ -40,7 +40,9 @@ namespace mylib
         void insertBefore(BaseNode* positionPtr, BaseNode* newNodePtr) noexcept;
         void release() noexcept;
         BaseNode* root() noexcept { return m_sentinel.nextPtr; }
+        const BaseNode* root() const noexcept{ return m_sentinel.nextPtr; }
         BaseNode* tail() noexcept { return m_sentinel.prevPtr; }
+        const BaseNode* tail() const noexcept { return m_sentinel.prevPtr; }
 
     public:
         List(const ALLOCATOR& alloc = ALLOCATOR());
@@ -136,6 +138,26 @@ mylib::List<T, ALLOCATOR>::Node* mylib::List<T, ALLOCATOR>::
     allocateNode() const
 {
     return List<T, ALLOCATOR>::ALLOC_TRAITS::allocate(m_nodeAllocator, 1);
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+T& mylib::List<T, ALLOCATOR>::back() noexcept
+{
+    assert(!empty());
+
+    return (static_cast<Node*>(tail()))->value;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+const T& mylib::List<T, ALLOCATOR>::back() const noexcept
+{
+    assert(!empty());
+
+    return (static_cast<const Node*>(tail()))->value;
 }
 
 
@@ -246,6 +268,26 @@ void mylib::List<T, ALLOCATOR>::
     destroyNode(Node* nodePtr)
 {
     List<T, ALLOCATOR>::ALLOC_TRAITS::destroy(m_nodeAllocator, nodePtr);
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+T& mylib::List<T, ALLOCATOR>::front() noexcept
+{
+    assert(!empty());
+
+    return (static_cast<Node*>(root()))->value;
+};
+
+
+
+template<typename T, typename ALLOCATOR>
+const T& mylib::List<T, ALLOCATOR>::front() const noexcept
+{
+    assert(!empty());
+
+    return (static_cast<const Node*>(root()))->value;
 }
 
 
