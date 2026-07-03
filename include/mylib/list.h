@@ -9,6 +9,7 @@
 
 #include "mylib/memory.h"
 
+
 namespace mylib
 {
 
@@ -137,7 +138,7 @@ template<typename T, typename ALLOCATOR>
 mylib::List<T, ALLOCATOR>::Node* mylib::List<T, ALLOCATOR>::
     allocateNode() const
 {
-    return List<T, ALLOCATOR>::ALLOC_TRAITS::allocate(m_nodeAllocator, 1);
+    return typename List<T, ALLOCATOR>::ALLOC_TRAITS::allocate(m_nodeAllocator, 1);
 }
 
 
@@ -194,7 +195,6 @@ void mylib::List<T, ALLOCATOR>::
         insertAfter(tail(), newNodePtr);
 
         ++begin;
-        ++m_size;
     }
 }
 
@@ -204,7 +204,7 @@ template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::
     constructNode(Node* nodePtr, const T& value)
 {
-    List<T, ALLOCATOR>::ALLOC_TRAITS::construct(m_nodeAllocator, nodePtr, value);
+    typename List<T, ALLOCATOR>::ALLOC_TRAITS::construct(m_nodeAllocator, nodePtr, value);
 }
 
 
@@ -213,7 +213,7 @@ template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::
     constructNode(Node* nodePtr, T&& value)
 {
-    List<T, ALLOCATOR>::ALLOC_TRAITS::construct(m_nodeAllocator, nodePtr, std::move(value));
+    typename List<T, ALLOCATOR>::ALLOC_TRAITS::construct(m_nodeAllocator, nodePtr, std::move(value));
 }
 
 
@@ -232,7 +232,7 @@ template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::
     deallocateNode(Node* nodePtr) noexcept
 {
-    List<T, ALLOCATOR>::ALLOC_TRAITS::deallocate(m_nodeAllocator, nodePtr, 1);
+    typename List<T, ALLOCATOR>::ALLOC_TRAITS::deallocate(m_nodeAllocator, nodePtr, 1);
 }
 
 
@@ -267,7 +267,7 @@ template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::
     destroyNode(Node* nodePtr)
 {
-    List<T, ALLOCATOR>::ALLOC_TRAITS::destroy(m_nodeAllocator, nodePtr);
+    typename List<T, ALLOCATOR>::ALLOC_TRAITS::destroy(m_nodeAllocator, nodePtr);
 }
 
 
@@ -278,7 +278,7 @@ T& mylib::List<T, ALLOCATOR>::front() noexcept
     assert(!empty());
 
     return (static_cast<Node*>(root()))->value;
-};
+}
 
 
 
@@ -300,6 +300,7 @@ void mylib::List<T, ALLOCATOR>::
     newNodePtr->prevPtr = positionPtr;
     positionPtr->nextPtr->prevPtr = newNodePtr;
     positionPtr->nextPtr = newNodePtr;
+    ++m_size;
 }
 
 
@@ -312,6 +313,7 @@ void mylib::List<T, ALLOCATOR>::
     newNodePtr->prevPtr = positionPtr->prevPtr;
     positionPtr->prevPtr->nextPtr = newNodePtr;
     positionPtr->prevPtr = newNodePtr;
+    ++m_size;
 }
 
 
@@ -352,7 +354,6 @@ mylib::List<T, ALLOCATOR>::
         }
 
         insertAfter(tail(), newNodePtr);
-        ++m_size;
     }
 }
 
@@ -442,6 +443,46 @@ mylib::List<T, ALLOCATOR>& mylib::List<T, ALLOCATOR>::
     }
 
     return *this;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::List<T, ALLOCATOR>::
+    push_front(const T& value)
+{
+    Node* newNode{ allocateNode() };
+    try
+    {
+        constructNode(newNode, value);
+    }
+    catch(...)
+    {
+        deallocateNode(newNode);
+        throw;
+    }
+
+    insertBefore(root(), newNode);
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::List<T, ALLOCATOR>::
+    push_front(T&& value)
+{
+    Node* newNode{ allocateNode() };
+    try
+    {
+        constructNode(newNode, std::move(value));
+    }
+    catch(...)
+    {
+        deallocateNode(newNode);
+        throw;
+    }
+
+    insertBefore(root(), newNode);
 }
 
 
