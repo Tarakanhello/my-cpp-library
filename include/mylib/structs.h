@@ -2,6 +2,7 @@
 #define STRUCTS_H
 
 #include <algorithm>
+#include <cstddef>
 #include <cassert>
 #include <compare>
 #include <utility>

@@ -2,6 +2,7 @@
 #define CHUNKED_ARRAY_H
 
 #include <cassert>
+#include <cstddef>
 #include <compare>
 #include <format>
 #include <initializer_list>
