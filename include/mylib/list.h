@@ -12,94 +12,369 @@
 
 namespace mylib
 {
-
+    /**
+     * @brief Двусвязный список (двунаправленный).
+     * @tparam T         Тип хранимых элементов.
+     * @tparam ALLOCATOR Аллокатор для выделения памяти под узлы (по умолчанию MySimpleAllocator<T>).
+     *
+     * Реализует классический двусвязный список с фиктивным (sentinel) узлом,
+     * что упрощает вставку и удаление в любом месте. Обеспечивает строгую гарантию
+     * безопасности исключений для операций вставки.
+     *
+     * @note Использует внутреннюю структуру Node, наследующую BaseNode, для хранения
+     *       данных и указателей prev/next.
+     */
     template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
     class List final
     {
     private:
+
+        /**
+         * @brief Базовая структура узла (содержит только указатели).
+         *
+         * Используется как часть фиктивного узла и как основа для Node.
+         */
         struct BaseNode;
+
+        /**
+         * @brief Узел, хранящий значение типа T.
+         *
+         * Наследует BaseNode, добавляя поле value.
+         */
         struct Node;
 
+        /** @brief Аллокатор для узлов (переопределён для Node). */
         using NODE_ALLOCATOR = typename std::allocator_traits<ALLOCATOR>::template rebind_alloc<Node>;
+
+        /** @brief Вспомогательный трейт для работы с аллокатором узлов. */
         using ALLOC_TRAITS = std::allocator_traits<NODE_ALLOCATOR>;
 
-        BaseNode m_sentinel;
-        size_t m_size{};
-        NODE_ALLOCATOR m_nodeAllocator{};
+        BaseNode m_sentinel;                ///< Фиктивный узел, служащий головой и хвостом (кольцевая структура).
+        size_t m_size{};                    ///< Количество элементов в списке.
+        NODE_ALLOCATOR m_nodeAllocator{};   ///< Аллокатор для узлов.
 
+        /**
+         * @brief Выделяет память под один узел без конструирования.
+         * @return Указатель на выделенную память.
+         * @throw std::bad_alloc при нехватке памяти.
+         */
         Node* allocateNode() const;
+
+        /**
+         * @brief Конструирует элементы из диапазона и вставляет их в конец списка.
+         * @tparam INPUT_IT Тип итератора ввода.
+         * @param begin Начало диапазона.
+         * @param end   Конец диапазона.
+         * @throw Любое исключение при конструировании; при ошибке уже созданные узлы уничтожаются.
+         */
         template<typename INPUT_IT>
         void constructElementsFromRange(INPUT_IT begin, INPUT_IT end);
+
+        /**
+         * @brief Конструирует объект T в уже выделенном узле.
+         * @tparam ARGS Типы аргументов для конструктора T.
+         * @param nodePtr Указатель на узел.
+         * @param args    Аргументы, передаваемые конструктору T.
+         */
         template<typename... ARGS>
         void constructNode(Node* nodePtr, ARGS&&... args);
+
+        /**
+         * @brief Создаёт узел с переданными аргументами (выделяет память и конструирует T).
+         * @tparam ARGS Типы аргументов.
+         * @param args Аргументы для конструктора T.
+         * @return Указатель на созданный узел.
+         * @throw std::bad_alloc или исключение конструктора T; при ошибке память освобождается.
+         */
         template <typename... ARGS>
         Node* createNode(ARGS&&... args);
+
+        /**
+         * @brief Исключает узел из списка (перелинковка без освобождения памяти).
+         * @param nodePtr Указатель на исключаемый узел.
+         * @note Уменьшает m_size.
+         */
         void cutNode(BaseNode* nodePtr) noexcept;
+
+        /**
+         * @brief Освобождает память узла без вызова деструктора.
+         * @param nodePtr Указатель на узел.
+         */
         void deallocateNode(Node* nodePtr) noexcept;
+
+        /**
+         * @brief Уничтожает все узлы и освобождает память.
+         * @note noexcept – предполагается, что деструкторы не бросают исключения.
+         */
         void destroyAll() noexcept;
+
+        /**
+         * @brief Уничтожает элементы в диапазоне узлов [beginPtr, endPtr) и освобождает память.
+         * @param beginPtr Начало диапазона (включая).
+         * @param endPtr   Конец диапазона (не включая).
+         */
         void destroyElementsInRange(BaseNode* beginPtr, BaseNode* endPtr) noexcept;
+
+        /**
+         * @brief Уничтожает объект T внутри узла (вызывает деструктор).
+         * @param nodePtr Указатель на узел.
+         */
         void destroyNode(Node* nodePtr);
+
+        /**
+         * @brief Вставляет узел newNodePtr после positionPtr.
+         * @param positionPtr Узел, после которого вставляем.
+         * @param newNodePtr  Вставляемый узел.
+         */
         void insertAfter(BaseNode* positionPtr, BaseNode* newNodePtr) noexcept;
+
+        /**
+         * @brief Вставляет узел newNodePtr перед positionPtr.
+         * @param positionPtr Узел, перед которым вставляем.
+         * @param newNodePtr  Вставляемый узел.
+         */
         void insertBefore(BaseNode* positionPtr, BaseNode* newNodePtr) noexcept;
+
+        /**
+         * @brief Освобождает указатели и обнуляет размер (без уничтожения элементов).
+         * @note Используется в move-операциях.
+         */
         void release() noexcept;
+
+        /** @brief Возвращает указатель на первый узел (root). */
         BaseNode* root() noexcept { return m_sentinel.nextPtr; }
         const BaseNode* root() const noexcept{ return m_sentinel.nextPtr; }
+
+        /** @brief Возвращает указатель на последний узел (tail). */
         BaseNode* tail() noexcept { return m_sentinel.prevPtr; }
         const BaseNode* tail() const noexcept { return m_sentinel.prevPtr; }
 
     public:
+
+        /**
+         * @brief Конструктор по умолчанию. Создаёт пустой список.
+         * @param alloc Аллокатор (передаётся по значению).
+         */
         List(const ALLOCATOR& alloc = ALLOCATOR());
+
+        /**
+         * @brief Конструктор, создающий список из count элементов, инициализированных копией value.
+         * @param count Количество элементов.
+         * @param value Значение для инициализации.
+         * @param alloc Аллокатор.
+         */
         List(size_t count, const T& value = T(), const ALLOCATOR& alloc = ALLOCATOR());
+
+        /**
+         * @brief Конструктор из std::initializer_list.
+         * @param list Список инициализации.
+         * @param alloc Аллокатор.
+         */
         List(std::initializer_list<T> list, const ALLOCATOR& alloc = ALLOCATOR());
         template <typename INPUT_IT>
+
+        /**
+         * @brief Конструктор из произвольного диапазона итераторов.
+         * @tparam INPUT_IT Тип итератора ввода.
+         * @param first Начало диапазона.
+         * @param last  Конец диапазона.
+         * @param alloc Аллокатор.
+         */
         List(INPUT_IT first, INPUT_IT last, const ALLOCATOR& alloc = ALLOCATOR());
+
+        /**
+         * @brief Конструктор копирования.
+         * @param other Список для копирования.
+         */
         List(const List& other);
+
+        /**
+         * @brief Конструктор перемещения.
+         * @param other Список, из которого перемещаются данные.
+         */
         List(List&& other) noexcept;
+
+        /**
+         * @brief Деструктор. Уничтожает все узлы и освобождает память.
+         */
         ~List() noexcept;
 
+        /**
+         * @brief Оператор присваивания копированием (через copy-and-swap).
+         * @param other Список для копирования.
+         * @return Ссылка на *this.
+         */
         List& operator=(const List& other);
+
+        /**
+         * @brief Оператор присваивания перемещением.
+         * @param other Список, из которого перемещаются данные.
+         * @return Ссылка на *this.
+         */
         List& operator=(List&& other) noexcept;
 
+        /**
+         * @brief Возвращает ссылку на первый элемент.
+         * @return Ссылка на первый элемент.
+         * @pre Список не пуст (assert).
+         */
         T& front() noexcept;
         const T& front() const noexcept;
+
+        /**
+         * @brief Возвращает ссылку на последний элемент.
+         * @return Ссылка на последний элемент.
+         * @pre Список не пуст (assert).
+         */
         T& back() noexcept;
         const T& back() const noexcept;
 
+        /**
+         * @brief Вставляет элемент в начало списка (копированием).
+         * @param value Добавляемый элемент.
+         * @throw std::bad_alloc при нехватке памяти или исключение конструктора T.
+         */
         void push_front(const T& value);
         void push_front(T&& value);
+
+        /**
+         * @brief Вставляет элемент в конец списка (копированием).
+         * @param value Добавляемый элемент.
+         */
         void push_back(const T& value);
         void push_back(T&& value);
+
+        /**
+         * @brief Удаляет первый элемент и возвращает его копию.
+         * @return Копия удалённого элемента (перемещённая).
+         * @pre Список не пуст (assert).
+         * @note Обеспечивает строгую гарантию безопасности исключений (noexcept).
+         */
         T pop_front() noexcept;
+
+        /**
+         * @brief Удаляет последний элемент и возвращает его копию.
+         * @return Копия удалённого элемента (перемещённая).
+         * @pre Список не пуст (assert).
+         * @note noexcept.
+         */
         T pop_back() noexcept;
+
+
+
+
+        // ==================== ИТЕРАТОРЫ ====================
 
         class Iterator;
         class ConstIterator;
         using ReverseIterator = std::reverse_iterator<Iterator>;
         using ConstReverseIterator = std::reverse_iterator<ConstIterator>;
 
+        /**
+         * @brief Возвращает итератор на первый элемент.
+         */
         Iterator begin() noexcept;
+
+        /** @copydoc begin() const */
         ConstIterator begin() const noexcept;
+
+        /** @copydoc begin() const (константный итератор) */
         ConstIterator cbegin() const noexcept;
+
+        /**
+         * @brief Возвращает итератор на элемент, следующий за последним (фиктивный узел).
+         */
         Iterator end() noexcept;
+
+         /** @copydoc end() const */
         ConstIterator end() const noexcept;
+
+        /** @copydoc end() const (константный итератор) */
         ConstIterator cend() const noexcept;
+
+        /**
+         * @brief Возвращает обратный итератор на последний элемент.
+         */
         ReverseIterator rbegin() noexcept;
+
+        /** @copydoc rbegin() const */
         ConstReverseIterator rbegin() const noexcept;
+
+        /** @copydoc rbegin() const (константный обратный) */
         ConstReverseIterator crbegin() const noexcept;
+
+        /**
+         * @brief Возвращает обратный итератор на элемент, предшествующий первому.
+         */
         ReverseIterator rend() noexcept;
+
+        /** @copydoc rend() const */
         ConstReverseIterator rend() const noexcept;
+
+        /** @copydoc rend() const (константный обратный) */
         ConstReverseIterator crend() const noexcept;
 
+
+
+        // ==================== ВСТАВКА И УДАЛЕНИЕ ПО ПОЗИЦИИ ====================
+
+        /**
+         * @brief Вставляет элемент перед позицией pos (копированием).
+         * @param pos   Итератор, перед которым вставляется элемент (может быть end()).
+         * @param value Вставляемое значение.
+         * @return Итератор на новый элемент.
+         * @throw std::bad_alloc или исключение конструктора T.
+         */
         Iterator insert(ConstIterator pos, const T& value); // вставляет элемент перед позицией pos, возвращает итератор на новый элемент.
         Iterator insert(ConstIterator pos, T&& value);
+
+        /**
+         * @brief Удаляет элемент в позиции pos.
+         * @param pos Итератор на удаляемый элемент (не должен быть end()).
+         * @return Итератор на элемент, следующий за удалённым.
+         * @pre pos != end().
+         * @note Если pos == end(), возвращает end().
+         */
         Iterator erase(ConstIterator pos); // удаляет элемент в позиции pos, возвращает итератор на следующий элемент.
 
+
+
+        // ==================== РАЗМЕР И СВОЙСТВА ====================
+
+        /**
+         * @brief Возвращает количество элементов.
+         */
         size_t size() const noexcept { return m_size; }
+
+        /**
+         * @brief Проверяет, пуст ли список.
+         * @return true, если size() == 0.
+         */
         bool empty() const noexcept { return m_size == 0; }
+
+        /**
+         * @brief Явное приведение к bool: true, если список не пуст.
+         */
         explicit operator bool() const noexcept { return !empty(); };
+
+        /**
+         * @brief Очищает список (удаляет все элементы и освобождает память).
+         */
         void clear() noexcept { destroyAll(); }
 
+        /**
+         * @brief Изменяет размер списка.
+         * @param newSize Новый размер.
+         * @param value   Значение для инициализации добавляемых элементов (если newSize > текущего).
+         * @throw std::bad_alloc или исключение конструктора T при увеличении.
+         * @note При уменьшении элементы удаляются, память освобождается.
+         */
         void resize(size_t newSize, const T& value = T()); // изменяет размер; при увеличении вставляет копии value.
+
+        /**
+         * @brief Обменивает содержимое с другим списком за O(1).
+         * @param other Другой список.
+         */
         void swap(List& other) noexcept;
     }; // end class List
 
@@ -119,6 +394,11 @@ namespace mylib
     {
         T value{};
 
+        /**
+         * @brief Конструирует узел с переданными аргументами для value.
+         * @tparam ARGS Типы аргументов.
+         * @param args Аргументы для конструктора T.
+         */
         template<typename... ARGS>
         Node(ARGS&&... args)
             : value { std::forward<ARGS>(args)... }
@@ -126,11 +406,17 @@ namespace mylib
     };
 
 
+    /**
+     * @brief Итератор произвольного доступа (двунаправленный) для List.
+     *
+     * Позволяет обходить элементы списка в обоих направлениях.
+     * Поддерживает инкремент, декремент, разыменование и сравнение.
+     */
     template<typename T, typename ALLOCATOR>
     class List<T, ALLOCATOR>::Iterator final
     {
     private:
-        Node* m_currentNode;
+        Node* m_currentNode; ///< Указатель на текущий узел.
 
     public:
         using iterator_category = std::bidirectional_iterator_tag;
@@ -138,7 +424,7 @@ namespace mylib
         using pointer           = T*;
         using reference         = T&;
 
-        friend class ConstIterator;
+        friend class ConstIterator; ///< Для доступа к m_currentNode при конвертации.
 
         constexpr explicit Iterator(BaseNode* node = nullptr) noexcept;
         constexpr T&        operator*() const noexcept;
@@ -154,11 +440,17 @@ namespace mylib
 
 
 
+    /**
+     * @brief Константный итератор для List.
+     *
+     * Предоставляет доступ только для чтения к элементам.
+     * Может быть неявно создан из Iterator.
+     */
     template<typename T, typename ALLOCATOR>
     class List<T, ALLOCATOR>::ConstIterator final
     {
     private:
-        const Node* m_currentNode;
+        const Node* m_currentNode; ///< Указатель на текущий узел (константный).
 
     public:
         using iterator_category = std::bidirectional_iterator_tag;
