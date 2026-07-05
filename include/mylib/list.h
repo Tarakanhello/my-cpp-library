@@ -1060,10 +1060,23 @@ template<typename T, typename ALLOCATOR>
 mylib::List<T, ALLOCATOR>::
     List(List&& other) noexcept
         : m_sentinel{ &m_sentinel, &m_sentinel }
-        , m_size{ other.m_size }
+        , m_size{ 0 }
         , m_nodeAllocator{ std::move(other.m_nodeAllocator) }
 {
-    swap(other);
+    if (!other.empty())
+    {
+        BaseNode* first{ other.root() };
+        BaseNode* last{ other.tail() };
+
+        m_sentinel.nextPtr = first;
+        m_sentinel.prevPtr = last;
+
+        first->prevPtr = &m_sentinel;
+        last->nextPtr  = &m_sentinel;
+        m_size = other.m_size;
+
+        other.release();
+    }
 }
 
 
