@@ -149,6 +149,7 @@ namespace mylib
         constexpr Iterator  operator--(int) noexcept;
         constexpr bool      operator!=(const Iterator& other) const noexcept;
         constexpr bool      operator==(const Iterator& other) const noexcept;
+        constexpr const BaseNode* getNode() const noexcept { return m_currentNode; }
     }; // end class Iterator
 
 
@@ -175,6 +176,7 @@ namespace mylib
         constexpr ConstIterator  operator--(int) noexcept;
         constexpr bool      operator!=(const ConstIterator& other) const noexcept;
         constexpr bool      operator==(const ConstIterator& other) const noexcept;
+        constexpr const BaseNode* getNode() const noexcept { return m_currentNode; }
     }; // end class Iterator
 
 } // end namespace
@@ -511,7 +513,27 @@ mylib::List<T, ALLOCATOR>::ConstIterator mylib::List<T, ALLOCATOR>::
 
 
 template<typename T, typename ALLOCATOR>
-T& mylib::List<T, ALLOCATOR>::front() noexcept
+mylib::List<T, ALLOCATOR>::Iterator mylib::List<T, ALLOCATOR>::erase(ConstIterator pos)
+{
+    if(pos == cend())
+    {
+        return end();
+    }
+
+    BaseNode* node{ const_cast<BaseNode*>(pos.getNode()) };
+    cutNode(node);
+    BaseNode* nextNode{ node->nextPtr };
+    destroyNode(static_cast<Node*>(node));
+    deallocateNode(static_cast<Node*>(node));
+
+    return Iterator{ nextNode };
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+T& mylib::List<T, ALLOCATOR>::
+    front() noexcept
 {
     assert(!empty());
 
@@ -521,13 +543,35 @@ T& mylib::List<T, ALLOCATOR>::front() noexcept
 
 
 template<typename T, typename ALLOCATOR>
-const T& mylib::List<T, ALLOCATOR>::front() const noexcept
+const T& mylib::List<T, ALLOCATOR>::
+    front() const noexcept
 {
     assert(!empty());
 
     return (static_cast<const Node*>(root()))->value;
 }
 
+
+
+template<typename T, typename ALLOCATOR>
+mylib::List<T, ALLOCATOR>::Iterator mylib::List<T, ALLOCATOR>::
+    insert(ConstIterator pos, const T& value)
+{
+    Node* newNode{ createNode(value) };
+    insertBefore(const_cast<BaseNode*>(pos.getNode()), newNode);
+    return Iterator{ newNode };
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+mylib::List<T, ALLOCATOR>::Iterator mylib::List<T, ALLOCATOR>::
+    insert(ConstIterator pos, T&& value)
+{
+    Node* newNode{ createNode(std::move(value)) };
+    insertBefore(const_cast<BaseNode*>(pos.getNode()), newNode);
+    return Iterator{ newNode };
+}
 
 
 template<typename T, typename ALLOCATOR>
@@ -673,21 +717,7 @@ mylib::List<T, ALLOCATOR>::
         , m_size { 0 }
         , m_nodeAllocator { alloc }
 {
-    while(m_size < count)
-    {
-        Node* newNodePtr{ nullptr };
-        try
-        {
-            newNodePtr = createNode(value);
-        }
-        catch (...)
-        {
-            destroyAll();
-            throw;
-        }
-
-        insertAfter(tail(), newNodePtr);
-    }
+    resize(count, value);
 }
 
 
@@ -896,6 +926,47 @@ void mylib::List<T, ALLOCATOR>::
     m_size = 0;
     m_sentinel.nextPtr = &m_sentinel;
     m_sentinel.prevPtr = &m_sentinel;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::List<T, ALLOCATOR>::resize(size_t newSize, const T& value)
+{
+    if(newSize == m_size)
+    {
+        return;
+    }
+
+    if(newSize < m_size)
+    {
+        while(m_size > newSize)
+        {
+            Node* back{ static_cast<Node*>(tail()) };
+            cutNode(tail());
+            destroyNode(back);
+            deallocateNode(back);
+        }
+        return;
+    }
+
+    BaseNode* begin{ tail() };
+
+    while(m_size < newSize)
+    {
+        Node* newNodePtr{ nullptr };
+        try
+        {
+            newNodePtr = createNode(value);
+        }
+        catch (...)
+        {
+            destroyElementsInRange(begin->nextPtr, &m_sentinel);
+            throw;
+        }
+
+        insertAfter(tail(), newNodePtr);
+    }
 }
 
 
