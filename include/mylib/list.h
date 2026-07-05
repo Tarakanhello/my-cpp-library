@@ -1059,11 +1059,11 @@ mylib::List<T, ALLOCATOR>::
 template<typename T, typename ALLOCATOR>
 mylib::List<T, ALLOCATOR>::
     List(List&& other) noexcept
-        : m_sentinel{ std::move(other.m_sentinel) }
+        : m_sentinel{ &m_sentinel, &m_sentinel }
         , m_size{ other.m_size }
         , m_nodeAllocator{ std::move(other.m_nodeAllocator) }
 {
-    other.release();
+    swap(other);
 }
 
 
