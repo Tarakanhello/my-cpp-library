@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -58,7 +59,7 @@ namespace mylib
          * @return Указатель на выделенную память.
          * @throw std::bad_alloc при нехватке памяти.
          */
-        Node* allocateNode() const;
+        Node* allocateNode();
 
         /**
          * @brief Конструирует элементы из диапазона и вставляет их в конец списка.
@@ -171,7 +172,6 @@ namespace mylib
          * @param alloc Аллокатор.
          */
         List(std::initializer_list<T> list, const ALLOCATOR& alloc = ALLOCATOR());
-        template <typename INPUT_IT>
 
         /**
          * @brief Конструктор из произвольного диапазона итераторов.
@@ -180,6 +180,8 @@ namespace mylib
          * @param last  Конец диапазона.
          * @param alloc Аллокатор.
          */
+        template <typename INPUT_IT>
+            requires std::input_iterator<INPUT_IT>
         List(INPUT_IT first, INPUT_IT last, const ALLOCATOR& alloc = ALLOCATOR());
 
         /**
@@ -416,11 +418,12 @@ namespace mylib
     class List<T, ALLOCATOR>::Iterator final
     {
     private:
-        Node* m_currentNode; ///< Указатель на текущий узел.
+        BaseNode* m_currentNode; ///< Указатель на текущий узел.
 
     public:
         using iterator_category = std::bidirectional_iterator_tag;
         using value_type        = T;
+        using difference_type   = std::ptrdiff_t;
         using pointer           = T*;
         using reference         = T&;
 
@@ -450,11 +453,12 @@ namespace mylib
     class List<T, ALLOCATOR>::ConstIterator final
     {
     private:
-        const Node* m_currentNode; ///< Указатель на текущий узел (константный).
+        const BaseNode* m_currentNode; ///< Указатель на текущий узел (константный).
 
     public:
         using iterator_category = std::bidirectional_iterator_tag;
         using value_type        = T;
+        using difference_type   = std::ptrdiff_t;
         using pointer           = const T*;
         using reference         = const T&;
 
@@ -477,9 +481,9 @@ namespace mylib
 
 template<typename T, typename ALLOCATOR>
 mylib::List<T, ALLOCATOR>::Node* mylib::List<T, ALLOCATOR>::
-    allocateNode() const
+    allocateNode()
 {
-    return typename List<T, ALLOCATOR>::ALLOC_TRAITS::allocate(m_nodeAllocator, 1);
+    return List<T, ALLOCATOR>::ALLOC_TRAITS::allocate(m_nodeAllocator, 1);
 }
 
 
@@ -545,7 +549,7 @@ mylib::List<T, ALLOCATOR>::ConstIterator mylib::List<T, ALLOCATOR>::
 template<typename T, typename ALLOCATOR>
 constexpr mylib::List<T, ALLOCATOR>::ConstIterator::
     ConstIterator(const BaseNode* node ) noexcept
-        : m_currentNode{ static_cast<const Node*>(node) }
+        : m_currentNode{ node }
 {}
 
 
@@ -564,7 +568,7 @@ constexpr const T& mylib::List<T, ALLOCATOR>::
 {
     assert(m_currentNode);
 
-    return m_currentNode->value;
+    return static_cast<const Node*>(m_currentNode)->value;
 }
 
 
@@ -575,7 +579,7 @@ constexpr const T* mylib::List<T, ALLOCATOR>::
 {
     assert(m_currentNode);
 
-    return &(m_currentNode->value);
+    return &(static_cast<const Node*>(m_currentNode)->value);
 }
 
 
@@ -687,7 +691,7 @@ template<typename... ARGS>
 void mylib::List<T, ALLOCATOR>::
     constructNode(Node* nodePtr, ARGS&&... args)
 {
-    typename List<T, ALLOCATOR>::ALLOC_TRAITS::construct(m_nodeAllocator, nodePtr, std::forward<ARGS>(args)...);
+    List<T, ALLOCATOR>::ALLOC_TRAITS::construct(m_nodeAllocator, nodePtr, std::forward<ARGS>(args)...);
 }
 
 
@@ -747,7 +751,7 @@ template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::
     deallocateNode(Node* nodePtr) noexcept
 {
-    typename List<T, ALLOCATOR>::ALLOC_TRAITS::deallocate(m_nodeAllocator, nodePtr, 1);
+    List<T, ALLOCATOR>::ALLOC_TRAITS::deallocate(m_nodeAllocator, nodePtr, 1);
 }
 
 
@@ -781,7 +785,7 @@ template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::
     destroyNode(Node* nodePtr)
 {
-    typename List<T, ALLOCATOR>::ALLOC_TRAITS::destroy(m_nodeAllocator, nodePtr);
+    List<T, ALLOCATOR>::ALLOC_TRAITS::destroy(m_nodeAllocator, nodePtr);
 }
 
 
@@ -895,7 +899,7 @@ void mylib::List<T, ALLOCATOR>::
 template<typename T, typename ALLOCATOR>
 constexpr mylib::List<T, ALLOCATOR>::Iterator::
     Iterator(BaseNode* node) noexcept
-    : m_currentNode{ static_cast<Node*>(node) }
+    : m_currentNode{ node }
 {}
 
 
@@ -906,7 +910,7 @@ constexpr T& mylib::List<T, ALLOCATOR>::
 {
     assert(m_currentNode);
 
-    return m_currentNode->value;
+    return static_cast<Node*>(m_currentNode)->value;
 }
 
 
@@ -917,7 +921,7 @@ constexpr T* mylib::List<T, ALLOCATOR>::
 {
     assert(m_currentNode);
 
-    return &(m_currentNode->value);
+    return &(static_cast<Node*>(m_currentNode)->value);
 }
 
 
@@ -1028,6 +1032,7 @@ mylib::List<T, ALLOCATOR>::
 
 template<typename T, typename ALLOCATOR>
 template <typename INPUT_IT>
+    requires std::input_iterator<INPUT_IT>
 mylib::List<T, ALLOCATOR>::
     List(INPUT_IT first, INPUT_IT last, const ALLOCATOR& alloc)
         : m_sentinel{ &m_sentinel, &m_sentinel }
