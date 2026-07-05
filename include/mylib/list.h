@@ -820,6 +820,7 @@ T mylib::List<T, ALLOCATOR>::pop_front() noexcept
 
     T value{ std::move(front->value) };
 
+    destroyNode(front);
     deallocateNode(front);
 
     return value;
@@ -837,6 +838,7 @@ T mylib::List<T, ALLOCATOR>::pop_back() noexcept
 
     T value{ std::move(back->value) };
 
+    destroyNode(back);
     deallocateNode(back);
 
     return value;
