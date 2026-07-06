@@ -895,6 +895,10 @@ TEST_CASE("ChunkedArray overflow and huge sizes", "[chunked_array][overflow]")
     using ChunkedInt = mylib::ChunkedArray<int>;
     const size_t huge = std::numeric_limits<size_t>::max() / 2;
 
+    #if UINTPTR_MAX == 0xFFFFFFFF
+    // 32-bit – пропускаем, так как huge может не вызвать bad_alloc
+    SKIP("Test requires 64-bit address space to guarantee bad_alloc");
+#else
     SECTION("constructor with huge size throws std::bad_alloc or std::length_error")
     {
         // Попытка создать массив с размером, близким к максимальному size_t
@@ -914,6 +918,7 @@ TEST_CASE("ChunkedArray overflow and huge sizes", "[chunked_array][overflow]")
         ChunkedInt arr;
         REQUIRE_THROWS_AS(arr.resize(huge, 42), std::bad_alloc);
     }
+    #endif // UINTPTR_MAX
 }
 
 

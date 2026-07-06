@@ -337,7 +337,6 @@ TEST_CASE("Stage 2: push_front, push_back, pop_front, pop_back", "[list][modifie
 
 
 
-
 TEST_CASE("Stage 3: Iterators (mutable, const, reverse)", "[list][iterators]")
 {
     // Общие данные
