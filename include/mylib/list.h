@@ -472,6 +472,7 @@ namespace mylib
         constexpr ConstIterator  operator--(int) noexcept;
         constexpr bool      operator!=(const ConstIterator& other) const noexcept;
         constexpr bool      operator==(const ConstIterator& other) const noexcept;
+        constexpr bool      operator==(const Iterator& other) const noexcept;
         constexpr const BaseNode* getNode() const noexcept { return m_currentNode; }
     }; // end class Iterator
 
@@ -648,6 +649,15 @@ constexpr bool mylib::List<T, ALLOCATOR>::
 template<typename T, typename ALLOCATOR>
 constexpr bool mylib::List<T, ALLOCATOR>::
     ConstIterator::operator==(const ConstIterator& other) const noexcept
+{
+    return m_currentNode == other.m_currentNode;
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+constexpr bool mylib::List<T, ALLOCATOR>::
+    ConstIterator::operator==(const Iterator& other) const noexcept
 {
     return m_currentNode == other.m_currentNode;
 }
