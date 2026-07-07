@@ -1298,6 +1298,13 @@ void mylib::List<T, ALLOCATOR>::swap(List& other) noexcept
 {
     std::swap(m_size, other.m_size);
     std::swap(m_sentinel, other.m_sentinel);
+
+    // Иправление данныъ после свапа
+    tail()->nextPtr = &m_sentinel;
+    root()->prevPtr = &m_sentinel;
+    other.tail()->nextPtr = &other.m_sentinel;
+    other.root()->prevPtr = &other.m_sentinel;
+
     std::swap(m_nodeAllocator, other.m_nodeAllocator);
 }
 
