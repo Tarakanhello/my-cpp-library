@@ -122,6 +122,8 @@ namespace mylib
          */
         void destroyNode(Node* nodePtr);
 
+        void fixSentinelLinks();
+
         /**
          * @brief Вставляет узел newNodePtr после positionPtr.
          * @param positionPtr Узел, после которого вставляем.
@@ -836,6 +838,14 @@ mylib::List<T, ALLOCATOR>::Iterator mylib::List<T, ALLOCATOR>::erase(ConstIterat
 }
 
 
+template<typename T, typename ALLOCATOR>
+void mylib::List<T, ALLOCATOR>::fixSentinelLinks()
+{
+    root()->prevPtr = &m_sentinel;
+    tail()->nextPtr = &m_sentinel;
+}
+
+
 
 template<typename T, typename ALLOCATOR>
 T& mylib::List<T, ALLOCATOR>::
@@ -1299,11 +1309,8 @@ void mylib::List<T, ALLOCATOR>::swap(List& other) noexcept
     std::swap(m_size, other.m_size);
     std::swap(m_sentinel, other.m_sentinel);
 
-    // Иправление данныъ после свапа
-    tail()->nextPtr = &m_sentinel;
-    root()->prevPtr = &m_sentinel;
-    other.tail()->nextPtr = &other.m_sentinel;
-    other.root()->prevPtr = &other.m_sentinel;
+    fixSentinelLinks();
+    other.fixSentinelLinks();
 
     std::swap(m_nodeAllocator, other.m_nodeAllocator);
 }
