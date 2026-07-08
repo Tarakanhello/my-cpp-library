@@ -841,6 +841,13 @@ mylib::List<T, ALLOCATOR>::Iterator mylib::List<T, ALLOCATOR>::erase(ConstIterat
 template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::fixSentinelLinks()
 {
+    if(empty())
+    {
+        m_sentinel.nextPtr = &m_sentinel;
+        m_sentinel.prevPtr = &m_sentinel;
+        return;
+    }
+
     root()->prevPtr = &m_sentinel;
     tail()->nextPtr = &m_sentinel;
 }
@@ -1306,13 +1313,17 @@ void mylib::List<T, ALLOCATOR>::resize(size_t newSize, const T& value)
 template<typename T, typename ALLOCATOR>
 void mylib::List<T, ALLOCATOR>::swap(List& other) noexcept
 {
+    if(this == &other)
+    {
+        return;
+    }
+
     std::swap(m_size, other.m_size);
+    std::swap(m_nodeAllocator, other.m_nodeAllocator);
     std::swap(m_sentinel, other.m_sentinel);
 
     fixSentinelLinks();
     other.fixSentinelLinks();
-
-    std::swap(m_nodeAllocator, other.m_nodeAllocator);
 }
 
 
