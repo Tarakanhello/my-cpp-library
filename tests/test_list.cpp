@@ -835,3 +835,163 @@ TEST_CASE("Stage 5: Assignment operators and swap", "[list][assignment][swap]")
         REQUIRE(toVector(b) == std::vector<int>{ 20 });
     }
 }
+
+
+
+TEST_CASE("Stage 6: resize and clear", "[list][resize][clear]")
+{
+    // Общие данные
+    const int defaultValue{ 0 };
+    const int customValue{ 42 };
+    const std::string strDefault{ "" };
+    const std::string strCustom{ "filled" };
+
+    SECTION("resize: increase size with default value")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        lst.resize(5);
+        REQUIRE(lst.size() == 5);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3, 0, 0 });
+        // front/back работают корректно
+        REQUIRE(lst.front() == 1);
+        REQUIRE(lst.back() == 0);
+    }
+
+    SECTION("resize: increase size with custom value")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        lst.resize(5, customValue);
+        REQUIRE(lst.size() == 5);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3, customValue, customValue });
+    }
+
+    SECTION("resize: decrease size (truncate)")
+    {
+        mylib::List<int> lst{ 1, 2, 3, 4, 5 };
+        lst.resize(3);
+        REQUIRE(lst.size() == 3);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3 });
+    }
+
+    SECTION("resize: decrease size to zero")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        lst.resize(0);
+        REQUIRE(lst.empty());
+        REQUIRE(lst.size() == 0);
+        lst.push_back(10);
+        REQUIRE(toVector(lst) == std::vector<int>{ 10 });
+    }
+
+    SECTION("resize: same size (no change)")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        lst.resize(3);
+        REQUIRE(lst.size() == 3);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3 });
+        // Проверяем, что добавление с тем же размером не меняет значения
+        lst.resize(3, customValue);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3 });
+    }
+
+    SECTION("resize: from empty list with default value")
+    {
+        mylib::List<int> lst;
+        lst.resize(4);
+        REQUIRE(lst.size() == 4);
+        REQUIRE(toVector(lst) == std::vector<int>(4, 0));
+    }
+
+    SECTION("resize: from empty list with custom value")
+    {
+        mylib::List<int> lst;
+        lst.resize(4, customValue);
+        REQUIRE(lst.size() == 4);
+        REQUIRE(toVector(lst) == std::vector<int>(4, customValue));
+    }
+
+    SECTION("resize: with non-default type (std::string)")
+    {
+        mylib::List<std::string> lst{ "a", "b" };
+        lst.resize(4, strCustom);
+        REQUIRE(lst.size() == 4);
+        REQUIRE(toVector(lst) == std::vector<std::string>{ "a", "b", strCustom, strCustom });
+        lst.resize(2);
+        REQUIRE(toVector(lst) == std::vector<std::string>{ "a", "b" });
+    }
+
+    SECTION("resize: large increase (performance)")
+    {
+        mylib::List<int> lst;
+        lst.resize(10000, 7);
+        REQUIRE(lst.size() == 10000);
+        // Проверяем только первый и последний элемент для скорости
+        REQUIRE(lst.front() == 7);
+        // Не можем легко получить последний, но можем через итераторы
+        auto it{ lst.begin() };
+        std::advance(it, 9999);
+        REQUIRE(*it == 7);
+    }
+
+    SECTION("clear: non-empty list")
+    {
+        mylib::List<int> lst{ 1, 2, 3, 4, 5 };
+        lst.clear();
+        REQUIRE(lst.empty());
+        REQUIRE(lst.size() == 0);
+        // Проверяем, что можно снова использовать
+        lst.push_back(10);
+        lst.push_back(20);
+        REQUIRE(toVector(lst) == std::vector<int>{ 10, 20 });
+    }
+
+    SECTION("clear: empty list")
+    {
+        mylib::List<int> lst;
+        lst.clear();
+        REQUIRE(lst.empty());
+        REQUIRE(lst.size() == 0);
+        // Ничего не сломалось
+    }
+
+    SECTION("clear: after resize")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        lst.resize(5, 9);
+        lst.clear();
+        REQUIRE(lst.empty());
+        lst.push_back(100);
+        REQUIRE(toVector(lst) == std::vector<int>{ 100 });
+    }
+
+    SECTION("clear: check memory deallocation (indirectly)")
+    {
+        // Создаем список, добавляем много элементов, очищаем, затем добавляем новые.
+        {
+            mylib::List<int> big(1000, 5);
+            big.clear();
+            REQUIRE(big.empty());
+            big.resize(500, 3);
+            REQUIRE(big.size() == 500);
+        }
+        SUCCEED("clear and reuse completed without crashes");
+    }
+
+    SECTION("resize with custom value after clear")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        lst.clear();
+        lst.resize(3, customValue);
+        REQUIRE(toVector(lst) == std::vector<int>(3, customValue));
+    }
+
+    SECTION("resize(0) is equivalent to clear")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        lst.resize(0);
+        REQUIRE(lst.empty());
+        // После resize(0) список пуст, как и после clear
+        lst.push_back(5);
+        REQUIRE(toVector(lst) == std::vector<int>{ 5 });
+    }
+}
