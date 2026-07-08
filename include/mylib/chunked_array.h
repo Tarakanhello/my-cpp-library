@@ -363,7 +363,7 @@ namespace mylib
         class Iterator;
         class ConstIterator;
         using ReverseIterator = std::reverse_iterator<Iterator>;
-        using constReverseIterator = std::reverse_iterator<ConstIterator>;
+        using ConstReverseIterator = std::reverse_iterator<ConstIterator>;
 
         /**
          * @brief Возвращает итератор на первый элемент.
@@ -403,12 +403,12 @@ namespace mylib
         /**
          * @brief Возвращает константный обратный итератор на элемент, следующий за последним.
          */
-        constexpr constReverseIterator rbegin() const noexcept;
+        constexpr ConstReverseIterator rbegin() const noexcept;
 
         /**
          * @brief Возвращает константный обратный итератор на элемент, следующий за последним.
          */
-        constexpr constReverseIterator crbegin() const noexcept;
+        constexpr ConstReverseIterator crbegin() const noexcept;
 
         /**
          * @brief Возвращает обратный итератор на первый элемент.
@@ -417,13 +417,22 @@ namespace mylib
         /**
          * @brief Возвращает константный обратный итератор на первый элемент.
          */
-        constexpr constReverseIterator rend() const noexcept;
+        constexpr ConstReverseIterator rend() const noexcept;
 
         /**
          * @brief Возвращает константный обратный итератор на первый элемент.
          */
-        constexpr constReverseIterator crend() const noexcept;
+        constexpr ConstReverseIterator crend() const noexcept;
 
+        using value_type             = T;
+        using reference              = T&;
+        using const_reference        = const T&;
+        using size_type              = size_t;
+        using difference_type        = std::ptrdiff_t;
+        using iterator               = Iterator;
+        using const_iterator         = ConstIterator;
+        using reverse_iterator       = ReverseIterator;
+        using const_reverse_iterator = ConstReverseIterator;
     }; // end class ChunkedArray
 
 
@@ -1286,7 +1295,7 @@ void mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::clear()
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
-constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::constReverseIterator
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ConstReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     crbegin() const noexcept
 {
@@ -1298,7 +1307,7 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::constReverseIterator
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
-constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::constReverseIterator
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ConstReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     crend() const noexcept
 {
@@ -1849,11 +1858,11 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ReverseIterator
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
-constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::constReverseIterator
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ConstReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     rbegin() const noexcept
 {
-    return constReverseIterator(cend());
+    return ConstReverseIterator(cend());
 
 }
 
@@ -1880,11 +1889,11 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ReverseIterator
 
 
 template<typename T, size_t CHUNK_SIZE, typename ALLOCATOR>
-constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::constReverseIterator
+constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::ConstReverseIterator
     mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     rend() const noexcept
 {
-    return constReverseIterator(cbegin());
+    return ConstReverseIterator(cbegin());
 }
 
 

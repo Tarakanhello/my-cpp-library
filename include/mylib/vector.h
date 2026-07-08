@@ -407,6 +407,14 @@ namespace mylib
          * @brief Возвращает константный обратный итератор на первый элемент.
          */
         constexpr const_reverse_iterator crend() const noexcept;
+
+        using value_type             = T;
+        using reference              = T&;
+        using const_reference        = const T&;
+        using size_type              = size_t;
+        using difference_type        = std::ptrdiff_t;
+        using iterator               = Iterator;
+        using const_iterator         = ConstIterator;
     };
 
 
