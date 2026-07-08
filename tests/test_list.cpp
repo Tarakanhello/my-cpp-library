@@ -1,8 +1,15 @@
 #include <catch2/catch_all.hpp>
 #include <catch2/matchers/catch_matchers_vector.hpp>
 
+#include <algorithm>
+#include <iterator>
+#include <list>
+#include <numeric>
+#include <queue>
 #include <random>
+#include <stack>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "mylib/mylib.h"
@@ -1614,5 +1621,284 @@ TEST_CASE("Stage 8: Integration tests (random operations, iterator validity, inv
         expected = { 10, 11, 12, 13, 14 };
         REQUIRE(toVector(lst) == expected);
         REQUIRE(isConsistent(lst));
+    }
+}
+
+
+
+TEST_CASE("Stage 9: STL compatibility (algorithms, adapters, concepts)", "[list][stl]") {
+
+    SECTION("Non-modifying algorithms")
+    {
+        mylib::List<int> lst{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+
+        // std::find
+        auto found{ std::find(lst.begin(), lst.end(), 5) };
+        REQUIRE(found != lst.end());
+        REQUIRE(*found == 5);
+        auto notFound{ std::find(lst.begin(), lst.end(), 99) };
+        REQUIRE(notFound == lst.end());
+
+        // std::for_each
+        int sum{};
+        std::for_each(lst.begin(), lst.end(), [&sum](int x) { sum += x; });
+        REQUIRE(sum == 55); // 1+2+...+10
+
+        // std::count
+        auto cnt{ std::count(lst.begin(), lst.end(), 3) };
+        REQUIRE(cnt == 1);
+
+        // std::accumulate (from <numeric>)
+        auto acc{ std::accumulate(lst.begin(), lst.end(), 0) };
+        REQUIRE(acc == 55);
+        auto accMul{ std::accumulate(lst.begin(), lst.end(), 1, std::multiplies<int>()) };
+        REQUIRE(accMul == 3628800); // 10!
+
+        // std::equal – compare with vector
+        std::vector<int> vec{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+        REQUIRE(std::equal(lst.begin(), lst.end(), vec.begin()));
+
+        // std::lexicographical_compare
+        mylib::List<int> lst2{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 11 };
+        REQUIRE(std::lexicographical_compare(lst.begin(), lst.end(), lst2.begin(), lst2.end()));
+        REQUIRE_FALSE(std::lexicographical_compare(lst2.begin(), lst2.end(), lst.begin(), lst.end()));
+    }
+
+    SECTION("Modifying algorithms (compatible with bidirectional iterators)")
+    {
+        mylib::List<int> lst{ 1, 2, 3, 4, 5 };
+
+        // std::reverse
+        std::reverse(lst.begin(), lst.end());
+        REQUIRE(toVector(lst) == std::vector<int>{ 5, 4, 3, 2, 1 });
+        // reverse back
+        std::reverse(lst.begin(), lst.end());
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3, 4, 5 });
+
+        // std::copy – into vector
+        std::vector<int> vec(5);
+        std::copy(lst.begin(), lst.end(), vec.begin());
+        REQUIRE(vec == std::vector<int>{ 1, 2, 3, 4, 5 });
+
+        // std::move – into another list (via inserter)
+        mylib::List<int> movedTo;
+        std::move(lst.begin(), lst.end(), std::back_inserter(movedTo));
+        // After move, elements of lst are in moved-from state, but we can check movedTo
+        REQUIRE(toVector(movedTo) == std::vector<int>{1, 2, 3, 4, 5});
+        // lst is still valid but its elements are unspecified; we clear it
+        lst.clear();
+
+        // std::fill
+        mylib::List<int> fillList(5, 0);
+        std::fill(fillList.begin(), fillList.end(), 7);
+        REQUIRE(toVector(fillList) == std::vector<int>(5, 7));
+
+        // std::generate
+        std::generate(fillList.begin(), fillList.end(), []() { static int n = 0; return ++n; });
+        REQUIRE(toVector(fillList) == std::vector<int>{1, 2, 3, 4, 5});
+
+        // std::replace
+        mylib::List<int> repList = {1, 2, 3, 2, 4, 2, 5};
+        std::replace(repList.begin(), repList.end(), 2, 99);
+        REQUIRE(toVector(repList) == std::vector<int>{1, 99, 3, 99, 4, 99, 5});
+
+        // std::transform
+        mylib::List<int> transList = {1, 2, 3, 4, 5};
+        std::transform(transList.begin(), transList.end(), transList.begin(),
+                       [](int x) { return x * 2; });
+        REQUIRE(toVector(transList) == std::vector<int>{2, 4, 6, 8, 10});
+    }
+
+    SECTION("Algorithms with std::back_inserter")
+    {
+        mylib::List<int> lst = {1, 2, 3};
+        mylib::List<int> dest;
+        std::copy(lst.begin(), lst.end(), std::back_inserter(dest));
+        REQUIRE(toVector(dest) == std::vector<int>{1, 2, 3});
+        // Also test with std::back_inserter on empty list
+        mylib::List<int> dest2;
+        std::fill_n(std::back_inserter(dest2), 5, 42);
+        REQUIRE(toVector(dest2) == std::vector<int>(5, 42));
+    }
+
+    SECTION("Constructing STL containers from List iterators")
+    {
+        mylib::List<int> lst = {10, 20, 30, 40, 50};
+
+        // Construct std::vector from List iterators
+        std::vector<int> vec(lst.begin(), lst.end());
+        REQUIRE(vec == std::vector<int>{10, 20, 30, 40, 50});
+
+        // Construct std::list from List iterators
+        std::list<int> stdList(lst.begin(), lst.end());
+        REQUIRE(std::equal(lst.begin(), lst.end(), stdList.begin()));
+
+        // Construct our List from std::list iterators (back)
+        mylib::List<int> fromStdList(stdList.begin(), stdList.end());
+        REQUIRE(toVector(fromStdList) == std::vector<int>{10, 20, 30, 40, 50});
+    }
+
+    SECTION("Range-based for loop (already tested, but ensure compatibility)")
+    {
+        mylib::List<int> lst = {1, 2, 3};
+        int sum = 0;
+        for (auto x : lst) {
+            sum += x;
+        }
+        REQUIRE(sum == 6);
+
+        for (auto& x : lst) {
+            x *= 2;
+        }
+        REQUIRE(toVector(lst) == std::vector<int>{2, 4, 6});
+
+        const auto& constLst = lst;
+        for (auto x : constLst) {
+            // x is read-only
+            REQUIRE(x % 2 == 0);
+        }
+    }
+
+    SECTION("STL adapters: std::stack and std::queue")
+    {
+        // std::stack requires: back(), push_back(), pop_back(), size(), empty()
+        // our List provides all of them
+        mylib::List<int> lst;
+        std::stack<int, mylib::List<int>> stk(lst); // uses our list as underlying container
+        stk.push(10);
+        stk.push(20);
+        stk.push(30);
+        REQUIRE(stk.size() == 3);
+        REQUIRE(stk.top() == 30);
+        stk.pop();
+        REQUIRE(stk.top() == 20);
+        stk.pop();
+        REQUIRE(stk.top() == 10);
+        stk.pop();
+        REQUIRE(stk.empty());
+
+        // std::queue requires: push_back(), pop_front(), front(), back(), size(), empty()
+        mylib::List<int> lst2;
+        std::queue<int, mylib::List<int>> que(lst2);
+        que.push(1);
+        que.push(2);
+        que.push(3);
+        REQUIRE(que.size() == 3);
+        REQUIRE(que.front() == 1);
+        REQUIRE(que.back() == 3);
+        que.pop();
+        REQUIRE(que.front() == 2);
+        que.pop();
+        REQUIRE(que.front() == 3);
+        que.pop();
+        REQUIRE(que.empty());
+    }
+
+    SECTION("Iterator traits and category")
+    {
+        using Iter = mylib::List<int>::Iterator;
+        using traits = std::iterator_traits<Iter>;
+        // Check that iterator_category is bidirectional_iterator_tag
+        static_assert(std::is_same_v<traits::iterator_category, std::bidirectional_iterator_tag>,
+                      "Iterator must be bidirectional");
+        // Check that value_type, pointer, reference are correct
+        static_assert(std::is_same_v<traits::value_type, int>);
+        static_assert(std::is_same_v<traits::pointer, int*>);
+        static_assert(std::is_same_v<traits::reference, int&>);
+
+        // Check const iterator as well
+        using ConstIter = mylib::List<int>::ConstIterator;
+        using traitsConst = std::iterator_traits<ConstIter>;
+        static_assert(std::is_same_v<traitsConst::iterator_category, std::bidirectional_iterator_tag>);
+        static_assert(std::is_same_v<traitsConst::value_type, int>);
+        static_assert(std::is_same_v<traitsConst::pointer, const int*>);
+        static_assert(std::is_same_v<traitsConst::reference, const int&>);
+    }
+
+    SECTION("std::sort should NOT compile (bidirectional iterators only)")
+    {
+        // This is a compile-time check; in runtime we just note that we cannot call std::sort.
+        // The test is only to document that sort is not supported.
+        // If someone tries to compile `std::sort(lst.begin(), lst.end())`, it will fail.
+        // We can add a comment and optionally a static_assert to guard against misuse.
+        // But we cannot "test" compilation failure in Catch2 directly, so we just leave a comment.
+        SUCCEED("std::sort is not required and will not compile, as expected.");
+    }
+
+    SECTION("std::reverse_iterator works via rbegin/rend (already tested, but double-check)")
+    {
+        mylib::List<int> lst = {1, 2, 3, 4, 5};
+        auto rit = lst.rbegin();
+        REQUIRE(*rit == 5);
+        ++rit;
+        REQUIRE(*rit == 4);
+        // Compare with std::reverse_iterator from end
+        auto stdRit = std::reverse_iterator(lst.end());
+        REQUIRE(*stdRit == 5);
+    }
+
+    SECTION("Algorithms with std::inserter for insert at specific positions")
+    {
+        mylib::List<int> src = {10, 20, 30};
+        mylib::List<int> dst = {1, 2, 3};
+        // Insert src at position 2 (before 3)
+        auto pos = std::next(dst.begin(), 2);
+        std::copy(src.begin(), src.end(), std::inserter(dst, pos));
+        // Expected: {1, 2, 10, 20, 30, 3}
+        REQUIRE(toVector(dst) == std::vector<int>{1, 2, 10, 20, 30, 3});
+    }
+
+    SECTION("std::move with move-only types (if applicable)")
+    {
+        // This is a bit advanced; we can skip for now if we don't have move-only types.
+        // But we can test with std::unique_ptr (which is move-only).
+        // Our list supports move-only types because insert/emplace use perfect forwarding.
+        // We'll test minimal: create list of unique_ptr and move them.
+        mylib::List<std::unique_ptr<int>> src;
+        src.push_back(std::make_unique<int>(1));
+        src.push_back(std::make_unique<int>(2));
+        src.push_back(std::make_unique<int>(3));
+
+        mylib::List<std::unique_ptr<int>> dst;
+        std::move(src.begin(), src.end(), std::back_inserter(dst));
+
+        REQUIRE(dst.size() == 3);
+        REQUIRE(*dst.front() == 1);
+        REQUIRE(*dst.back() == 3);
+        // src elements are moved-from, but we can check that size is still 3? Actually moving
+        // the elements does not change src.size() because the nodes are still there with moved-from
+        // unique_ptrs. But we can clear src.
+        src.clear();
+        REQUIRE(src.empty());
+        // Verify dst still has correct values
+        int sum = 0;
+        for (auto& ptr : dst) {
+            sum += *ptr;
+        }
+        REQUIRE(sum == 6);
+    }
+
+    SECTION("std::ranges algorithms")
+    {
+        mylib::List<int> lst = {1, 2, 3, 4, 5};
+
+        // std::ranges::find
+        auto it = std::ranges::find(lst, 3);
+        REQUIRE(it != lst.end());
+        REQUIRE(*it == 3);
+
+        // std::ranges::reverse
+        std::ranges::reverse(lst);
+        REQUIRE(toVector(lst) == std::vector<int>{5, 4, 3, 2, 1});
+
+        // std::ranges::copy
+        std::vector<int> vec(5);
+        std::ranges::copy(lst, vec.begin());
+        REQUIRE(vec == std::vector<int>{5, 4, 3, 2, 1});
+
+        // std::ranges::for_each
+        int sum = 0;
+        std::ranges::for_each(lst, [&sum](int x) { sum += x; });
+        REQUIRE(sum == 15);
     }
 }
