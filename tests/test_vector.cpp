@@ -937,11 +937,12 @@ TEST_CASE("Vector::appendVector", "[vector][appendVector]")
             v.push_back(i);
         }
         size_t oldCap{ v.capacity() };
-        mylib::Vector<int> add(5, 99);
+        mylib::Vector<int> add(7, 99);
 
         v.appendVector(add);
-        REQUIRE(v.size() == 15);
-        REQUIRE(v.capacity() >= 15);
+        REQUIRE(v.size() == 17);
+        REQUIRE(v.capacity() >= 17);
+        CHECK(oldCap < v.capacity());
         // Проверяем последние элементы
         for (size_t i = 10; i < 15; ++i)
         {
