@@ -380,6 +380,18 @@ namespace mylib
          * @param other Другой список.
          */
         void swap(List& other) noexcept;
+
+
+
+        using value_type             = T;
+        using reference              = T&;
+        using const_reference        = const T&;
+        using size_type              = size_t;
+        using difference_type        = std::ptrdiff_t;
+        using iterator               = Iterator;
+        using const_iterator         = ConstIterator;
+        using reverse_iterator       = ReverseIterator;
+        using const_reverse_iterator = ConstReverseIterator;
     }; // end class List
 
 
