@@ -670,3 +670,168 @@ TEST_CASE("Stage 4: Insert and erase by position", "[list][insert][erase]")
         REQUIRE(*after == 3);
     }
 }
+
+
+
+TEST_CASE("Stage 5: Assignment operators and swap", "[list][assignment][swap]")
+{
+    // Общие данные
+    mylib::List<int> source{ 1, 2, 3, 4, 5 };
+    mylib::List<int> empty;
+
+    SECTION("Copy assignment operator (operator=(const List&))")
+    {
+        mylib::List<int> target{ 10, 20, 30 };
+        target = source;
+        REQUIRE(target.size() == source.size());
+        REQUIRE(toVector(target) == toVector(source));
+        // Проверяем, что изменения в target не влияют на source
+        target.push_back(6);
+        REQUIRE(source.size() == 5);
+        REQUIRE(toVector(source) == std::vector<int>{ 1, 2, 3, 4, 5 });
+        REQUIRE(toVector(target) == std::vector<int>{ 1, 2, 3, 4, 5, 6 });
+    }
+
+    SECTION("Copy assignment: self-assignment")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        // Самоприсваивание должно работать корректно без повреждения данных
+        lst = lst;
+        REQUIRE(lst.size() == 3);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3 });
+        // Проверяем, что объект остался валидным
+        lst.push_back(4);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3, 4 });
+    }
+
+    SECTION("Copy assignment: assigning empty list to non-empty")
+    {
+        mylib::List<int> target{ 1, 2, 3 };
+        target = empty;
+        REQUIRE(target.empty());
+        REQUIRE(target.size() == 0);
+        // Можно повторно заполнить
+        target.push_back(42);
+        REQUIRE(toVector(target) == std::vector<int>{ 42 });
+    }
+
+    SECTION("Copy assignment: assigning to empty list")
+    {
+        mylib::List<int> target;
+        target = source;
+        REQUIRE(target.size() == source.size());
+        REQUIRE(toVector(target) == toVector(source));
+    }
+
+    SECTION("Move assignment operator (operator=(List&&))")
+    {
+        mylib::List<int> target{ 10, 20, 30 };
+        mylib::List<int> movedFrom{ 1, 2, 3, 4, 5 };
+        target = std::move(movedFrom);
+        REQUIRE(target.size() == 5);
+        REQUIRE(toVector(target) == std::vector<int>{ 1, 2, 3, 4, 5 });
+        // Исходный объект должен быть пустым (валидным)
+        REQUIRE(movedFrom.empty());
+        REQUIRE(movedFrom.size() == 0);
+        // Можно использовать movedFrom заново
+        movedFrom.push_back(100);
+        REQUIRE(movedFrom.size() == 1);
+        REQUIRE(movedFrom.front() == 100);
+        // Проверяем, что старые данные target были освобождены
+    }
+
+    SECTION("Move assignment: self-assignment")
+    {
+        mylib::List<int> lst{ 1, 2, 3 };
+        // Самоприсваивание перемещением не должно ничего делать
+        lst = std::move(lst);
+        REQUIRE(lst.size() == 3);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3 });
+        // Проверяем, что объект остался валидным
+        lst.push_back(4);
+        REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3, 4 });
+    }
+
+    SECTION("Move assignment: from empty to non-empty")
+    {
+        mylib::List<int> target{ 1, 2, 3 };
+        mylib::List<int> emptySrc;
+        target = std::move(emptySrc);
+        REQUIRE(target.empty());
+        REQUIRE(emptySrc.empty()); // перемещение из пустого списка в пустой – оба пусты
+    }
+
+    SECTION("swap: swap two non-empty lists")
+    {
+        mylib::List<int> a{ 1, 2, 3 };
+        mylib::List<int> b{ 10, 20, 30, 40 };
+        a.swap(b);
+        REQUIRE(toVector(a) == std::vector<int>{ 10, 20, 30, 40 });
+        REQUIRE(toVector(b) == std::vector<int>{ 1, 2, 3 });
+        REQUIRE(a.size() == 4);
+        REQUIRE(b.size() == 3);
+    }
+
+    SECTION("swap: with empty list")
+    {
+        mylib::List<int> a{ 1, 2 };
+        mylib::List<int> b;
+        a.swap(b);
+        REQUIRE(a.empty());
+        REQUIRE(toVector(b) == std::vector<int>{ 1, 2 });
+        REQUIRE(a.size() == 0);
+        REQUIRE(b.size() == 2);
+    }
+
+    SECTION("swap: both empty")
+    {
+        mylib::List<int> a;
+        mylib::List<int> b;
+        a.swap(b);
+        REQUIRE(a.empty());
+        REQUIRE(b.empty());
+    }
+
+    SECTION("swap: self-swap (a.swap(a))")
+    {
+        mylib::List<int> a{ 1, 2, 3 };
+        a.swap(a);
+        REQUIRE(toVector(a) == std::vector<int>{ 1, 2, 3 });
+        // Проверяем, что ничего не сломалось
+        a.push_back(4);
+        REQUIRE(toVector(a) == std::vector<int>{ 1, 2, 3, 4 });
+    }
+
+    SECTION("Copy assignment after swap")
+    {
+        mylib::List<int> a{ 1, 2 };
+        mylib::List<int> b{ 3, 4, 5 };
+        a.swap(b);
+        REQUIRE(toVector(a) == std::vector<int>{ 3, 4, 5 });
+        REQUIRE(toVector(b) == std::vector<int>{ 1, 2 });
+        // Затем присваиваем b = a
+        b = a;
+        REQUIRE(toVector(b) == toVector(a));
+        REQUIRE(toVector(b) == std::vector<int>{ 3, 4, 5 });
+        // Убеждаемся, что a не изменился
+        REQUIRE(toVector(a) == std::vector<int>{ 3, 4, 5 });
+    }
+
+    SECTION("Move assignment after move construction")
+    {
+        mylib::List<int> a{ 1, 2, 3 };
+        mylib::List<int> b{ std::move(a) };
+        REQUIRE(toVector(b) == std::vector<int>{ 1, 2, 3 });
+        REQUIRE(a.empty());
+        // Перемещаем b в c
+        mylib::List<int> c;
+        c = std::move(b);
+        REQUIRE(toVector(c) == std::vector<int>{ 1, 2, 3 });
+        REQUIRE(b.empty());
+        // a, b, c - все валидны, но a и b пусты
+        a.push_back(10); // NOLINT(clang-analyzer-cplusplus.Move)
+        REQUIRE(toVector(a) == std::vector<int>{ 10 });
+        b.push_back(20); // NOLINT(clang-analyzer-cplusplus.Move)
+        REQUIRE(toVector(b) == std::vector<int>{ 20 });
+    }
+}
