@@ -23,6 +23,120 @@ namespace
         return vec;
     }
 
+    // -------------------------------------------------------------------
+    // 1. Тип с подсчётом копирований и возможностью выбрасывать исключения
+    // -------------------------------------------------------------------
+    struct ThrowOnCopy
+    {
+        int value;
+        static int copyCount;
+        static int moveCount;
+        static bool throwOnCopy;   // флаг: выбрасывать ли исключение при копировании
+
+        ThrowOnCopy(int v = 0) : value(v) {}
+
+        ThrowOnCopy(const ThrowOnCopy& other) : value(other.value)
+        {
+            ++copyCount;
+            if (throwOnCopy)
+            {
+                throw std::runtime_error("copy constructor throws");
+            }
+        }
+
+        ThrowOnCopy(ThrowOnCopy&& other) noexcept : value(other.value)
+        {
+            ++moveCount;
+            // перемещение не выбрасывает
+        }
+
+        ThrowOnCopy& operator=(const ThrowOnCopy& other)
+        {
+            ++copyCount;
+            if (throwOnCopy)
+            {
+                throw std::runtime_error("copy assignment throws");
+            }
+            value = other.value;
+            return *this;
+        }
+
+        ThrowOnCopy& operator=(ThrowOnCopy&& other) noexcept
+        {
+            ++moveCount;
+            value = other.value;
+            return *this;
+        }
+
+        bool operator==(const ThrowOnCopy& other) const
+        {
+            return value == other.value;
+        }
+
+        bool operator!=(const ThrowOnCopy& other) const
+        {
+            return !(*this == other);
+        }
+
+        static void resetCounters()
+        {
+            copyCount = 0;
+            moveCount = 0;
+            throwOnCopy = false;
+        }
+    };
+
+    int ThrowOnCopy::copyCount = 0;
+    int ThrowOnCopy::moveCount = 0;
+    bool ThrowOnCopy::throwOnCopy = false;
+
+    // Специализация для вывода в Catch (для REQUIRE)
+    std::ostream& operator<<(std::ostream& os, const ThrowOnCopy& t)
+    {
+        os << t.value;
+        return os;
+    }
+
+    // -------------------------------------------------------------------
+    // 2. Аллокатор, который может выбрасывать исключения при выделении
+    // -------------------------------------------------------------------
+
+    struct ThrowingAllocatorBase
+    {
+        static inline bool throwOnAllocate = false;
+    };
+
+    template <typename T>
+    class ThrowingAllocator : public ThrowingAllocatorBase
+    {
+    public:
+        using value_type = T;
+        using propagate_on_container_copy_assignment = std::true_type;
+        using propagate_on_container_move_assignment = std::true_type;
+        using propagate_on_container_swap = std::true_type;
+
+        ThrowingAllocator() = default;
+        template <typename U>
+        ThrowingAllocator(const ThrowingAllocator<U>&) noexcept {}
+
+        T* allocate(size_t n)
+        {
+            if (throwOnAllocate)
+            {
+                throw std::bad_alloc();
+            }
+            return static_cast<T*>(::operator new(n * sizeof(T)));
+        }
+
+        void deallocate(T* p, size_t) noexcept
+        {
+            ::operator delete(p);
+        }
+
+        bool operator==(const ThrowingAllocator&) const { return true; }
+        bool operator!=(const ThrowingAllocator&) const { return false; }
+    };
+
 } //end namespace
 
 
@@ -993,5 +1107,187 @@ TEST_CASE("Stage 6: resize and clear", "[list][resize][clear]")
         // После resize(0) список пуст, как и после clear
         lst.push_back(5);
         REQUIRE(toVector(lst) == std::vector<int>{ 5 });
+    }
+}
+
+
+
+TEST_CASE("Stage 7: Edge cases, allocator, exception safety", "[list][edge][allocator][exceptions]")
+{
+    SECTION("Large number of elements (100k)")
+    {
+        const size_t N{ 100000 };
+        mylib::List<int> lst;
+        for(size_t i{}; i < N; ++i)
+        {
+            lst.push_back(static_cast<int>(i));
+        }
+        REQUIRE(lst.size() == N);
+        // Проверяем первый и последний
+        REQUIRE(lst.front() == 0);
+        auto it{ lst.begin() };
+        std::advance(it, N - 1);
+        REQUIRE(*it == static_cast<int>(N - 1));
+        // Проверяем, что можно пройтись по всем без сбоев
+        size_t count{ 0 };
+        for(auto x : lst)
+        {
+            REQUIRE(x == static_cast<int>(count));
+            ++count;
+        }
+        REQUIRE(count == N);
+        // Очистка большого списка должна работать
+        lst.clear();
+        REQUIRE(lst.empty());
+    }
+
+
+
+    SECTION("Non-trivial type (std::string)")
+    {
+        mylib::List<std::string> lst;
+        for (int i{}; i < 1000; ++i)
+        {
+            lst.push_back(std::to_string(i));
+        }
+        REQUIRE(lst.size() == 1000);
+        REQUIRE(lst.front() == "0");
+        REQUIRE(lst.back() == "999");
+        // Копирование и перемещение
+        auto copy{ lst };
+        REQUIRE(copy.size() == lst.size());
+        auto moved{ std::move(lst) };
+        REQUIRE(moved.size() == 1000);
+        REQUIRE(lst.empty()); // после перемещения оригинал пуст
+    }
+
+    SECTION("Copy/move counts for element type")
+    {
+        ThrowOnCopy::resetCounters();
+        ThrowOnCopy::throwOnCopy = false;
+        mylib::List<ThrowOnCopy> lst;
+        // Добавляем элементы
+        ThrowOnCopy a(1);
+        ThrowOnCopy b(2);
+        lst.push_back(a);     // копирование
+        lst.push_back(std::move(b)); // перемещение
+        REQUIRE(lst.size() == 2);
+
+        REQUIRE(ThrowOnCopy::copyCount >= 1);
+        REQUIRE(ThrowOnCopy::moveCount >= 1);
+    }
+
+    SECTION("Exception safety: insert throws during copy")
+    {
+        ThrowOnCopy::resetCounters();
+        ThrowOnCopy::throwOnCopy = true; // копирование будет выбрасывать
+
+        mylib::List<ThrowOnCopy> lst;
+        ThrowOnCopy val(42);
+
+        REQUIRE_THROWS_AS(lst.push_back(val), std::runtime_error);
+        // Список должен быть пустым и валидным
+        REQUIRE(lst.empty());
+        REQUIRE(lst.size() == 0);
+
+        // Вставляем в середину (insert)
+        mylib::List<ThrowOnCopy> lst2;
+        lst2.push_back(ThrowOnCopy(10));
+        lst2.push_back(ThrowOnCopy(30)); // [10, 30]
+        auto pos{ std::next(lst2.begin()) }; // позиция перед 30
+        REQUIRE_THROWS_AS(lst2.insert(pos, val), std::runtime_error);
+        // Список должен остаться без изменений
+        ThrowOnCopy::throwOnCopy = false;
+        REQUIRE(lst2.size() == 2);
+        REQUIRE(toVector(lst2)[0].value == 10);
+        REQUIRE(toVector(lst2)[1].value == 30);
+
+        // Отключаем исключения для остальных тестов
+        ThrowOnCopy::throwOnCopy = false;
+    }
+
+    SECTION("Allocator throws on allocate")
+    {
+        using AllocList = mylib::List<int, ThrowingAllocator<int>>;
+        ThrowingAllocator<int>::throwOnAllocate = true;
+
+        AllocList lst;
+        // Попытка вставки должна выбросить std::bad_alloc
+        REQUIRE_THROWS_AS(lst.push_back(42), std::bad_alloc);
+        // Список должен остаться пустым
+        REQUIRE(lst.empty());
+
+        // Отключаем исключения для остальных проверок
+        ThrowingAllocator<int>::throwOnAllocate = false;
+        // После отключения должно работать
+        lst.push_back(100);
+        REQUIRE(lst.size() == 1);
+        REQUIRE(lst.front() == 100);
+    }
+
+    SECTION("Allocator propagation on copy/move/swap")
+    {
+        mylib::List<int> src{ 1, 2, 3 };
+        mylib::List<int> dst;
+        dst = src; // copy assignment
+        REQUIRE(toVector(dst) == toVector(src));
+
+        mylib::List<int> moved{ std::move(src) };
+        REQUIRE(toVector(moved) == std::vector<int>{ 1, 2, 3 });
+        REQUIRE(src.empty());
+
+        // swap
+        mylib::List<int> a{ 10, 20 };
+        mylib::List<int> b{ 30, 40, 50 };
+        a.swap(b);
+        REQUIRE(toVector(a) == std::vector<int>{ 30, 40, 50 });
+        REQUIRE(toVector(b) == std::vector<int>{ 10, 20 });
+    }
+
+    SECTION("Strong exception safety for insert (non-throwing move)")
+    {
+        // Тип, который бросает только при копировании, но перемещение безопасно
+        ThrowOnCopy::resetCounters();
+
+        ThrowOnCopy::throwOnCopy = false;
+        mylib::List<ThrowOnCopy> lst{ ThrowOnCopy(1), ThrowOnCopy(2), ThrowOnCopy(3) };
+        auto oldSize{ lst.size() };
+        // Теперь включаем флаг и проверяем insert
+        ThrowOnCopy::throwOnCopy = true;
+        ThrowOnCopy::throwOnCopy = true;
+        ThrowOnCopy val(99);
+        auto pos{ std::next(lst.begin()) };
+        REQUIRE_THROWS_AS(lst.insert(pos, val), std::runtime_error);
+        ThrowOnCopy::throwOnCopy = false;
+        // Размер и содержимое не должны измениться
+        REQUIRE(lst.size() == oldSize);
+        REQUIRE(toVector(lst)[0].value == 1);
+        REQUIRE(toVector(lst)[1].value == 2);
+        REQUIRE(toVector(lst)[2].value == 3);
+        // Отключаем исключения
+    }
+
+    SECTION("List remains usable after exception")
+    {
+        ThrowOnCopy::resetCounters();
+        ThrowOnCopy::throwOnCopy = true;
+        mylib::List<ThrowOnCopy> lst;
+        ThrowOnCopy val(5);
+        // Первая вставка выбросит исключение
+        REQUIRE_THROWS_AS(lst.push_back(val), std::runtime_error);
+        REQUIRE(lst.empty());
+        // Отключаем исключения
+        ThrowOnCopy::throwOnCopy = false;
+        // Теперь список должен работать
+        lst.push_back(ThrowOnCopy(10));
+        lst.push_back(ThrowOnCopy(20));
+        REQUIRE(lst.size() == 2);
+        REQUIRE(toVector(lst)[0].value == 10);
+        REQUIRE(toVector(lst)[1].value == 20);
+        // Можно также проверить, что вставка с копированием работает
+        ThrowOnCopy val2(30);
+        lst.push_back(val2);
+        REQUIRE(lst.size() == 3);
+        REQUIRE(toVector(lst)[2].value == 30);
     }
 }
