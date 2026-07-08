@@ -1,6 +1,7 @@
 #include <catch2/catch_all.hpp>
 #include <catch2/matchers/catch_matchers_vector.hpp>
 
+#include <random>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,24 @@ namespace
             vec.push_back(*it);
         }
         return vec;
+    }
+
+
+    template <typename T>
+    bool isConsistent(const mylib::List<T>& lst)
+    {
+        size_t count{ 0 };
+        if (lst.empty())
+        {
+            // For empty list, begin() == end()
+        }
+        auto it{ lst.begin() };
+        while (it != lst.end())
+        {
+            ++count;
+            ++it;
+        }
+        return (count == lst.size());
     }
 
     // -------------------------------------------------------------------
@@ -1289,5 +1308,311 @@ TEST_CASE("Stage 7: Edge cases, allocator, exception safety", "[list][edge][allo
         lst.push_back(val2);
         REQUIRE(lst.size() == 3);
         REQUIRE(toVector(lst)[2].value == 30);
+    }
+}
+
+
+
+TEST_CASE("Stage 8: Integration tests (random operations, iterator validity, invariants)",
+          "[list][integration]")
+{
+
+    SECTION("Random mix of push/pop operations compared to vector")
+    {
+        // Use a fixed seed for reproducibility
+        std::mt19937 rng(12345);
+        std::uniform_int_distribution<int> distOp(0, 3); // 0=push_front, 1=push_back, 2=pop_front, 3=pop_back
+        std::uniform_int_distribution<int> distValue(1, 100);
+
+        mylib::List<int> lst;
+        std::vector<int> ref;
+
+        const int NUM_OPERATIONS{ 1000 };
+
+        for (int i{}; i < NUM_OPERATIONS; ++i)
+        {
+            int op{ distOp(rng) };
+            if (op == 0)
+            { // push_front
+                int val{ distValue(rng) };
+                lst.push_front(val);
+                ref.insert(ref.begin(), val);
+            }
+            else if (op == 1)
+            { // push_back
+                int val{ distValue(rng) };
+                lst.push_back(val);
+                ref.push_back(val);
+            }
+            else if (op == 2)
+            { // pop_front
+                if (!lst.empty())
+                {
+                    int val = lst.pop_front();
+                    REQUIRE(val == ref.front());
+                    ref.erase(ref.begin());
+                }
+            }
+            else
+            { // pop_back
+                if (!lst.empty())
+                {
+                    int val = lst.pop_back();
+                    REQUIRE(val == ref.back());
+                    ref.pop_back();
+                }
+            }
+
+            // After each operation, check that list is consistent and matches reference vector
+            REQUIRE(lst.size() == ref.size());
+            REQUIRE(toVector(lst) == ref);
+            REQUIRE(isConsistent(lst));
+        }
+    }
+
+    SECTION("Random insert and erase operations")
+    {
+        std::mt19937 rng(56789);
+        std::uniform_int_distribution<int> distValue(1, 100);
+        std::uniform_int_distribution<int> distPos(0, 0); // will be adjusted
+
+        mylib::List<int> lst;
+        std::vector<int> ref;
+
+        const int NUM_OPERATIONS = 500;
+
+        for (int i{}; i < NUM_OPERATIONS; ++i)
+        {
+            // Decide insert or erase
+            if (ref.empty() || (std::uniform_int_distribution<int>(0, 1)(rng) == 0))
+            {
+                // Insert
+                int val{ distValue(rng) };
+                // Choose a position: 0 .. ref.size() inclusive
+                int pos{ std::uniform_int_distribution<int>(0, static_cast<int>(ref.size()))(rng) };
+                auto it{ lst.begin() };
+                std::advance(it, pos);
+                auto newIt = lst.insert(it, val);
+                // Check returned iterator points to inserted element
+                REQUIRE(*newIt == val);
+                ref.insert(ref.begin() + pos, val);
+            }
+            else
+            {
+                // Erase
+                int pos{ std::uniform_int_distribution<int>(0, static_cast<int>(ref.size()) - 1)(rng) };
+                auto it{ lst.begin() };
+                std::advance(it, pos);
+                auto nextIt{ lst.erase(it) };
+                ref.erase(ref.begin() + pos);
+                // Returned iterator should point to the next element (or end)
+                if (pos < static_cast<int>(ref.size()))
+                {
+                    REQUIRE(*nextIt == ref[pos]);
+                }
+                else
+                {
+                    REQUIRE(nextIt == lst.end());
+                }
+            }
+
+            REQUIRE(lst.size() == ref.size());
+            REQUIRE(toVector(lst) == ref);
+            REQUIRE(isConsistent(lst));
+        }
+    }
+
+    SECTION("Mixed operations with front/back and resize")
+    {
+        mylib::List<int> lst;
+        std::vector<int> ref;
+
+        // Initial fill
+        for (int i{}; i < 10; ++i)
+        {
+            lst.push_back(i);
+            ref.push_back(i);
+        }
+
+        // Resize larger
+        lst.resize(15, 42);
+        ref.resize(15, 42);
+        REQUIRE(toVector(lst) == ref);
+        REQUIRE(isConsistent(lst));
+
+        // Resize smaller
+        lst.resize(7);
+        ref.resize(7);
+        REQUIRE(toVector(lst) == ref);
+        REQUIRE(isConsistent(lst));
+
+        // push/pop mixed
+        lst.push_front(100);
+        ref.insert(ref.begin(), 100);
+        lst.push_back(200);
+        ref.push_back(200);
+        lst.pop_front();
+        ref.erase(ref.begin());
+        lst.pop_back();
+        ref.pop_back();
+
+        REQUIRE(toVector(lst) == ref);
+        REQUIRE(isConsistent(lst));
+    }
+
+    SECTION("Iterator validity after insert and erase")
+    {
+        mylib::List<int> lst{ 1, 2, 3, 4, 5 };
+        auto it1{ lst.begin() };
+        auto it2{ std::next(it1, 2) }; // points to 3
+        auto it3{ std::prev(lst.end()) }; // points to 5
+
+        // Insert before it2 (pos = 3)
+        auto itNew{ lst.insert(it2, 99) };
+        // Check that it1 is still valid (points to 1)
+        REQUIRE(*it1 == 1);
+        // it2 is now invalid? Actually in a list, insert does not invalidate iterators, except those to erased.
+        // But it2 points to the same node? In our case, inserting before it2 does not change it2's node.
+        // However, check standard: in list, insert does not invalidate iterators.
+        REQUIRE(*it2 == 3); // it2 still points to node containing 3
+        // it3 points to 5 (unchanged)
+        REQUIRE(*it3 == 5);
+        // Check new iterator points to inserted
+        REQUIRE(*itNew == 99);
+
+        // Erase the inserted element (at position itNew)
+        auto itAfterErase{ lst.erase(itNew) };
+        // it1, it2, it3 should still be valid
+        REQUIRE(*it1 == 1);
+        REQUIRE(*it2 == 3);
+        REQUIRE(*it3 == 5);
+        // itAfterErase should point to the element after erased (which was it2)
+        REQUIRE(*itAfterErase == 3);
+
+        // Erase the middle element (2)
+        auto itToErase{ std::next(lst.begin()) }; // points to 2
+        auto itAfter{ lst.erase(itToErase) };
+        // it1 still valid, it2 now points to 4? Actually it2 originally pointed to 3, but after erasing 2,
+        // the node 3 is still there; it2 is still valid and points to 3.
+        REQUIRE(*it1 == 1);
+        REQUIRE(*it2 == 3);
+        // it3 points to 5
+        REQUIRE(*it3 == 5);
+        REQUIRE(*itAfter == 3); // after erasing 2, next is 3
+
+        // Check overall consistency
+        REQUIRE(toVector(lst) == std::vector<int>{1, 3, 4, 5});
+        REQUIRE(isConsistent(lst));
+    }
+
+    SECTION("Combine multiple operations with swap and move")
+    {
+        mylib::List<int> a{ 1, 2, 3 };
+        mylib::List<int> b{ 10, 20, 30, 40 };
+
+        // Swap
+        a.swap(b);
+        REQUIRE(toVector(a) == std::vector<int>{ 10, 20, 30, 40 });
+        REQUIRE(toVector(b) == std::vector<int>{ 1, 2, 3 });
+
+        // Move assignment
+        mylib::List<int> c;
+        c = std::move(a);
+        REQUIRE(toVector(c) == std::vector<int>{ 10, 20, 30, 40 });
+        REQUIRE(a.empty());
+
+        // Modify c and ensure b not affected
+        c.push_back(50);
+        b.push_front(0);
+        REQUIRE(toVector(c) == std::vector<int>{ 10, 20, 30, 40, 50 });
+        REQUIRE(toVector(b) == std::vector<int>{ 0, 1, 2, 3 });
+
+        // Move construction
+        mylib::List<int> d{ std::move(b) };
+        REQUIRE(toVector(d) == std::vector<int>{ 0, 1, 2, 3 });
+        REQUIRE(b.empty());
+    }
+
+    SECTION("Check invariant after many operations on strings")
+    {
+        mylib::List<std::string> lst;
+        std::vector<std::string> ref;
+
+        // Perform random operations with strings
+        std::mt19937 rng(98765);
+        std::uniform_int_distribution<int> distOp(0, 3);
+        std::uniform_int_distribution<int> distLen(1, 5);
+
+        for (int i{}; i < 200; ++i)
+        {
+            int op = distOp(rng);
+            if (op == 0)
+            { // push_front
+                std::string val(distLen(rng), 'a' + rng() % 26);
+                lst.push_front(val);
+                ref.insert(ref.begin(), val);
+            }
+            else if (op == 1)
+            { // push_back
+                std::string val(distLen(rng), 'a' + rng() % 26);
+                lst.push_back(val);
+                ref.push_back(val);
+            }
+            else if (op == 2)
+            { // pop_front
+                if (!lst.empty())
+                {
+                    std::string val{ lst.pop_front() };
+                    REQUIRE(val == ref.front());
+                    ref.erase(ref.begin());
+                }
+            }
+            else
+            { // pop_back
+                if (!lst.empty())
+                {
+                    std::string val = lst.pop_back();
+                    REQUIRE(val == ref.back());
+                    ref.pop_back();
+                }
+            }
+
+            REQUIRE(lst.size() == ref.size());
+            REQUIRE(toVector(lst) == ref);
+            REQUIRE(isConsistent(lst));
+        }
+    }
+
+    SECTION("Clear after operations and reuse") {
+        mylib::List<int> lst;
+        for (int i{}; i < 50; ++i)
+        {
+            lst.push_back(i);
+        }
+        REQUIRE(lst.size() == 50);
+
+        lst.clear();
+        REQUIRE(lst.empty());
+        REQUIRE(isConsistent(lst));
+
+        // Re-populate
+        for (int i{ 10 }; i < 20; ++i)
+        {
+            lst.push_back(i);
+        }
+        std::vector<int> expected(10);
+        std::iota(expected.begin(), expected.end(), 10);
+        REQUIRE(toVector(lst) == expected);
+        REQUIRE(isConsistent(lst));
+
+        // Resize from empty
+        lst.resize(5, 99);
+        expected = { 10, 11, 12, 13, 14, 99, 99, 99, 99, 99 }; // actually after resize(5) with value 99,
+        // but we already had 10 elements, resize to 5 would truncate, not increase.
+        // Wait: we had 10 elements (10..19). resize(5) will truncate to first 5.
+        lst.resize(5);
+        expected = { 10, 11, 12, 13, 14 };
+        REQUIRE(toVector(lst) == expected);
+        REQUIRE(isConsistent(lst));
     }
 }
