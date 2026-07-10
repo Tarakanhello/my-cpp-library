@@ -3,6 +3,7 @@
 
 #include "mylib/list.h"
 #include "mylib/memory.h"
+#include "mylib/vector.h"
 
 namespace mylib
 {
@@ -16,12 +17,10 @@ namespace mylib
 
         struct Block;
 
-        List<Block, ALLOCATOR> m_blocks;
+        using BLOCK_ALLOCATOR = typename std::allocator_traits<ALLOCATOR>::template rebind_alloc<Block>;
+        using ITEM_ALLOCATOR  = typename std::allocator_traits<ALLOCATOR>::template rebind_alloc<Block::Item>;
 
-        T* allocate()
-        {
-
-        }
+        mylib::List<Block, BLOCK_ALLOCATOR> m_blocks;
 
     };
 
@@ -30,35 +29,8 @@ namespace mylib
     struct FreeList<T, ALLOCATOR>::
         Block final
     {
-        struct Item;
-
-        using ITEM_ALLOCATOR = typename std::allocator_traits<ALLOCATOR>::template rebind_alloc<Item>;
-        using ALLOC_TRAITS = std::allocator_traits<ITEM_ALLOCATOR>;
-
-        Item* returned; // head of free Items;
-        Item* unused;   // unused part
-
-        ITEM_ALLOCATOR itemAllocator;
-
-        // size <= maxSize <= capacity
-        size_t size{};
-        size_t maxSize{};
-        size_t capacity{};
-
-        Block(size_t theCapacity, ALLOCATOR alloc = ALLOCATOR())
-            : capacity{ theCapacity }
-            , size{}
-            , maxSize{}
-            , returned{ nullptr }
-            , itemAllocator{ alloc }
-            , unused{ ALLOC_TRAITS::allocate(itemAllocator, theCapacity) }
-        {}
 
 
-        bool isFull() const { return size == capacity; }
-        bool empty() const { return size == 0; }
-
-        explicit operator bool() const noexcept { return !empty(); }
     };
 
 
