@@ -6,6 +6,7 @@ add_executable(unit_tests
     test_vector.cpp
     test_chunked_array.cpp
     test_list.cpp
+    test_static_free_list.cpp
 )
 target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 
