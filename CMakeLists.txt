@@ -21,6 +21,7 @@ add_library(mylib STATIC
     include/mylib/chunked_array.h
     include/mylib/list.h
     include/mylib/free_list.h
+    include/mylib/static_free_list.h
 
 )
 target_include_directories(mylib PUBLIC include)
