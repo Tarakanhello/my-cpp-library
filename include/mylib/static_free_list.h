@@ -48,6 +48,7 @@ namespace mylib
         StaticFreeList& operator=(StaticFreeList&& other) noexcept;
         ~StaticFreeList() noexcept;
 
+        size_t capacity() const noexcept { return m_capacity; }
         bool isFull() const noexcept { return m_currentSize == m_capacity; }
         bool empty() const noexcept { return m_currentSize == 0; }
 
