@@ -151,7 +151,8 @@ void mylib::StaticFreeList<T, ALLOCATOR>::
         }
     }
 
-    deallocateNodes();
+    if(m_nodes)
+        deallocateNodes();
 }
 
 
