@@ -1902,3 +1902,127 @@ TEST_CASE("Stage 9: STL compatibility (algorithms, adapters, concepts)", "[list]
         REQUIRE(sum == 15);
     }
 }
+
+
+
+// ============================================================================
+// Тесты для moveToBegin
+// ============================================================================
+TEST_CASE("List::moveToBegin()", "[List][moveToBegin]")
+{
+    mylib::List<int> list;
+
+    // ----------------------------------------------------------------
+    SECTION("Move single element to begin – no effect")
+    {
+        list.push_back(42);
+        REQUIRE(list.size() == 1);
+
+        auto it = list.begin();
+        auto newIt = list.moveToBegin(it);
+        REQUIRE(newIt == list.begin());
+        REQUIRE(*list.begin() == 42);
+        REQUIRE(list.size() == 1);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Move middle element to begin")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3); // list: 1,2,3
+
+        auto it = list.begin();
+        ++it; // указывает на 2
+        auto movedIt = list.moveToBegin(it);
+        REQUIRE(movedIt == list.begin());
+        REQUIRE(*movedIt == 2);
+        REQUIRE(*std::next(movedIt) == 1);
+        REQUIRE(*std::next(std::next(movedIt)) == 3);
+        REQUIRE(list.size() == 3);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Move last element to begin")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3); // 1,2,3
+        auto it = list.end();
+        --it; // указывает на 3
+        auto movedIt = list.moveToBegin(it);
+        REQUIRE(movedIt == list.begin());
+        REQUIRE(*movedIt == 3);
+        REQUIRE(*std::next(movedIt) == 1);
+        REQUIRE(*std::next(std::next(movedIt)) == 2);
+        REQUIRE(list.size() == 3);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Move first element to begin – should be no-op")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+        auto it = list.begin(); // 1
+        auto movedIt = list.moveToBegin(it);
+        REQUIRE(movedIt == list.begin());
+        REQUIRE(*movedIt == 1);
+        // Проверяем, что порядок не изменился
+        auto itCheck = list.begin();
+        REQUIRE(*itCheck == 1);
+        ++itCheck;
+        REQUIRE(*itCheck == 2);
+        ++itCheck;
+        REQUIRE(*itCheck == 3);
+        REQUIRE(list.size() == 3);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Move element in a list with multiple same values")
+    {
+        list.push_back(1);
+        list.push_back(1);
+        list.push_back(2); // 1,1,2
+        auto it = list.begin();
+        ++it; // указывает на второй 1
+        auto movedIt = list.moveToBegin(it);
+        REQUIRE(movedIt == list.begin());
+        REQUIRE(*movedIt == 1);
+        // Проверяем, что теперь на первом месте тот же элемент (по значению, но это может быть тот же узел)
+        // Мы не можем проверить идентичность узла, но можем проверить размер и порядок
+        auto it2 = list.begin();
+        REQUIRE(*it2 == 1);
+        ++it2;
+        REQUIRE(*it2 == 1);
+        ++it2;
+        REQUIRE(*it2 == 2);
+        REQUIRE(list.size() == 3);
+    }
+
+
+    // ----------------------------------------------------------------
+    SECTION("Iterator validity after moveToBegin")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+        auto it = list.begin();
+        ++it; // указывает на 2
+        auto it2 = list.end();
+        --it2; // указывает на 3
+        auto movedIt = list.moveToBegin(it);
+        // Итератор it остался валидным и теперь указывает на тот же узел, который теперь в начале
+        REQUIRE(*it == 2); // if iterator is not invalidated
+        // it2 остался валидным и указывает на 3, но порядок изменился
+        REQUIRE(*it2 == 3);
+        // Проверяем, что список перестроен
+        auto itCheck = list.begin();
+        REQUIRE(*itCheck == 2);
+        ++itCheck;
+        REQUIRE(*itCheck == 1);
+        ++itCheck;
+        REQUIRE(*itCheck == 3);
+        REQUIRE(list.size() == 3);
+    }
+}

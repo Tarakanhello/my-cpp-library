@@ -341,6 +341,7 @@ namespace mylib
          */
         Iterator erase(ConstIterator pos); // удаляет элемент в позиции pos, возвращает итератор на следующий элемент.
 
+        Iterator moveToBegin(Iterator pos) noexcept;
 
 
         // ==================== РАЗМЕР И СВОЙСТВА ====================
@@ -452,7 +453,9 @@ namespace mylib
         constexpr Iterator  operator--(int) noexcept;
         constexpr bool      operator!=(const Iterator& other) const noexcept;
         constexpr bool      operator==(const Iterator& other) const noexcept;
+        constexpr BaseNode* getNode() noexcept { return m_currentNode; }
         constexpr const BaseNode* getNode() const noexcept { return m_currentNode; }
+
     }; // end class Iterator
 
 
@@ -1125,6 +1128,25 @@ mylib::List<T, ALLOCATOR>::
     ~List() noexcept
 {
     destroyAll();
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+mylib::List<T, ALLOCATOR>::Iterator mylib::List<T, ALLOCATOR>::
+    moveToBegin(Iterator pos) noexcept
+{
+    assert(pos != end());
+
+    if (pos == begin())
+    {
+        return begin();
+    }
+
+    cutNode(pos.getNode());
+    insertBefore(root(), pos.getNode());
+
+    return begin();
 }
 
 
