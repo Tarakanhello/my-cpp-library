@@ -2026,3 +2026,111 @@ TEST_CASE("List::moveToBegin()", "[List][moveToBegin]")
         REQUIRE(list.size() == 3);
     }
 }
+
+
+
+// ============================================================================
+// Тесты для moveToEnd
+// ============================================================================
+TEST_CASE("List::moveToEnd()", "[List][moveToEnd]")
+{
+    mylib::List<int> list;
+
+    // ----------------------------------------------------------------
+    SECTION("Move single element to end – no effect")
+    {
+        list.push_back(42);
+        REQUIRE(list.size() == 1);
+
+        auto it = list.begin();
+        list.moveToEnd(it);
+        REQUIRE(list.size() == 1);
+        REQUIRE(*list.begin() == 42);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Move first element to end")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3); // 1,2,3
+        auto it = list.begin(); // указывает на 1
+        list.moveToEnd(it);
+        REQUIRE(list.size() == 3);
+        // Ожидаемый порядок: 2,3,1
+        auto itCheck = list.begin();
+        REQUIRE(*itCheck == 2);
+        ++itCheck;
+        REQUIRE(*itCheck == 3);
+        ++itCheck;
+        REQUIRE(*itCheck == 1);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Move middle element to end")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+        list.push_back(4); // 1,2,3,4
+        auto it = list.begin();
+        ++it; // указывает на 2
+        list.moveToEnd(it);
+        REQUIRE(list.size() == 4);
+        // Ожидаемый порядок: 1,3,4,2
+        auto itCheck = list.begin();
+        REQUIRE(*itCheck == 1);
+        ++itCheck;
+        REQUIRE(*itCheck == 3);
+        ++itCheck;
+        REQUIRE(*itCheck == 4);
+        ++itCheck;
+        REQUIRE(*itCheck == 2);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Move last element to end – should be no-op")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+        auto it = list.end();
+        --it; // указывает на 3
+        list.moveToEnd(it);
+        REQUIRE(list.size() == 3);
+        // Порядок не должен измениться
+        auto itCheck = list.begin();
+        REQUIRE(*itCheck == 1);
+        ++itCheck;
+        REQUIRE(*itCheck == 2);
+        ++itCheck;
+        REQUIRE(*itCheck == 3);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Iterator validity after moveToEnd")
+    {
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+        list.push_back(4);
+        auto it = list.begin();
+        ++it; // указывает на 2
+        auto it2 = list.begin(); // указывает на 1
+        list.moveToEnd(it);
+        // Итератор it остался валидным и теперь указывает на последний элемент
+        REQUIRE(*it == 2);
+        // it2 остался валидным, но теперь он указывает на первый элемент (который теперь 1? нет, порядок изменился)
+        // Но мы не можем проверить, что он указывает на тот же узел, но можем проверить значение
+        REQUIRE(*it2 == 1);
+        // Проверяем, что список перестроен: 1,3,4,2
+        auto itCheck = list.begin();
+        REQUIRE(*itCheck == 1);
+        ++itCheck;
+        REQUIRE(*itCheck == 3);
+        ++itCheck;
+        REQUIRE(*itCheck == 4);
+        ++itCheck;
+        REQUIRE(*itCheck == 2);
+    }
+}
