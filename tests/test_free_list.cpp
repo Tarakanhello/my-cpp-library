@@ -228,8 +228,8 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
         REQUIRE(list.empty());
         REQUIRE(list.size() == 0);
 
-        // В текущей логике пустые блоки не удаляются, так что blockCount должен остаться 2
-        REQUIRE(list.blockCount() == 2);
+        // В текущей логике оставется как минимум 1 пустой блок, так что blockCount должен быть 1
+        REQUIRE(list.blockCount() == 1);
     }
 
     // ----------------------------------------------------------------
@@ -274,7 +274,7 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
         list.remove(p2);
         REQUIRE(list.empty());
 
-        //// ВНИМАНИЕ!!! В текущей реализации пустые блоки не удаляются
+        //// ВНИМАНИЕ!!! В текущей реализации остается как минимум 1 пустой блок
         REQUIRE(list.blockCount() == 1);
     }
 
@@ -397,3 +397,279 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
     }
 }
 
+
+// ============================================================================
+// Тесты удаления пустых блоков
+// ============================================================================
+TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
+{
+    // ----------------------------------------------------------------
+    SECTION("Single block becomes empty and remains (no deletion)")
+    {
+        mylib::FreeList<TestObject> list(8);
+        REQUIRE(list.blockCount() == 1);
+        REQUIRE(list.capacity() == 8);
+        REQUIRE(list.empty());
+
+        std::vector<TestObject*> ptrs;
+        for (size_t i = 0; i < 8; ++i)
+        {
+            auto* p = list.allocate();
+            REQUIRE(p != nullptr);
+            new (p) TestObject();
+            ptrs.push_back(p);
+        }
+        REQUIRE(TestObject::alive == 8);
+        REQUIRE(list.blockCount() == 1);
+        REQUIRE(list.capacity() == 8);
+        REQUIRE_FALSE(list.empty());
+
+        // Освобождаем все объекты
+        for (auto* p : ptrs)
+        {
+            list.remove(p);
+        }
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+        // Блок остаётся (он единственный)
+        REQUIRE(list.blockCount() == 1);
+        REQUIRE(list.capacity() == 8);
+
+        // Повторное выделение должно использовать тот же блок
+        auto* new_p = list.allocate();
+        REQUIRE(new_p != nullptr);
+        REQUIRE(list.blockCount() == 1); // блок не создавался новый
+        REQUIRE(list.capacity() == 8);
+        new (new_p) TestObject();
+        REQUIRE(TestObject::alive == 1);
+        list.remove(new_p);
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+        REQUIRE(list.blockCount() == 1);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Two empty blocks – one remains, the other is removed")
+    {
+        mylib::FreeList<TestObject> list(8); // первый блок 8, второй 16
+        std::vector<TestObject*> ptrs;
+
+        // Заполняем первый блок (8 объектов)
+        for (size_t i = 0; i < 8; ++i)
+        {
+            auto* p = list.allocate();
+            new (p) TestObject();
+            ptrs.push_back(p);
+        }
+        // Заполняем второй блок (16 объектов)
+        for (size_t i = 0; i < 16; ++i)
+        {
+            auto* p = list.allocate();
+            new (p) TestObject();
+            ptrs.push_back(p);
+        }
+
+        REQUIRE(TestObject::alive == 24);
+        REQUIRE(list.blockCount() == 2);
+        // Суммарная ёмкость: 8 + 16 = 24
+        REQUIRE(list.capacity() == 24);
+
+        // Освобождаем все объекты
+        for (auto* p : ptrs)
+        {
+            list.remove(p);
+        }
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+
+        // Остался один пустой блок (либо размером 8, либо 16)
+        REQUIRE(list.blockCount() == 1);
+        // Проверяем, что capacity стала равна 8 или 16 (один блок)
+        REQUIRE((list.capacity() == 8 || list.capacity() == 16));
+
+        // Последующее выделение не должно создавать новый блок
+        auto* new_p = list.allocate();
+        REQUIRE(new_p != nullptr);
+        REQUIRE(list.blockCount() == 1);
+        new (new_p) TestObject();
+        REQUIRE(TestObject::alive == 1);
+        list.remove(new_p);
+        REQUIRE(TestObject::alive == 0);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Three empty blocks – two removed, one remains")
+    {
+        mylib::FreeList<TestObject> list(8); // блоки: 8, 16, 32
+        std::vector<TestObject*> ptrs;
+
+        // Заполняем все три блока
+        const size_t sizes[] = {8, 16, 32};
+        for (size_t s : sizes)
+        {
+            for (size_t i = 0; i < s; ++i)
+            {
+                auto* p = list.allocate();
+                new (p) TestObject();
+                ptrs.push_back(p);
+            }
+        }
+
+        REQUIRE(TestObject::alive == 56); // 8+16+32 = 56
+        REQUIRE(list.blockCount() == 3);
+        REQUIRE(list.capacity() == 56);
+
+        // Освобождаем все
+        for (auto* p : ptrs)
+        {
+            list.remove(p);
+        }
+
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+
+        // Остался ровно один пустой блок
+        REQUIRE(list.blockCount() == 1);
+        // Ёмкость должна быть равна размеру одного из блоков (8, 16 или 32)
+        REQUIRE((list.capacity() == 8 || list.capacity() == 16 || list.capacity() == 32));
+
+        // Проверяем, что последующие выделения не создают новые блоки
+        auto* new_p = list.allocate();
+        REQUIRE(new_p != nullptr);
+        REQUIRE(list.blockCount() == 1);
+        new (new_p) TestObject();
+        REQUIRE(TestObject::alive == 1);
+        list.remove(new_p);
+        REQUIRE(TestObject::alive == 0);
+
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("One empty and one full block – empty block is NOT removed")
+    {
+        mylib::FreeList<TestObject> list(8);
+        std::vector<TestObject*> firstBlockPtrs;
+        std::vector<TestObject*> secondBlockPtrs;
+
+        // Заполняем первый блок (8 объектов)
+        for (size_t i = 0; i < 8; ++i) {
+            auto* p = list.allocate();
+            new (p) TestObject();
+            firstBlockPtrs.push_back(p);
+        }
+        // Заполняем второй блок (16 объектов)
+        for (size_t i = 0; i < 16; ++i) {
+            auto* p = list.allocate();
+            new (p) TestObject();
+            secondBlockPtrs.push_back(p);
+        }
+
+        REQUIRE(list.blockCount() == 2);
+        REQUIRE(list.capacity() == 24);
+        REQUIRE(TestObject::alive == 24);
+
+        // Освобождаем только первый блок – он становится пустым, второй полный
+        for (auto* p : firstBlockPtrs) {
+            list.remove(p);
+        }
+        REQUIRE(TestObject::alive == 16); // остались объекты из второго блока
+        REQUIRE_FALSE(list.empty());
+        // Должно быть два блока: пустой (первый) и полный (второй)
+        REQUIRE(list.blockCount() == 2);
+        REQUIRE(list.capacity() == 24); // ёмкость не менялась
+
+        // Теперь освобождаем второй блок – он тоже становится пустым
+        for (auto* p : secondBlockPtrs) {
+            list.remove(p);
+        }
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+
+        // Теперь два пустых блока, один должен быть удалён
+        REQUIRE(list.blockCount() == 1);
+        REQUIRE((list.capacity() == 8 || list.capacity() == 16));
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Multiple empty blocks with one full – only excess empty blocks removed")
+    {
+        mylib::FreeList<TestObject> list(8);
+        std::vector<TestObject*> ptrs;
+
+        // Создаём три блока: 8, 16, 32
+        const size_t sizes[] = {8, 16, 32};
+        for (size_t s : sizes)
+        {
+            for (size_t i = 0; i < s; ++i)
+            {
+                auto* p = list.allocate();
+                new (p) TestObject();
+                ptrs.push_back(p);
+            }
+        }
+        REQUIRE(list.blockCount() == 3);
+        REQUIRE(list.capacity() == 56);
+
+        // Освобождаем объекты из первого и второго блоков (8+16=24 объекта)
+        // Третий блок (32 объекта) остаётся полным.
+        for (size_t i = 0; i < 24; ++i) {
+            list.remove(ptrs[i]);
+        }
+        // Живы должны быть только объекты из третьего блока (32)
+        REQUIRE(TestObject::alive == 32);
+        REQUIRE_FALSE(list.empty());
+
+        // Теперь у нас два пустых блока (первый и второй) и один полный (третий)
+        // По логике должен быть удалён один из пустых, остаться один пустой + полный
+        REQUIRE(list.blockCount() == 2); // один пустой + один полный
+        // Суммарная ёмкость должна быть: размер оставшегося пустого + 32
+        // Оставшийся пустой может быть 8 или 16, поэтому capacity = 32 + 8 = 40 или 32+16=48
+        REQUIRE((list.capacity() == 40 || list.capacity() == 48));
+
+        // Освобождаем оставшийся полный блок (третий)
+        for (size_t i = 24; i < ptrs.size(); ++i) {
+            list.remove(ptrs[i]);
+        }
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+
+        // Теперь все три блока пусты. Остаться должен только один пустой.
+        REQUIRE(list.blockCount() == 1);
+        // Ёмкость должна быть равна размеру одного блока (8, 16 или 32)
+        REQUIRE((list.capacity() == 8 || list.capacity() == 16 || list.capacity() == 32));
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Capacity is correctly updated when blocks are removed")
+    {
+        mylib::FreeList<TestObject> list(8);
+        std::vector<TestObject*> ptrs;
+
+        // Заполняем два блока: 8 и 16
+        for (size_t i = 0; i < 8; ++i) {
+            auto* p = list.allocate();
+            new (p) TestObject();
+            ptrs.push_back(p);
+        }
+        for (size_t i = 0; i < 16; ++i) {
+            auto* p = list.allocate();
+            new (p) TestObject();
+            ptrs.push_back(p);
+        }
+        REQUIRE(list.capacity() == 24);
+
+        // Освобождаем все объекты первого блока (первые 8)
+        for (size_t i = 0; i < 8; ++i) {
+            list.remove(ptrs[i]);
+        }
+        // Теперь один пустой (8) и один полный (16) — capacity всё ещё 24
+        REQUIRE(list.capacity() == 24);
+
+        // Освобождаем все объекты второго блока
+        for (size_t i = 8; i < ptrs.size(); ++i) {
+            list.remove(ptrs[i]);
+        }
+        // Теперь два пустых блока — должен удалиться один, capacity станет 8 или 16
+        REQUIRE((list.capacity() == 8 || list.capacity() == 16));
+    }
+}
