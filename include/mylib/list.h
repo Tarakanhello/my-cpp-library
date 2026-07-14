@@ -28,8 +28,7 @@ namespace mylib
     template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
     class List final
     {
-    private:
-
+    public:
         /**
          * @brief Базовая структура узла (содержит только указатели).
          *
@@ -43,6 +42,8 @@ namespace mylib
          * Наследует BaseNode, добавляя поле value.
          */
         struct Node;
+
+    private:
 
         /** @brief Аллокатор для узлов (переопределён для Node). */
         using NODE_ALLOCATOR = typename std::allocator_traits<ALLOCATOR>::template rebind_alloc<Node>;
