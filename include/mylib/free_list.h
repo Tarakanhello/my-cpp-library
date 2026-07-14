@@ -32,6 +32,8 @@ namespace mylib
         size_t m_capacity{};
         ALLOCATOR m_alloc{};
 
+        size_t m_numberOfEmptyBlock{};
+
         void createNewBlock();
         void release() noexcept;
 
@@ -69,7 +71,15 @@ T* mylib::FreeList<T, ALLOCATOR>::allocate()
         createNewBlock();
     }
 
+    bool blockWasEmpty{ m_blocks.front().empty() };
+
     typename Block::Node* node{ m_blocks.front().allocate() };
+
+    if(blockWasEmpty)
+    {
+        --m_numberOfEmptyBlock;
+    }
+
     node->userData = static_cast<void*>(m_blocks.begin().getNode());
 
     if(m_blocks.front().isFull())
@@ -89,6 +99,8 @@ void mylib::FreeList<T, ALLOCATOR>::
     m_blocks.push_front(StaticFreeList<T, ALLOCATOR>{ m_currentBlockSize });
     m_capacity += m_currentBlockSize;
     m_currentBlockSize = std::min(MAX_BLOCK_SIZE, 2 * m_currentBlockSize);
+
+    ++m_numberOfEmptyBlock;
 }
 
 
@@ -100,6 +112,7 @@ mylib::FreeList<T, ALLOCATOR>::
     , m_size{ 0 }
     , m_capacity{ 0 }
     , m_alloc{ alloc }
+    , m_numberOfEmptyBlock{ 0 }
 {
     size_t neededCapacity{ std::max(initialSize, MIN_BLOCK_SIZE) };
     if(neededCapacity >= MAX_BLOCK_SIZE)
@@ -130,6 +143,7 @@ mylib::FreeList<T, ALLOCATOR>::
     , m_size{ other.m_size }
     , m_capacity{ other.m_capacity }
     , m_alloc{ std::move(other.m_alloc) }
+    , m_numberOfEmptyBlock{ other.m_numberOfEmptyBlock }
 {
     other.release();
 }
@@ -148,6 +162,7 @@ mylib::FreeList<T, ALLOCATOR>&
         m_size = other.m_size;
         m_capacity = other.m_capacity;
         m_alloc = std::move(other.m_alloc);
+        m_numberOfEmptyBlock = other.m_numberOfEmptyBlock;
 
         other.release();
     }
@@ -164,6 +179,7 @@ void mylib::FreeList<T, ALLOCATOR>::
     m_currentBlockSize = MIN_BLOCK_SIZE;
     m_size = 0;
     m_capacity = 0;
+    m_numberOfEmptyBlock = 0;
 }
 
 
@@ -187,6 +203,19 @@ void mylib::FreeList<T, ALLOCATOR>::
     block->remove(blockNode);
     --m_size;
     m_blocks.moveToBegin(it);
+
+    if(block->empty())
+    {
+        ++m_numberOfEmptyBlock;
+    }
+
+
+    if(block->empty() && m_numberOfEmptyBlock > 1)
+    {
+        m_capacity -= block->capacity();
+        --m_numberOfEmptyBlock;
+        m_blocks.erase(m_blocks.begin());
+    }
 }
 
 
