@@ -55,6 +55,7 @@ namespace mylib
         explicit operator bool() const noexcept { return !empty(); }
 
         Node* allocate() noexcept;
+        void releaseNode(Node* node) noexcept;
         void remove(Node* node) noexcept;
     }; // end StaticFreeList class
 
@@ -172,15 +173,28 @@ void mylib::StaticFreeList<T, ALLOCATOR>::
 
 template<typename T, typename ALLOCATOR>
 void mylib::StaticFreeList<T, ALLOCATOR>::
+    releaseNode(Node* node) noexcept
+{
+    if(node)
+    {
+        assert(node - m_nodes >= 0 && node - m_nodes < m_constructedSize);
+        node->next = m_returned;
+        m_returned = node;
+        --m_currentSize;
+    }
+}
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::StaticFreeList<T, ALLOCATOR>::
     remove(Node* node) noexcept
 {
     if(node)
     {
         assert(node - m_nodes >= 0 && node - m_nodes < m_constructedSize);
         node->value.~T();
-        node->next = m_returned;
-        m_returned = node;
-        --m_currentSize;
+        releaseNode(node);
     }
 }
 

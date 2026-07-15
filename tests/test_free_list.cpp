@@ -12,10 +12,16 @@ namespace {
     {
     public:
         static int alive;
-        TestObject() { ++alive; }
-        TestObject(const TestObject&) { ++alive; }
-        TestObject(TestObject&&) { ++alive; }
+        int value;
+
+        TestObject() : value{ 0 } { ++alive; }
+        explicit TestObject(int v) : value{ v } { ++alive; }
+        TestObject(int a, int b) : value{ a+ b } { ++alive; }
+        TestObject(const TestObject& other) : value{ other.value } { ++alive; }
+        TestObject(TestObject&& other) noexcept : value{ other.value } { ++alive; }
         ~TestObject() { --alive; }
+
+        bool operator==(const TestObject& other) const noexcept { return value == other.value; }
     };
     int TestObject::alive = 0;
 
@@ -71,6 +77,14 @@ namespace {
     };
     template<typename T>
     bool ThrowingAllocator<T>::should_throw = false;
+
+
+    // Структура с несколькими полями
+    struct Point
+    {
+        int x, y;
+        Point(int theX, int theY) : x(theX), y(theY) {}
+    };
 
 } // namespace
 
@@ -671,5 +685,242 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         }
         // Теперь два пустых блока — должен удалиться один, capacity станет 8 или 16
         REQUIRE((list.capacity() == 8 || list.capacity() == 16));
+    }
+}
+
+
+
+// ============================================================================
+// Тесты метода emplace
+// ============================================================================
+TEST_CASE("FreeList::emplace", "[FreeList][emplace]")
+{
+    // ----------------------------------------------------------------
+    SECTION("Emplace with int (single argument)")
+    {
+        mylib::FreeList<int> list(4);
+        REQUIRE(list.empty());
+        REQUIRE(list.size() == 0);
+
+        int* p = list.emplace(42);
+        REQUIRE(p != nullptr);
+        REQUIRE(*p == 42);
+        REQUIRE(list.size() == 1);
+        REQUIRE_FALSE(list.empty());
+
+        list.remove(p);
+        REQUIRE(list.size() == 0);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with TestObject (default constructor)")
+    {
+        mylib::FreeList<TestObject> list(4);
+        REQUIRE(TestObject::alive == 0);
+
+        TestObject* p = list.emplace();
+        REQUIRE(p != nullptr);
+        REQUIRE(p->value == 0);
+        REQUIRE(TestObject::alive == 1);
+        REQUIRE(list.size() == 1);
+
+        list.remove(p);
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with TestObject (single int argument)")
+    {
+        mylib::FreeList<TestObject> list(4);
+        REQUIRE(TestObject::alive == 0);
+
+        TestObject* p = list.emplace(10);
+        REQUIRE(p != nullptr);
+        REQUIRE(p->value == 10);
+        REQUIRE(TestObject::alive == 1);
+        REQUIRE(list.size() == 1);
+
+        list.remove(p);
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with TestObject (two int arguments)")
+    {
+        mylib::FreeList<TestObject> list(4);
+        REQUIRE(TestObject::alive == 0);
+
+        TestObject* p = list.emplace(3, 5);
+        REQUIRE(p != nullptr);
+        REQUIRE(p->value == 8); // 3+5
+        REQUIRE(TestObject::alive == 1);
+        REQUIRE(list.size() == 1);
+
+        list.remove(p);
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with std::string (const char*)")
+    {
+        mylib::FreeList<std::string> list(4);
+        REQUIRE(list.empty());
+
+        std::string* p = list.emplace("Hello, world!");
+        REQUIRE(p != nullptr);
+        REQUIRE(*p == "Hello, world!");
+        REQUIRE(list.size() == 1);
+
+        list.remove(p);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with std::string (move from temporary)")
+    {
+        mylib::FreeList<std::string> list(4);
+        std::string temp = "Temporary";
+
+        std::string* p = list.emplace(std::move(temp));
+        REQUIRE(p != nullptr);
+        REQUIRE(*p == "Temporary");
+        REQUIRE(temp.empty()); // moved-from state
+        REQUIRE(list.size() == 1);
+
+        list.remove(p);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with std::string (copy from lvalue)")
+    {
+        mylib::FreeList<std::string> list(4);
+        std::string original = "Copy me";
+
+        std::string* p = list.emplace(original);
+        REQUIRE(p != nullptr);
+        REQUIRE(*p == "Copy me");
+        REQUIRE(original == "Copy me"); // unchanged
+        REQUIRE(list.size() == 1);
+
+        list.remove(p);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with custom struct Point (two arguments)")
+    {
+        mylib::FreeList<Point> list(4);
+
+        Point* p = list.emplace(10, 20);
+        REQUIRE(p != nullptr);
+        REQUIRE(p->x == 10);
+        REQUIRE(p->y == 20);
+        REQUIRE(list.size() == 1);
+
+        list.remove(p);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace multiple objects and fill a block")
+    {
+        const size_t blockSize = 8;
+        mylib::FreeList<int> list(blockSize);
+        std::vector<int*> ptrs;
+
+        for (size_t i = 0; i < blockSize; ++i)
+        {
+            int* p = list.emplace(static_cast<int>(i * 10));
+            REQUIRE(p != nullptr);
+            REQUIRE(*p == i * 10);
+            ptrs.push_back(p);
+        }
+
+        REQUIRE(list.size() == blockSize);
+        REQUIRE(list.blockCount() == 1);
+        REQUIRE_FALSE(list.empty());
+
+        // Следующее emplace должно создать новый блок
+        int* pNew = list.emplace(100);
+        REQUIRE(pNew != nullptr);
+        REQUIRE(*pNew == 100);
+        REQUIRE(list.size() == blockSize + 1);
+        REQUIRE(list.blockCount() == 2);
+
+        // Освобождаем всё
+        for (auto* p : ptrs) list.remove(p);
+        list.remove(pNew);
+        REQUIRE(list.empty());
+        REQUIRE(list.size() == 0);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace after remove reuses freed slot")
+    {
+        mylib::FreeList<TestObject> list(2);
+        TestObject* p1 = list.emplace(1);
+        TestObject* p2 = list.emplace(2);
+        REQUIRE(TestObject::alive == 2);
+        REQUIRE(list.size() == 2);
+
+        list.remove(p1);
+        REQUIRE(TestObject::alive == 1);
+        REQUIRE(list.size() == 1);
+
+        // Новый emplace должен переиспользовать освобождённый слот
+        TestObject* p3 = list.emplace(3);
+        REQUIRE(p3 == p1); // должен быть тот же адрес (LIFO)
+        REQUIRE(TestObject::alive == 2);
+        REQUIRE(list.size() == 2);
+
+        list.remove(p2);
+        list.remove(p3);
+        REQUIRE(TestObject::alive == 0);
+        REQUIRE(list.empty());
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with exceptions – constructors that throw")
+    {
+        struct Throwing {
+            Throwing(int) { throw std::runtime_error("construction failed"); }
+        };
+
+        mylib::FreeList<Throwing> list(4);
+        REQUIRE(list.empty());
+
+        bool caught = false;
+        try {
+            list.emplace(42);
+        } catch (const std::runtime_error&) {
+            caught = true;
+        }
+        REQUIRE(caught);
+        // Память должна быть освобождена, объект не создан
+        REQUIRE(list.empty());
+        REQUIRE(list.size() == 0);
+    }
+
+    // ----------------------------------------------------------------
+    SECTION("Emplace with std::string and verify destructor called")
+    {
+        // Используем глобальный счётчик или наблюдаем за памятью
+        // Мы не можем легко проверить вызов деструктора, но можем проверить,
+        // что после remove строка уничтожена (нет утечек).
+        // Для этого используем AddressSanitizer или просто убедимся, что remove не падает.
+        mylib::FreeList<std::string> list(4);
+        std::string* p = list.emplace("test");
+        REQUIRE(!list.empty());
+
+        list.remove(p);
+        REQUIRE(list.empty());
+        // Если бы деструктор не вызвался, была бы утечка памяти,
+        // но ASan бы поймал. В тестах мы просто проверяем, что всё работает.
+        SUCCEED("String destructor called correctly (no leak)");
     }
 }

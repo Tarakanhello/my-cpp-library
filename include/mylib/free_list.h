@@ -50,9 +50,10 @@ namespace mylib
         ~FreeList() noexcept {}
 
         T* allocateRaw();
+        void deallocateRaw(T* ptr) noexcept;
         template<typename... ARGS>
         T* emplace(ARGS&&... args);
-        void remove(T* ptr);
+        void remove(T* ptr, bool onlyDeallocate = false);
 
         bool empty() const noexcept { return m_size == 0; }
         explicit operator bool() const noexcept { return !empty(); }
@@ -97,12 +98,28 @@ T* mylib::FreeList<T, ALLOCATOR>::allocateRaw()
 
 
 template<typename T, typename ALLOCATOR>
+void mylib::FreeList<T, ALLOCATOR>::deallocateRaw(T* ptr) noexcept
+{
+    remove(ptr, true);
+}
+
+
+
+template<typename T, typename ALLOCATOR>
 template<typename... ARGS>
 T* mylib::FreeList<T, ALLOCATOR>::emplace(ARGS&&... args)
 {
     T* place{ allocateRaw() };
 
-    new (place) T(std::forward<ARGS>(args)...);
+    try
+    {
+        new (place) T(std::forward<ARGS>(args)...);
+    }
+    catch(...)
+    {
+        deallocateRaw(place);
+        throw;
+    }
 
     return place;
 }
@@ -203,7 +220,7 @@ void mylib::FreeList<T, ALLOCATOR>::
 
 template<typename T, typename ALLOCATOR>
 void mylib::FreeList<T, ALLOCATOR>::
-    remove(T* ptr)
+    remove(T* ptr, bool onlyDeallocate)
 {
     if(ptr == nullptr )
     {
@@ -217,21 +234,20 @@ void mylib::FreeList<T, ALLOCATOR>::
     typename BlockList::Iterator it{ reinterpret_cast<BlockList::BaseNode*>(blockNode->userData) };
 
     Block* block{ it.operator->() };
-    block->remove(blockNode);
+    onlyDeallocate ? block->releaseNode(blockNode) : block->remove(blockNode);
     --m_size;
     m_blocks.moveToBegin(it);
 
     if(block->empty())
     {
         ++m_numberOfEmptyBlock;
-    }
 
-
-    if(block->empty() && m_numberOfEmptyBlock > 1)
-    {
-        m_capacity -= block->capacity();
-        --m_numberOfEmptyBlock;
-        m_blocks.erase(m_blocks.begin());
+        if(m_numberOfEmptyBlock > 1)
+        {
+            m_capacity -= block->capacity();
+            --m_numberOfEmptyBlock;
+            m_blocks.erase(m_blocks.begin());
+        }
     }
 }
 
