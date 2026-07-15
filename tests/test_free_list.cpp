@@ -108,9 +108,9 @@ TEST_CASE("FreeList constructors and destructor", "[FreeList][constructors]")
         REQUIRE(TestObject::alive == 0);
         {
             mylib::FreeList<TestObject> list(4);
-            auto* p1 = list.allocate();
+            auto* p1 = list.allocateRaw();
             new (p1) TestObject();
-            auto* p2 = list.allocate();
+            auto* p2 = list.allocateRaw();
             new (p2) TestObject();
             REQUIRE(TestObject::alive == 2);
             // Не освобождаем, при разрушении list должны уничтожиться
@@ -122,7 +122,7 @@ TEST_CASE("FreeList constructors and destructor", "[FreeList][constructors]")
     SECTION("Move constructor transfers ownership")
     {
         mylib::FreeList<TestObject> list1(4);
-        auto* p = list1.allocate();
+        auto* p = list1.allocateRaw();
         new (p) TestObject();
         REQUIRE(list1.size() == 1);
         REQUIRE(list1.blockCount() == 1);
@@ -145,14 +145,14 @@ TEST_CASE("FreeList constructors and destructor", "[FreeList][constructors]")
     SECTION("Move assignment transfers ownership and destroys old data")
     {
         mylib::FreeList<TestObject> list1(4);
-        auto* p1 = list1.allocate();
+        auto* p1 = list1.allocateRaw();
         new (p1) TestObject();
-        auto* p2 = list1.allocate();
+        auto* p2 = list1.allocateRaw();
         new (p2) TestObject();
         REQUIRE(TestObject::alive == 2);
 
         mylib::FreeList<TestObject> list2(8);
-        auto* p3 = list2.allocate();
+        auto* p3 = list2.allocateRaw();
         new (p3) TestObject();
         REQUIRE(TestObject::alive == 3);
 
@@ -172,7 +172,7 @@ TEST_CASE("FreeList constructors and destructor", "[FreeList][constructors]")
 }
 
 // ============================================================================
-// Тесты allocate() и remove()
+// Тесты allocateRaw() и remove()
 // ============================================================================
 TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
 {
@@ -180,7 +180,7 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
     SECTION("Allocate on empty list creates first block")
     {
         mylib::FreeList<TestObject> list(4);
-        auto* p = list.allocate();
+        auto* p = list.allocateRaw();
         REQUIRE(p != nullptr);
         REQUIRE(list.blockCount() == 1);
         REQUIRE(list.size() == 1);
@@ -205,7 +205,7 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
         // Заполняем первый блок
         for (size_t i = 0; i < initial; ++i)
         {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             REQUIRE(p != nullptr);
             new (p) TestObject();
             ptrs.push_back(p);
@@ -215,7 +215,7 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
         REQUIRE_FALSE(list.empty());
 
         // Следующее выделение должно создать новый блок
-        auto* p_new = list.allocate();
+        auto* p_new = list.allocateRaw();
         REQUIRE(p_new != nullptr);
         new (p_new) TestObject();
         REQUIRE(list.blockCount() == 2);
@@ -236,9 +236,9 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
     SECTION("Remove frees object and reuses freed slot")
     {
         mylib::FreeList<TestObject> list(2);
-        auto* p1 = list.allocate();
+        auto* p1 = list.allocateRaw();
         new (p1) TestObject();
-        auto* p2 = list.allocate();
+        auto* p2 = list.allocateRaw();
         new (p2) TestObject();
         REQUIRE(TestObject::alive == 2);
 
@@ -248,7 +248,7 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
         REQUIRE_FALSE(list.empty());
 
         // Новое выделение должно использовать освобождённый слот
-        auto* p3 = list.allocate();
+        auto* p3 = list.allocateRaw();
         REQUIRE(p3 == p1); // должен быть тот же адрес (если LIFO)
         new (p3) TestObject();
         REQUIRE(TestObject::alive == 2);
@@ -264,9 +264,9 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
     SECTION("Block becomes empty and is removed")
     {
         mylib::FreeList<TestObject> list(2);
-        auto* p1 = list.allocate();
+        auto* p1 = list.allocateRaw();
         new (p1) TestObject();
-        auto* p2 = list.allocate();
+        auto* p2 = list.allocateRaw();
         new (p2) TestObject();
         REQUIRE(list.blockCount() == 1);
 
@@ -285,7 +285,7 @@ TEST_CASE("FreeList allocate and remove", "[FreeList][allocate][remove]")
         list.remove(nullptr);
         REQUIRE(list.empty());
         // Можно выделить и освободить нормально
-        auto* p = list.allocate();
+        auto* p = list.allocateRaw();
         new (p) TestObject();
         REQUIRE(TestObject::alive == 1);
         list.remove(p);
@@ -308,7 +308,7 @@ TEST_CASE("FreeList garbage collection", "[FreeList][destructor][garbage]")
             std::vector<TestObject*> ptrs;
             // Создадим 3 блока (каждый по 2, всего 6 объектов)
             for (int i = 0; i < 6; ++i) {
-                auto* p = list.allocate();
+                auto* p = list.allocateRaw();
                 new (p) TestObject();
                 ptrs.push_back(p);
             }
@@ -332,7 +332,7 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
     SECTION("Works with std::allocator")
     {
         mylib::FreeList<TestObject, std::allocator<TestObject>> list(4);
-        auto* p = list.allocate();
+        auto* p = list.allocateRaw();
         new (p) TestObject();
         REQUIRE(TestObject::alive == 1);
         list.remove(p);
@@ -352,7 +352,7 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
             // При создании первого блока должен быть вызван allocate для узлов
             REQUIRE(NodeAlloc::allocate_count == 1);
 
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             // Дополнительных выделений быть не должно
             REQUIRE(NodeAlloc::allocate_count == 1);
@@ -377,7 +377,7 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
         try {
             ListType list(4);
             // Попытка создать первый блок вызовет исключение
-            list.allocate();
+            list.allocateRaw();
         } catch (const std::bad_alloc&) {
             exception_caught = true;
         }
@@ -388,7 +388,7 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
         // Теперь должно работать
         {
             ListType list(4);
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             REQUIRE(TestObject::alive == 1);
             list.remove(p);
@@ -414,7 +414,7 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         std::vector<TestObject*> ptrs;
         for (size_t i = 0; i < 8; ++i)
         {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             REQUIRE(p != nullptr);
             new (p) TestObject();
             ptrs.push_back(p);
@@ -436,7 +436,7 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         REQUIRE(list.capacity() == 8);
 
         // Повторное выделение должно использовать тот же блок
-        auto* new_p = list.allocate();
+        auto* new_p = list.allocateRaw();
         REQUIRE(new_p != nullptr);
         REQUIRE(list.blockCount() == 1); // блок не создавался новый
         REQUIRE(list.capacity() == 8);
@@ -457,14 +457,14 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         // Заполняем первый блок (8 объектов)
         for (size_t i = 0; i < 8; ++i)
         {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             ptrs.push_back(p);
         }
         // Заполняем второй блок (16 объектов)
         for (size_t i = 0; i < 16; ++i)
         {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             ptrs.push_back(p);
         }
@@ -488,7 +488,7 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         REQUIRE((list.capacity() == 8 || list.capacity() == 16));
 
         // Последующее выделение не должно создавать новый блок
-        auto* new_p = list.allocate();
+        auto* new_p = list.allocateRaw();
         REQUIRE(new_p != nullptr);
         REQUIRE(list.blockCount() == 1);
         new (new_p) TestObject();
@@ -509,7 +509,7 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         {
             for (size_t i = 0; i < s; ++i)
             {
-                auto* p = list.allocate();
+                auto* p = list.allocateRaw();
                 new (p) TestObject();
                 ptrs.push_back(p);
             }
@@ -534,7 +534,7 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         REQUIRE((list.capacity() == 8 || list.capacity() == 16 || list.capacity() == 32));
 
         // Проверяем, что последующие выделения не создают новые блоки
-        auto* new_p = list.allocate();
+        auto* new_p = list.allocateRaw();
         REQUIRE(new_p != nullptr);
         REQUIRE(list.blockCount() == 1);
         new (new_p) TestObject();
@@ -553,13 +553,13 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
 
         // Заполняем первый блок (8 объектов)
         for (size_t i = 0; i < 8; ++i) {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             firstBlockPtrs.push_back(p);
         }
         // Заполняем второй блок (16 объектов)
         for (size_t i = 0; i < 16; ++i) {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             secondBlockPtrs.push_back(p);
         }
@@ -602,7 +602,7 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
         {
             for (size_t i = 0; i < s; ++i)
             {
-                auto* p = list.allocate();
+                auto* p = list.allocateRaw();
                 new (p) TestObject();
                 ptrs.push_back(p);
             }
@@ -647,12 +647,12 @@ TEST_CASE("FreeList empty block removal strategy", "[FreeList][empty_blocks]")
 
         // Заполняем два блока: 8 и 16
         for (size_t i = 0; i < 8; ++i) {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             ptrs.push_back(p);
         }
         for (size_t i = 0; i < 16; ++i) {
-            auto* p = list.allocate();
+            auto* p = list.allocateRaw();
             new (p) TestObject();
             ptrs.push_back(p);
         }

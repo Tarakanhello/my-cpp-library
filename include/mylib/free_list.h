@@ -30,6 +30,7 @@ namespace mylib
         size_t m_currentBlockSize{};
         size_t m_size{};
         size_t m_capacity{};
+
         ALLOCATOR m_alloc{};
 
         size_t m_numberOfEmptyBlock{};
@@ -48,7 +49,9 @@ namespace mylib
 
         ~FreeList() noexcept {}
 
-        T* allocate();
+        T* allocateRaw();
+        template<typename... ARGS>
+        T* emplace(ARGS&&... args);
         void remove(T* ptr);
 
         bool empty() const noexcept { return m_size == 0; }
@@ -64,7 +67,7 @@ namespace mylib
 
 
 template<typename T, typename ALLOCATOR>
-T* mylib::FreeList<T, ALLOCATOR>::allocate()
+T* mylib::FreeList<T, ALLOCATOR>::allocateRaw()
 {
     if(m_size == m_capacity)
     {
@@ -90,6 +93,20 @@ T* mylib::FreeList<T, ALLOCATOR>::allocate()
     ++m_size;
     return &(node->value);
 }
+
+
+
+template<typename T, typename ALLOCATOR>
+template<typename... ARGS>
+T* mylib::FreeList<T, ALLOCATOR>::emplace(ARGS&&... args)
+{
+    T* place{ allocateRaw() };
+
+    new (place) T(std::forward<ARGS>(args)...);
+
+    return place;
+}
+
 
 
 template<typename T, typename ALLOCATOR>
