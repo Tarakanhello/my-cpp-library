@@ -31,15 +31,13 @@ namespace mylib
         size_t m_size{};
         size_t m_capacity{};
 
-        ALLOCATOR m_alloc{};
-
         size_t m_numberOfEmptyBlock{};
 
         void createNewBlock();
         void release() noexcept;
 
     public:
-        explicit FreeList(size_t initialSize = DEFAULT_SIZE, ALLOCATOR alloc = ALLOCATOR());
+        explicit FreeList(size_t initialSize = DEFAULT_SIZE);
 
         FreeList(const FreeList&) = delete;
         FreeList& operator=(const FreeList&) = delete;
@@ -141,11 +139,10 @@ void mylib::FreeList<T, ALLOCATOR>::
 
 template<typename T, typename ALLOCATOR>
 mylib::FreeList<T, ALLOCATOR>::
-    FreeList(size_t initialSize, ALLOCATOR alloc)
+    FreeList(size_t initialSize)
     : m_currentBlockSize{ MIN_BLOCK_SIZE }
     , m_size{ 0 }
     , m_capacity{ 0 }
-    , m_alloc{ alloc }
     , m_numberOfEmptyBlock{ 0 }
 {
     size_t neededCapacity{ std::max(initialSize, MIN_BLOCK_SIZE) };
@@ -176,7 +173,6 @@ mylib::FreeList<T, ALLOCATOR>::
     , m_currentBlockSize{ other.m_currentBlockSize }
     , m_size{ other.m_size }
     , m_capacity{ other.m_capacity }
-    , m_alloc{ std::move(other.m_alloc) }
     , m_numberOfEmptyBlock{ other.m_numberOfEmptyBlock }
 {
     other.release();
@@ -195,7 +191,6 @@ mylib::FreeList<T, ALLOCATOR>&
         m_currentBlockSize = other.m_currentBlockSize;
         m_size = other.m_size;
         m_capacity = other.m_capacity;
-        m_alloc = std::move(other.m_alloc);
         m_numberOfEmptyBlock = other.m_numberOfEmptyBlock;
 
         other.release();
