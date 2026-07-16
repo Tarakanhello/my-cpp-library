@@ -49,6 +49,12 @@ namespace mylib
 
         T* allocateRaw();
         void deallocateRaw(T* ptr) noexcept;
+
+        /**
+         * @brief Очищает все блоки и возвращает пул в состояние, аналогичное только что созданному.
+         * @note Метод не является noexcept.
+         * @post empty() == true, size() == 0, blockCount() == 1, capacity() == MIN_BLOCK_SIZE.
+         */
         void clear();
         template<typename... ARGS>
         T* emplace(ARGS&&... args);
