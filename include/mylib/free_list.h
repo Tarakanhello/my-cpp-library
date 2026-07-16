@@ -49,6 +49,7 @@ namespace mylib
 
         T* allocateRaw();
         void deallocateRaw(T* ptr) noexcept;
+        void clear();
         template<typename... ARGS>
         T* emplace(ARGS&&... args);
         void remove(T* ptr, bool onlyDeallocate = false);
@@ -121,6 +122,20 @@ T* mylib::FreeList<T, ALLOCATOR>::emplace(ARGS&&... args)
 
     return place;
 }
+
+
+
+template<typename T, typename ALLOCATOR>
+void mylib::FreeList<T, ALLOCATOR>::
+    clear()
+{
+    m_blocks.clear();
+
+    release();
+
+    createNewBlock();
+}
+
 
 
 

@@ -878,8 +878,7 @@ TEST_CASE("FreeList::emplace", "[FreeList][emplace]")
         REQUIRE(TestObject::alive == 2);
         REQUIRE(list.size() == 2);
 
-        list.remove(p2);
-        list.remove(p3);
+        list.clear();
         REQUIRE(TestObject::alive == 0);
         REQUIRE(list.empty());
     }
