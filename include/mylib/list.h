@@ -342,7 +342,19 @@ namespace mylib
          */
         Iterator erase(ConstIterator pos); // удаляет элемент в позиции pos, возвращает итератор на следующий элемент.
 
+        /**
+         * @brief Перемещает элемент, на который указывает итератор pos, в начало списка.
+         * @param pos Итератор на перемещаемый элемент (не должен быть end()).
+         * @return Итератор на начало списка (begin()).
+         * @pre pos != end().
+         */
         Iterator moveToBegin(Iterator pos) noexcept;
+
+        /**
+         * @brief Перемещает элемент, на который указывает итератор pos, в конец списка.
+         * @param pos Итератор на перемещаемый элемент (не должен быть end()).
+         * @pre pos != end().
+         */
         void moveToEnd(Iterator pos) noexcept;
 
 
