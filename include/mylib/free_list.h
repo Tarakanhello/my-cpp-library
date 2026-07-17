@@ -12,12 +12,10 @@
 
 namespace mylib
 {
-    template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
+    template<typename T, size_t minBlockSize = 8, size_t maxBlockSize = 8192, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
     class FreeList final
     {
     private:
-        static constexpr const size_t MIN_BLOCK_SIZE    { 8 };
-        static constexpr const size_t MAX_BLOCK_SIZE    { 8192 };
         static constexpr const size_t DEFAULT_SIZE      { 32 };
 
     public:
@@ -30,6 +28,9 @@ namespace mylib
         size_t m_currentBlockSize{};
         size_t m_size{};
         size_t m_capacity{};
+
+        const size_t m_minBlockSize{  minBlockSize };
+        const size_t m_maxBlockSize{ maxBlockSize };
 
         size_t m_numberOfEmptyBlock{};
 
@@ -90,7 +91,7 @@ namespace mylib
 
         /**
          * @brief Очищает все блоки и возвращает пул в состояние, аналогичное только что созданному.
-         * @post empty() == true, size() == 0, blockCount() == 1, capacity() == MIN_BLOCK_SIZE.
+         * @post empty() == true, size() == 0, blockCount() == 1, capacity() == m_minBlockSize.
          */
         void clear();
 
@@ -110,8 +111,8 @@ namespace mylib
 
 
 
-template<typename T, typename ALLOCATOR>
-T* mylib::FreeList<T, ALLOCATOR>::allocateRaw()
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+T* mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::allocateRaw()
 {
     if(m_size == m_capacity)
     {
@@ -140,17 +141,17 @@ T* mylib::FreeList<T, ALLOCATOR>::allocateRaw()
 
 
 
-template<typename T, typename ALLOCATOR>
-void mylib::FreeList<T, ALLOCATOR>::deallocateRaw(T* ptr) noexcept
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+void mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::deallocateRaw(T* ptr) noexcept
 {
     remove(ptr, true);
 }
 
 
 
-template<typename T, typename ALLOCATOR>
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
 template<typename... ARGS>
-T* mylib::FreeList<T, ALLOCATOR>::emplace(ARGS&&... args)
+T* mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::emplace(ARGS&&... args)
 {
     T* place{ allocateRaw() };
 
@@ -169,8 +170,8 @@ T* mylib::FreeList<T, ALLOCATOR>::emplace(ARGS&&... args)
 
 
 
-template<typename T, typename ALLOCATOR>
-void mylib::FreeList<T, ALLOCATOR>::
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+void mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
     clear()
 {
     m_blocks.clear();
@@ -183,34 +184,34 @@ void mylib::FreeList<T, ALLOCATOR>::
 
 
 
-template<typename T, typename ALLOCATOR>
-void mylib::FreeList<T, ALLOCATOR>::
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+void mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
     createNewBlock()
 {
     m_blocks.push_front(StaticFreeList<T, ALLOCATOR>{ m_currentBlockSize });
     m_capacity += m_currentBlockSize;
-    m_currentBlockSize = std::min(MAX_BLOCK_SIZE, 2 * m_currentBlockSize);
+    m_currentBlockSize = std::min(m_maxBlockSize, 2 * m_currentBlockSize);
 
     ++m_numberOfEmptyBlock;
 }
 
 
 
-template<typename T, typename ALLOCATOR>
-mylib::FreeList<T, ALLOCATOR>::
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
     FreeList(size_t initialSize)
-    : m_currentBlockSize{ MIN_BLOCK_SIZE }
+    : m_currentBlockSize{ m_minBlockSize }
     , m_size{ 0 }
     , m_capacity{ 0 }
     , m_numberOfEmptyBlock{ 0 }
 {
-    size_t neededCapacity{ std::max(initialSize, MIN_BLOCK_SIZE) };
-    if(neededCapacity >= MAX_BLOCK_SIZE)
+    size_t neededCapacity{ std::max(initialSize, m_minBlockSize) };
+    if(neededCapacity >= m_maxBlockSize)
     {
-        m_currentBlockSize = MAX_BLOCK_SIZE;
+        m_currentBlockSize = m_maxBlockSize;
 
-        // Количество блоков MAX_BLOCK_SIZE, чтобы покрыть neededCapacity с избытком
-        size_t numBlocks{ (neededCapacity + MAX_BLOCK_SIZE - 1) / MAX_BLOCK_SIZE };
+        // Количество блоков m_maxBlockSize, чтобы покрыть neededCapacity с избытком
+        size_t numBlocks{ (neededCapacity + m_maxBlockSize - 1) / m_maxBlockSize };
         for (size_t i{}; i < numBlocks; ++i)
         {
             createNewBlock();
@@ -225,8 +226,8 @@ mylib::FreeList<T, ALLOCATOR>::
 
 
 
-template<typename T, typename ALLOCATOR>
-mylib::FreeList<T, ALLOCATOR>::
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
     FreeList(FreeList&& other) noexcept
     : m_blocks{ std::move(other.m_blocks) }
     , m_currentBlockSize{ other.m_currentBlockSize }
@@ -239,9 +240,9 @@ mylib::FreeList<T, ALLOCATOR>::
 
 
 
-template<typename T, typename ALLOCATOR>
-mylib::FreeList<T, ALLOCATOR>&
-    mylib::FreeList<T, ALLOCATOR>::
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>&
+    mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
         operator=(FreeList&& other) noexcept
 {
     if(this != &other)
@@ -260,11 +261,11 @@ mylib::FreeList<T, ALLOCATOR>&
 
 
 
-template<typename T, typename ALLOCATOR>
-void mylib::FreeList<T, ALLOCATOR>::
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+void mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
     release() noexcept
 {
-    m_currentBlockSize = MIN_BLOCK_SIZE;
+    m_currentBlockSize = m_minBlockSize;
     m_size = 0;
     m_capacity = 0;
     m_numberOfEmptyBlock = 0;
@@ -272,8 +273,8 @@ void mylib::FreeList<T, ALLOCATOR>::
 
 
 
-template<typename T, typename ALLOCATOR>
-void mylib::FreeList<T, ALLOCATOR>::
+template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
+void mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
     remove(T* ptr, bool onlyDeallocate)
 {
     if(ptr == nullptr )

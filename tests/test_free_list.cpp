@@ -345,7 +345,7 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
     // ----------------------------------------------------------------
     SECTION("Works with std::allocator")
     {
-        mylib::FreeList<TestObject, std::allocator<TestObject>> list(4);
+        mylib::FreeList<TestObject, 8, 32, std::allocator<TestObject>> list(4);
         auto* p = list.allocateRaw();
         new (p) TestObject();
         REQUIRE(TestObject::alive == 1);
@@ -356,7 +356,7 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
     // ----------------------------------------------------------------
     SECTION("Works with TrackingAllocator and tracks calls")
     {
-        using ListType = mylib::FreeList<TestObject, TrackingAllocator<TestObject>>;
+        using ListType = mylib::FreeList<TestObject, 8, 32, TrackingAllocator<TestObject>>;
         using NodeAlloc = TrackingAllocator<typename ListType::Block::Node>;
         NodeAlloc::allocate_count = 0;
         NodeAlloc::deallocate_count = 0;
@@ -383,7 +383,7 @@ TEST_CASE("FreeList with different allocators", "[FreeList][allocators]")
     // ----------------------------------------------------------------
     SECTION("Handles allocation failure in createNewBlock")
     {
-        using ListType = mylib::FreeList<TestObject, ThrowingAllocator<TestObject>>;
+        using ListType = mylib::FreeList<TestObject, 8, 32, ThrowingAllocator<TestObject>>;
         using NodeAlloc = ThrowingAllocator<typename ListType::Block::Node>;
 
         NodeAlloc::should_throw = true;
