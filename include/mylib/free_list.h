@@ -12,6 +12,28 @@
 
 namespace mylib
 {
+
+    /**
+     * @brief Динамический пул фиксированных блоков с автоматическим ростом.
+     *
+     * Класс управляет набором блоков (StaticFreeList), каждый из которых содержит
+     * массив узлов для объектов типа T. При исчерпании свободного места в текущем
+     * блоке создаётся новый блок с размером, увеличивающимся в два раза (до
+     * максимального заданного размера). Это позволяет эффективно распределять память
+     * для большого числа объектов без частых выделений.
+     *
+     * @tparam T             Тип хранимых объектов.
+     * @tparam minBlockSize  Минимальный размер блока (количество узлов).
+     * @tparam maxBlockSize  Максимальный размер блока.
+     * @tparam ALLOCATOR     Аллокатор, используемый для выделения памяти под блоки.
+     *
+     * Особенности:
+     * - Операции выделения/освобождения не вызывают конструкторы/деструкторы T
+     *   (кроме emplace/remove).
+     * - Поддерживает перемещение, но не копирование.
+     * - При освобождении последнего узла в блоке блок остаётся в пуле до тех пор,
+     *   пока не появится второй пустой блок – тогда один из них удаляется.
+     */
     template<typename T, size_t minBlockSize = 8, size_t maxBlockSize = 8192, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
     class FreeList final
     {
@@ -19,36 +41,68 @@ namespace mylib
         static constexpr const size_t DEFAULT_SIZE      { 32 };
 
     public:
+        /** @brief Тип блока – StaticFreeList, содержащий узлы с T. */
         using Block = StaticFreeList<T, ALLOCATOR>;
+        /** @brief Аллокатор для блоков (переопределён для Block). */
         using BlockAllocator = typename std::allocator_traits<ALLOCATOR>::template rebind_alloc<Block>;
+        /** @brief Список блоков (двусвязный), используемый для хранения всех блоков. */
         using BlockList = mylib::List<Block, BlockAllocator>;
 
     private:
-        BlockList m_blocks{};
-        size_t m_currentBlockSize{};
-        size_t m_size{};
-        size_t m_capacity{};
+        BlockList m_blocks{};           //!< Контейнер всех блоков.
+        size_t m_currentBlockSize{};    //!< Размер следующего создаваемого блока.
+        size_t m_size{};                //!< Общее количество занятых узлов (выделенных объектов).
+        size_t m_capacity{};            //!< Общая ёмкость всех блоков.
 
-        const size_t m_minBlockSize{  minBlockSize };
-        const size_t m_maxBlockSize{ maxBlockSize };
+        const size_t m_minBlockSize{  minBlockSize };   //!< Минимальный размер блока.
+        const size_t m_maxBlockSize{ maxBlockSize };    //!< Максимальный размер блока.
 
-        size_t m_numberOfEmptyBlock{};
+        size_t m_numberOfEmptyBlock{};  //!< Количество полностью пустых блоков.
 
+        /**
+         * @brief Создаёт новый блок и добавляет его в начало списка.
+         * @post Новый блок имеет размер m_currentBlockSize, который затем удваивается
+         *       (ограничен m_maxBlockSize). Ёмкость пула увеличивается, счётчик пустых
+         *       блоков инкрементируется.
+         */
         void createNewBlock();
+
+        /**
+         * @brief Сбрасывает состояние пула в исходное (без очистки памяти).
+         * @note Используется в move-операциях.
+         */
         void release() noexcept;
 
         // ========================================================================
         // Жизненный цикл: конструкторы, деструктор, перемещение
         // ========================================================================
     public:
+        /**
+         * @brief Конструктор, создающий пул с начальной ёмкостью.
+         * @param initialSize Желаемое начальное количество элементов.
+         *                    Если меньше minBlockSize, используется minBlockSize.
+         *                    Если больше maxBlockSize, создаётся несколько блоков
+         *                    максимального размера, чтобы покрыть initialSize.
+         */
         explicit FreeList(size_t initialSize = DEFAULT_SIZE);
 
         FreeList(const FreeList&) = delete;
         FreeList& operator=(const FreeList&) = delete;
 
+        /**
+         * @brief Конструктор перемещения.
+         * @param other Пул, из которого перемещаются данные.
+         */
         FreeList(FreeList&& other) noexcept;
+
+        /**
+         * @brief Оператор перемещающего присваивания.
+         * @param other Пул, из которого перемещаются данные.
+         * @return Ссылка на *this.
+         */
         FreeList& operator=(FreeList&& other) noexcept;
 
+        /** @brief Деструктор (ничего не делает, все блоки удаляются автоматически). */
         ~FreeList() noexcept {}
 
         // ========================================================================
