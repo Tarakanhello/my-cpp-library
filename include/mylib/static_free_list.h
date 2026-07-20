@@ -12,40 +12,107 @@
 
 namespace mylib
 {
+    /**
+     * @brief Класс пула фиксированного размера (static free list).
+     *
+     * Предназначен для эффективного управления объектами типа T без динамического
+     * выделения памяти во время работы. Память под заданное количество объектов
+     * (ёмкость) выделяется в конструкторе и не перераспределяется. Узлы (Node)
+     * содержат сам объект T и указатель для организации списка свободных узлов.
+     *
+     * Основные операции:
+     * - allocate()  — получить указатель на свободный узел (объект не конструируется).
+     * - releaseNode() — вернуть узел в пул (деструктор не вызывается, память не освобождается).
+     * - remove()    — уничтожить объект и вернуть узел в пул.
+     *
+     * @tparam T        Тип хранимых объектов.
+     * @tparam ALLOCATOR Аллокатор, используемый для выделения памяти под массив узлов.
+     *                   По умолчанию mylib::MySimpleAllocator<Node>.
+     *
+     * @note Класс некопируем, но перемещаем.
+     */
     template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
     class StaticFreeList final
     {
     public:
+        /**
+         * @brief Внутренний узел, хранящий значение и указатель для списка.
+         */
         struct Node;
 
     private:
+        // Тип аллокатора для узлов (переопределяется через rebind).
         using NODE_ALLOCATOR = typename std::allocator_traits<ALLOCATOR>::template rebind_alloc<Node>;
         using ALLOC_TRAITS = std::allocator_traits<NODE_ALLOCATOR>;
 
+        /**
+         * @brief Выделяет память под массив из m_capacity узлов.
+         * @return Указатель на начало массива.
+         * @throw std::bad_alloc при неудаче.
+         */
         Node* allocateNodes() { return ALLOC_TRAITS::allocate(m_nodeAllocator, m_capacity); }
+
+        /**
+         * @brief Освобождает память, выделенную под массив узлов.
+         */
         void deallocateNodes() noexcept { ALLOC_TRAITS::deallocate(m_nodeAllocator, m_nodes, m_capacity); }
 
     private:
         // m_currentSize <= m_constructedSize <= m_capacity
-        size_t m_currentSize{};     // текущий размер
-        size_t m_constructedSize{}; // количество сконструированных элементов
-        size_t m_capacity{};        // всестимость
+        size_t m_currentSize{};     //!< Количество узлов, выделенных в данный момент (занятых).
+        size_t m_constructedSize{}; //!< Общее количество узлов, в которых была вызвана конструкция (включая освобождённые).
+        size_t m_capacity{};        //!< Максимальное количество узлов, которое может содержать пул.
 
-        Node* m_returned{ nullptr }; // head of free Node;
-        Node* m_nodes{ nullptr };    // array of Nodes;
+        Node* m_returned{ nullptr }; //!< Голова списка свободных узлов (узлы, возвращённые через releaseNode).
+        Node* m_nodes{ nullptr };    //!< Указатель на массив узлов (выделен в конструкторе).
 
-        NODE_ALLOCATOR m_nodeAllocator{};
+        NODE_ALLOCATOR m_nodeAllocator{}; //!< Аллокатор для управления памятью узлов.
 
+        /**
+         * @brief Уничтожает все сконструированные элементы, которые в данный момент не находятся в списке свободных.
+         * @note Метод вызывается из деструктора и оператора перемещающего присваивания.
+         *       При возникновении исключений используется запасной алгоритм O(N²).
+         */
         void destroyList() noexcept;
+
+        /**
+         * @brief Обнуляет все поля объекта (используется при перемещении).
+         * @note Не уничтожает элементы и не освобождает память.
+         */
         void release() noexcept;
 
     public:
         StaticFreeList() = default;
+
+        /**
+         * @brief Конструктор, создающий пул с заданной ёмкостью.
+         * @param capacity Количество узлов, которое может вместить пул.
+         * @param alloc    Аллокатор, который будет использоваться (передаётся по значению).
+         * @throw std::bad_alloc при невозможности выделить память.
+         */
         explicit StaticFreeList(size_t capacity, ALLOCATOR alloc = ALLOCATOR());
+
         StaticFreeList(const StaticFreeList&) = delete;
         StaticFreeList& operator=(const StaticFreeList&) = delete;
+
+        /**
+         * @brief Конструктор перемещения.
+         * @param other Пул, из которого перемещаются данные.
+         * @note После перемещения other становится пустым (release).
+         */
         StaticFreeList(StaticFreeList&& other) noexcept;
+
+        /**
+         * @brief Оператор перемещающего присваивания.
+         * @param other Пул, из которого перемещаются данные.
+         * @return Ссылка на *this.
+         */
         StaticFreeList& operator=(StaticFreeList&& other) noexcept;
+
+        /**
+         * @brief Деструктор.
+         * @note Уничтожает все сконструированные элементы и освобождает память.
+         */
         ~StaticFreeList() noexcept;
 
         size_t capacity() const noexcept { return m_capacity; }
@@ -54,23 +121,56 @@ namespace mylib
 
         explicit operator bool() const noexcept { return !empty(); }
 
+        /**
+         * @brief Выделяет свободный узел из пула.
+         * @return Указатель на узел, который можно использовать для размещения объекта.
+         * @pre !isFull() – утверждение (assert) проверяет, что пул не заполнен.
+         * @note Узел возвращается неинициализированным (конструктор T не вызывается).
+         * @note Если есть узлы в списке свободных, берётся первый из них, иначе
+         *       возвращается следующий несконструированный узел из массива.
+         */
         Node* allocate() noexcept;
+
+        /**
+         * @brief Возвращает узел в пул (без вызова деструктора T).
+         * @param node Указатель на узел, который нужно вернуть.
+         * @pre node принадлежит этому пулу (проверяется assert).
+         * @note Узел добавляется в начало списка свободных, его поле next перезаписывается.
+         * @note Уменьшает m_currentSize.
+         */
         void releaseNode(Node* node) noexcept;
+
+        /**
+         * @brief Уничтожает объект в узле и возвращает узел в пул.
+         * @param node Указатель на узел.
+         * @pre node принадлежит этому пулу.
+         * @note Вызывает деструктор T, затем releaseNode(node).
+         */
         void remove(Node* node) noexcept;
     }; // end StaticFreeList class
 
 
 
+    /**
+     * @brief Структура узла пула.
+     * @tparam T Тип хранимого значения.
+     *
+     * Содержит:
+     * - value – сам объект типа T.
+     * - union { Node* next; void* userData; } – используется для организации
+     *   списка свободных узлов (поле next) или может быть использован для пользовательских
+     *   данных (userData), когда узел занят.
+     */
     template<typename T, typename ALLOCATOR>
     struct StaticFreeList<T, ALLOCATOR>::
         Node final
     {
-        T value;
+        T value; //!< Хранимый объект.
 
         union
         {
-            Node* next;
-            void* userData;
+            Node* next;     //!< Указатель на следующий узел в списке свободных.
+            void* userData; //!< Резерв для пользовательских данных (не используется внутри класса).
         };
     };
 
