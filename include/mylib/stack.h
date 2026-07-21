@@ -255,7 +255,7 @@ public:
      * @return Результат сравнения (std::strong_ordering или эквивалент).
      * @note Сравнение выполняется поэлементно с помощью operator<=> для T.
      */
-    bool operator<=>(const Stack& other) const
+    auto operator<=>(const Stack& other) const
     {
         return m_vector <=> other.m_vector;
     }
