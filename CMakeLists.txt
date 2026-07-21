@@ -23,6 +23,8 @@ add_library(mylib STATIC
     include/mylib/free_list.h
     include/mylib/static_free_list.h
 
+    include/mylib/stack.h
+
 )
 target_include_directories(mylib PUBLIC include)
 target_sources(mylib PUBLIC

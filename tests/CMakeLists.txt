@@ -8,6 +8,7 @@ add_executable(unit_tests
     test_list.cpp
     test_static_free_list.cpp
     test_free_list.cpp
+    test_stack.cpp
 )
 target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 

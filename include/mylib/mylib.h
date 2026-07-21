@@ -6,6 +6,8 @@
 #include "mylib/math.h"
 #include "mylib/memory.h"
 #include "mylib/show_debug_log_info.h"
+#include "mylib/stack.h"
+#include "mylib/static_free_list.h"
 #include "mylib/structs.h"
 #include "mylib/vector.h"
 
