@@ -125,6 +125,8 @@ namespace mylib
          */
         constexpr Vector() noexcept;
 
+        explicit Vector(size_t capacity, const ALLOCATOR& alloc);
+
         /**
          * @brief Конструктор, создающий вектор с size элементами, инициализированными значением value.
          * @param size Количество элементов.
@@ -484,6 +486,19 @@ constexpr mylib::Vector<T, ALLOCATOR>::Vector() noexcept
     , m_data{ nullptr }
     , m_allocator{}
 {}
+
+
+
+template<typename T, typename ALLOCATOR>
+mylib::Vector<T, ALLOCATOR>::Vector(size_t capacity, const ALLOCATOR& alloc)
+    : m_allocator(alloc), m_capacity(0), m_size(0), m_data(nullptr)
+{
+    if (capacity > 0)
+    {
+        m_data = m_allocator.allocate(capacity);
+        m_capacity = capacity;
+    }
+}
 
 
 
@@ -1028,11 +1043,24 @@ void mylib::Vector<T, ALLOCATOR>::reallocateBuffer(size_t newCapacity, size_t ne
         new (&newData[oldSize]) T(std::forward<ARGS>(args)...);
         guard.addConstructed();
 
-        // Копируем первый элемент для остальных новых элементов (если их больше одного)
-        for(size_t i{ 1 }; i < newElementsCount; ++i)
+        // Остальные элементы (если нужны) создаём копированием первого, но только если T копируемый
+        if constexpr (std::is_copy_constructible_v<T>)
         {
-            new (&newData[oldSize + i]) T{ newData[oldSize] }; // копия первого
-            guard.addConstructed();
+            // Копируем первый элемент для остальных новых элементов (если их больше одного)
+            for(size_t i{ 1 }; i < newElementsCount; ++i)
+            {
+                new (&newData[oldSize + i]) T{ newData[oldSize] }; // копия первого
+                guard.addConstructed();
+            }
+        }
+        else
+        {
+            // Для некопируемых типов нельзя создать более одного элемента из одного аргумента
+            if (newElementsCount > 1)
+            {
+                throw std::logic_error(
+                    "Cannot create multiple elements from a single argument for non-copyable type");
+            }
         }
     }
 
@@ -1090,7 +1118,7 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value)
         if(m_capacity > MinCapacity && newSize < m_capacity / 4)
         {
             size_t newCapacity{ calculateNewCapacity(newSize) };
-            reallocateBuffer(newCapacity, newSize, value);
+            reallocateBuffer(newCapacity, newSize);
         }
         else
         {
@@ -1100,16 +1128,23 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value)
     }
     else // Увеличение размера
     {
-        if(newSize <= m_capacity)
+        if constexpr(std::is_copy_constructible_v<T>)
         {
-            constructElements(m_size, newSize, value);
-            m_size = newSize;
+            if(newSize <= m_capacity)
+            {
+                constructElements(m_size, newSize, value);
+                m_size = newSize;
+            }
+            else
+            {
+                size_t newCapacity{ calculateNewCapacity(newSize) };
+
+                reallocateBuffer(newCapacity, newSize, value);
+            }
         }
         else
         {
-            size_t newCapacity{ calculateNewCapacity(newSize) };
-
-            reallocateBuffer(newCapacity, newSize, value);
+            throw std::logic_error("Vector::resize to larger size requires copy-constructible T");
         }
     }
 }
