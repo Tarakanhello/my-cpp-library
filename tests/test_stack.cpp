@@ -308,7 +308,12 @@ TEST_CASE("Stage 2: push, pop, top", "[stack][modifiers]")
         // st.top() возвращает const int&
     }
 
-    // Попытка вызова top/pop на пустом стеке приводит к assert – не тестируем.
+    SECTION("pop() top() in empty stack")
+    {
+        mylib::Stack<int> st;
+        REQUIRE_THROWS_AS(st.pop(), std::out_of_range);
+        REQUIRE_THROWS_AS(st.top(), std::out_of_range);
+    }
 }
 
 TEST_CASE("Stage 3: clear and shrink_to_fit", "[stack][clear][shrink]")

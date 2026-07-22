@@ -156,9 +156,13 @@ public:
      * @pre Стек не должен быть пустым (поведение не определено, если empty() == true).
      * @post Размер стека уменьшается на 1.
      */
-    void pop() noexcept
+    void pop()
     {
-        m_vector.resize(m_vector.size() - 1);
+        if(empty())
+        {
+            throw std::out_of_range("Stack::pop() on empty stack");
+        }
+        m_vector.resize(m_vector.size() - 1, T{}, false);
     }
 
     /**
@@ -166,8 +170,12 @@ public:
      * @return Ссылка на элемент на вершине стека.
      * @pre Стек не должен быть пустым.
      */
-    T& top() noexcept
+    T& top()
     {
+        if(empty())
+        {
+            throw std::out_of_range("Stack::top() on empty stack");
+        }
         return m_vector.back();
     }
 
@@ -176,8 +184,12 @@ public:
      * @return Константная ссылка на элемент на вершине стека.
      * @pre Стек не должен быть пустым.
      */
-    const T& top() const noexcept
+    const T& top() const
     {
+        if(empty())
+        {
+            throw std::out_of_range("Stack::top() on empty stack");
+        }
         return m_vector.back();
     }
 
