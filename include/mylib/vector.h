@@ -330,7 +330,7 @@ namespace mylib
          *       При уменьшении ёмкость может быть уменьшена, если newSize * 4 < capacity.
          * @throw Любое исключение при конструировании элементов.
          */
-        void resize(size_t newSize, const T& value = T());
+        void resize(size_t newSize, const T& value = T(), bool srink = true);
 
         void reverse();
         void reverse(size_t start, size_t end);
@@ -1110,7 +1110,7 @@ void mylib::Vector<T, ALLOCATOR>::reserve(size_t newCap)
 
 
 template<typename T, typename ALLOCATOR>
-void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value)
+void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value, bool shrink)
 {
     if(newSize == m_size)
     {
@@ -1119,7 +1119,7 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value)
     else if(newSize < m_size) // Уменьшение размера
     {
         // Проверяем, нужно ли уменьшить ёмкость
-        if(m_capacity > MinCapacity && newSize < m_capacity / 4)
+        if(m_capacity > MinCapacity && newSize < m_capacity / 4 && shrink)
         {
             size_t newCapacity{ calculateNewCapacity(newSize) };
             reallocateBuffer(newCapacity, newSize);
