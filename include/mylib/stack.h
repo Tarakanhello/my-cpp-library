@@ -8,17 +8,6 @@
 #include "mylib/memory.h"
 #include "mylib/vector.h"
 
-namespace
-{
-
-/**
- * @brief Начальная ёмкость стека по умолчанию.
- */
-constexpr const size_t initialCapacity{ 8 };
-
-} // end namespace
-
-
 
 namespace mylib
 {
@@ -46,6 +35,11 @@ template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
 class Stack final
 {
 private:
+    /**
+     * @brief Начальная ёмкость стека по умолчанию.
+     */
+    constexpr static const size_t initialCapacity{ 8 };
+
     Vector<T, ALLOCATOR> m_vector{}; //!< Внутренний вектор, хранящий элементы стека.
 
 public:
