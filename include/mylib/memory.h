@@ -109,6 +109,40 @@ namespace mylib
 
     template<typename T, typename U>
     bool operator!=(const MySimpleAllocator<T>&, const MySimpleAllocator<U>&) { return false; }
+
+
+    template<typename T>
+    struct BufferGuard
+    {
+        T* ptr;
+        size_t count; // количество объектов в буфере
+        bool committed;
+
+        BufferGuard(T* thePtr, size_t theCount = 0) noexcept
+            : ptr{ thePtr }
+            , count{ theCount }
+            , committed{ false }
+        {}
+
+        ~BufferGuard() noexcept
+        {
+            if(!committed && ptr)
+            {
+                memory::rawDestruct(ptr, count);
+            }
+        }
+
+        void addConstructed(size_t n = 1) noexcept
+        {
+            count += n;
+        }
+
+        void commit() noexcept
+        {
+            committed = true;
+            ptr = nullptr;
+        }
+    };
 } // end namespace mylib
 
 #endif // MEMORY_H_INCLUDED
