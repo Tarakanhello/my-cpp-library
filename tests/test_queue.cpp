@@ -178,6 +178,7 @@ TEST_CASE("Queue: Constructors, empty, size", "[queue][construction]")
         q1.push(1);
         q1.push(2);
         q1.push(3);
+
         mylib::Queue<int> q2(q1);
         REQUIRE(q2.size() == 3);
         REQUIRE(toVector(q2) == std::vector<int>{1, 2, 3});
@@ -212,11 +213,15 @@ TEST_CASE("Queue: Constructors, empty, size", "[queue][construction]")
     {
         {
             mylib::Queue<int> q;
-            for (int i = 0; i < 1000; ++i) q.push(i);
+            for (int i = 0; i < 1000; ++i)
+            {
+                q.push(i);
+            }
             REQUIRE(q.size() == 1000);
         }
         SUCCEED("Destructor completed without crashes");
     }
+
 }
 
 TEST_CASE("Queue: push, pop, front, back", "[queue][modifiers]")

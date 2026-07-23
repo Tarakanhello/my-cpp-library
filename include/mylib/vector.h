@@ -40,13 +40,16 @@ namespace mylib
         size_t m_size{};        ///< Текущий размер (количество элементов).
         T* m_data{ nullptr };   ///< Указатель на массив элементов.
 
+
+
         /**
          * @brief Вычисляет новую ёмкость, достаточную для хранения requiredSize элементов.
          * @param requiredSize Необходимый размер.
          * @return Новая ёмкость (не менее MinCapacity и не менее requiredSize, степень двойки).
          */
+        /*
         constexpr size_t calculateNewCapacity(size_t requiredSize) const;
-
+        */
         /**
          * @brief Конструирует элементы в диапазоне [from, to) со значением value.
          * @param from Начальный индекс.
@@ -516,7 +519,7 @@ mylib::Vector<T, ALLOCATOR>::Vector(size_t size, const T& value, const ALLOCATOR
     if(size == 0)
         return;
 
-    size_t newCap{ calculateNewCapacity(size) };
+    size_t newCap{ calculateNewCapacity(size, maxSize(), MinCapacity, "Mylib::Vector") };
     reallocateBuffer(newCap, size, value);
 }
 
@@ -534,7 +537,7 @@ mylib::Vector<T, ALLOCATOR>::Vector(const std::initializer_list<T>& list, const 
         return;
     }
 
-    m_capacity = calculateNewCapacity(list.size());
+    m_capacity = calculateNewCapacity(list.size(), maxSize(), MinCapacity, "Mylib::Vector");
     m_data = m_allocator.allocate(m_capacity);
     try
     {
@@ -649,7 +652,7 @@ void mylib::Vector<T, ALLOCATOR>::appendVector(const Vector<T, ALLOCATOR>& vec)
     {
         throw std::length_error("Vector size overflow");
     }
-    reserve(calculateNewCapacity(m_size + vec.size()));
+    reserve(calculateNewCapacity(m_size + vec.size(), maxSize(), MinCapacity, "Mylib::Vector"));
 
     constructElementsFromRange(m_size, vec.data(), vec.size());
 
@@ -679,7 +682,7 @@ constexpr const T& mylib::Vector<T, ALLOCATOR>::at(size_t i) const
 }
 
 
-
+/*
 template<typename T, typename ALLOCATOR>
 constexpr size_t mylib::Vector<T, ALLOCATOR>::calculateNewCapacity(size_t requiredSize) const
 {
@@ -700,7 +703,7 @@ constexpr size_t mylib::Vector<T, ALLOCATOR>::calculateNewCapacity(size_t requir
 
     return reqCap;
 }
-
+*/
 
 
 template<typename T, typename ALLOCATOR>
@@ -797,7 +800,7 @@ void mylib::Vector<T, ALLOCATOR>::emplace_back(ARGS&&... args)
             throw std::length_error("Vector max size reached");
         }
 
-        reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, std::forward<ARGS>(args)...);
+        reallocateBuffer(calculateNewCapacity(m_size + 1, maxSize(), MinCapacity, "mylib::Vector"), m_size + 1, std::forward<ARGS>(args)...);
         return;
     }
 
@@ -946,7 +949,7 @@ void mylib::Vector<T, ALLOCATOR>::push_back(const T& element)
         {
             throw std::length_error("Vector max size reached");
         }
-        reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, element);
+        reallocateBuffer(calculateNewCapacity(m_size + 1, maxSize(), MinCapacity, "mylib::Vector"), m_size + 1, element);
         return;
     }
 
@@ -965,7 +968,7 @@ void mylib::Vector<T, ALLOCATOR>::push_back(T&& element)
         {
             throw std::length_error("Vector max size reached");
         }
-        reallocateBuffer(calculateNewCapacity(m_size + 1), m_size + 1, std::forward<T>(element));
+        reallocateBuffer(calculateNewCapacity(m_size + 1, maxSize(), MinCapacity, "mylib::Vector"), m_size + 1, std::forward<T>(element));
         return;
     }
 
@@ -1121,7 +1124,7 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value, bool sh
         // Проверяем, нужно ли уменьшить ёмкость
         if(m_capacity > MinCapacity && newSize < m_capacity / 4 && shrink)
         {
-            size_t newCapacity{ calculateNewCapacity(newSize) };
+            size_t newCapacity{ calculateNewCapacity(newSize, maxSize(), MinCapacity, "mylib::Vector") };
             reallocateBuffer(newCapacity, newSize);
         }
         else
@@ -1141,7 +1144,7 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value, bool sh
             }
             else
             {
-                size_t newCapacity{ calculateNewCapacity(newSize) };
+                size_t newCapacity{ calculateNewCapacity(newSize, maxSize(), MinCapacity, "mylib::Vector") };
 
                 reallocateBuffer(newCapacity, newSize, value);
             }

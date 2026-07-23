@@ -2,10 +2,11 @@
 #define QUEUE_H
 
 #include <cstddef>
+#include <stdexcept>
 #include <utility>
 
 #include "mylib/memory.h"
-#include "mylib/vector.h"
+#include "mylib/structs.h"
 
 
 namespace mylib
@@ -15,86 +16,151 @@ template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
 class Queue final
 {
 private:
-    /**
-     * @brief Начальная ёмкость стека по умолчанию.
-     */
-    constexpr static const size_t initialCapacity{ 8 };
+    enum { MinCapacity = 8 };
 
-    Vector<T, ALLOCATOR> m_data{};
+    using AllocTraits = std::allocator_traits<ALLOCATOR>;
 
-    size_t m_indexOfFrontElement{}; // индекс первого живого элемента
-    size_t m_size{};                // количество живых элементов
+    T* m_data{ nullptr };
 
-    // Сдвигает все живые элементы в начало вектора и урезает размер до m_size
-    void shift()
+    size_t m_front{};
+    size_t m_size{};
+    size_t m_capacity{};
+
+    ALLOCATOR m_alloc{};
+
+    T* allocate(size_t size)
     {
-        if (m_indexOfFrontElement > 0 && m_size > 0) {
-            for (size_t i{}; i < m_size; ++i)
-            {
-                m_data[i] = std::move(m_data[m_indexOfFrontElement + i]);
-            }
-            // Уничтожаем старые элементы (которые остались после m_size)
-            for (size_t i{ m_size }; i < m_indexOfFrontElement + m_size; ++i)
-            {
-                m_data[i].~T();
-            }
-            m_indexOfFrontElement = 0;
-            m_data.resize(m_size); // физический размер = логический
-        }
-        else if (m_indexOfFrontElement > 0)
+        return AllocTraits::allocate(m_alloc, size);
+    }
+
+    template<typename... ARGS>
+    void constructElement(T* elementPtr, ARGS&&... args)
+    {
+        AllocTraits::construct(m_alloc, elementPtr, std::forward<ARGS>(args)...);
+        ++m_size;
+    }
+
+    constexpr void deallocate() noexcept
+    {
+        if(m_data)
         {
-            // Если очередь пуста, просто сбрасываем состояние
-            m_indexOfFrontElement = 0;
-            m_data.resize(0);
-            m_size = 0;
+            AllocTraits::deallocate(m_alloc, m_data, m_capacity);
         }
     }
 
-    void release()
+    constexpr void destroyAll() noexcept
     {
-        m_indexOfFrontElement = 0;
+        for(size_t i{}; i < size(); ++i)
+        {
+            AllocTraits::destroy(m_alloc, m_data + offset(i));
+        }
         m_size = 0;
     }
 
-public:
-    Queue()
-        : m_indexOfFrontElement{ 0 }
-        , m_size{ 0 }
+    constexpr void destroyElement(T* elementPtr) noexcept
     {
-        m_data.reserve(initialCapacity);
+        AllocTraits::destroy(m_alloc, elementPtr);
+        --m_size;
     }
 
-    explicit Queue(const ALLOCATOR& alloc)
-        : m_data(initialCapacity, alloc)
-        , m_indexOfFrontElement{ 0 }
-        , m_size{ 0 }
+    static constexpr size_t maxSize() noexcept
     {
-        m_data.reserve(initialCapacity);
+        return std::numeric_limits<size_t>::max() / sizeof(T);
+    }
+
+    constexpr size_t offset(size_t i) const noexcept
+    {
+        return (m_front + i) % m_capacity;
+    }
+
+    constexpr void release() noexcept
+    {
+        m_data = nullptr;
+        m_front = 0;
+        m_size = 0;
+        m_capacity = 0;
+    }
+
+    constexpr void swap(Queue& other) noexcept
+    {
+        std::swap(m_data, other.m_data);
+        std::swap(m_front, other.m_front);
+        std::swap(m_size, other.m_size);
+        std::swap(m_capacity, other.m_capacity);
+        std::swap(m_alloc, other.m_alloc);
+    }
+
+public:
+    explicit Queue(ALLOCATOR alloc = ALLOCATOR())
+        : m_data{ nullptr }
+        , m_front{ 0 }
+        , m_size{ 0 }
+        , m_capacity{ 0 }
+        , m_alloc{ alloc }
+    {}
+
+    explicit Queue(size_t capacity, ALLOCATOR alloc = ALLOCATOR())
+        : m_data{ nullptr }
+        , m_front{ 0 }
+        , m_size{ 0 }
+        , m_alloc{ alloc }
+    {
+        m_capacity = std::max(static_cast<size_t>(MinCapacity), capacity);
+        m_data = allocate(m_capacity);
     }
 
     Queue(const Queue& other)
-        : m_data{ other.m_data }
-        , m_indexOfFrontElement{ other.m_indexOfFrontElement }
-        , m_size{ other.m_size }
-    {}
+        : m_front{}
+        , m_size{}
+        , m_capacity{ other.m_capacity }
+        , m_alloc{ other.m_alloc }
+    {
+        try
+        {
+            m_data = allocate(m_capacity);
+            BufferGuard guard{ m_data };
+            for(size_t i{}; i < other.m_size; ++i)
+            {
+                constructElement(m_data + i, *(other.m_data + other.offset(i)));
+                guard.addConstructed();
+            }
+            guard.commit();
+        }
+        catch(...)
+        {
+            if(m_data)
+            {
+                deallocate();
+            }
+
+            release();
+            throw;
+        }
+    }
 
     Queue(Queue&& other) noexcept
-        : m_data{ std::move(other.m_data) }
-        , m_indexOfFrontElement{ other.m_indexOfFrontElement }
+        : m_data{ other.m_data }
+        , m_front{ other.m_front }
         , m_size{ other.m_size }
+        , m_capacity{ other.m_capacity }
+        , m_alloc{ std::move(other.m_alloc) }
     {
         other.release();
     }
 
-    ~Queue() noexcept = default;
+    ~Queue() noexcept
+    {
+        destroyAll();
+        deallocate();
+        release();
+    }
 
     Queue& operator=(const Queue& other)
     {
         if(this != &other)
         {
-            m_data = other.m_data;
-            m_indexOfFrontElement = other.m_indexOfFrontElement;
-            m_size = other.m_size;
+            Queue temp{ other };
+            swap(temp);
         }
         return *this;
     }
@@ -103,10 +169,10 @@ public:
     {
         if(this != &other)
         {
-            m_data = std::move(other.m_data);
-            m_indexOfFrontElement = other.m_indexOfFrontElement;
-            m_size = other.m_size;
+            swap(other);
 
+            other.destroyAll();
+            other.deallocate();
             other.release();
         }
         return *this;
@@ -115,23 +181,27 @@ public:
     template<typename... ARGS>
     void push(ARGS&&... args)
     {
-        if(m_data.size() == m_data.capacity())
+        if(!m_data)
         {
-            if(m_indexOfFrontElement > 0)
-            {
-                // Если есть мёртвые элементы в начале, сдвигаем их, чтобы освободить место в конце
-                shift();
-            }
-            // Если после сдвига всё ещё нет места – увеличиваем ёмкость
-            if(m_data.size() == m_data.capacity())
-            {
-                m_data.reserve(m_data.capacity() * 2);
-            }
+            m_data = allocate(MinCapacity);
+            m_capacity = MinCapacity;
         }
-        // Добавляем новый элемент в конец вектора (emplace_back использует perfect forwarding)
-        m_data.emplace_back(std::forward<ARGS>(args)...);
 
-        ++m_size;
+        if(m_size == m_capacity)
+        {
+            size_t newCap{ calculateNewCapacity(m_capacity * 2, maxSize(), MinCapacity, "mylib::Queue") };
+            Queue temp(newCap, m_alloc);
+            for(size_t i{}; i < size(); ++i)
+            {
+                temp.constructElement(temp.m_data + i, std::move(*(m_data + offset(i))));
+            }
+            swap(temp);
+            constructElement(m_data + offset(m_size), std::forward<ARGS>(args)...);
+        }
+        else
+        {
+            constructElement(m_data + offset(m_size), std::forward<ARGS>(args)...);
+        }
     }
 
     void pop()
@@ -140,17 +210,8 @@ public:
         {
             throw std::out_of_range("Queue::pop() on empty queue");
         }
-        // Явно уничтожаем элемент
-        m_data[m_indexOfFrontElement].~T();
-        ++m_indexOfFrontElement;
-        --m_size;
-
-        if(m_indexOfFrontElement > 0 &&
-            m_indexOfFrontElement > m_data.capacity() / 2 &&
-            m_size < m_data.capacity() / 2)
-        {
-            shift();
-        }
+        destroyElement(m_data + m_front);
+        m_front = offset(1);
     }
 
     T& front()
@@ -159,7 +220,8 @@ public:
         {
             throw std::out_of_range("Queue::front() on empty queue");
         }
-        return m_data[m_indexOfFrontElement];
+
+        return *(m_data + m_front);
     }
 
     const T& front() const
@@ -168,8 +230,7 @@ public:
         {
             throw std::out_of_range("Queue::front() on empty queue");
         }
-
-        return m_data[m_indexOfFrontElement];
+        return *(m_data + m_front);
     }
 
     T& back()
@@ -179,7 +240,7 @@ public:
             throw std::out_of_range("Queue::back() on empty queue");
         }
 
-        return m_data[m_indexOfFrontElement + size() - 1];
+        return *(m_data + offset(size() - 1));
     }
 
     const T& back() const
@@ -189,7 +250,7 @@ public:
             throw std::out_of_range("Queue::back() on empty queue");
         }
 
-        return m_data[m_indexOfFrontElement + size() - 1];
+        return *(m_data + offset(size() - 1));
     }
 
     bool empty() const noexcept { return size() == 0; }
@@ -197,8 +258,7 @@ public:
     size_t size() const noexcept { return m_size; }
     void clear() noexcept
     {
-        m_data.clear();
-        release();
+        destroyAll();
     }
 
     bool operator==(const Queue& other) const
@@ -209,7 +269,7 @@ public:
         }
         for(size_t i{}; i < size(); ++i)
         {
-            if(m_data[m_indexOfFrontElement + i] != other.m_data[m_indexOfFrontElement + i])
+            if(*(m_data + offset(i)) != *(other.m_data + offset(i)))
             {
                 return false;
             }
@@ -227,11 +287,11 @@ public:
 
         for(size_t i{}; i < size(); ++i)
         {
-            if(m_data[m_indexOfFrontElement + i] < other.m_data[m_indexOfFrontElement + i])
+            if(*(m_data + offset(i)) < *(other.m_data + offset(i)))
             {
                 return std::strong_ordering::less;
             }
-            if(m_data[m_indexOfFrontElement + i] > other.m_data[m_indexOfFrontElement + i])
+            if(*(m_data + offset(i)) > *(other.m_data + offset(i)))
             {
                 return std::strong_ordering::greater;
             }

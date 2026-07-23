@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cassert>
 #include <compare>
+#include <format>
+#include <stdexcept>
 #include <utility>
 
 #include "mylib/memory.h"
@@ -528,6 +530,37 @@ namespace mylib
             return result /= b;
         }
     };
+
+    /**
+     * @brief Вычисляет новую ёмкость, достаточную для хранения requiredSize элементов.
+     * @param requiredSize Необходимый размер.
+     * @param maxSize Максимальный размер
+     * @param minCapacity = 0 Минильная емкость
+     * @param source = "" Источник вызова функции
+     * @return Новая ёмкость (не менее MinCapacity и не менее requiredSize, степень двойки).
+     */
+    constexpr inline size_t calculateNewCapacity(size_t requiredSize,
+                                                size_t maxSize,
+                                                size_t minCapacity = 0,
+                                                std::string_view source = "")
+    {
+        if(requiredSize > maxSize)
+        {
+            throw std::length_error(std::format("{} size exceeds maximum possible size", source));
+        }
+
+        size_t reqCap{ minCapacity };
+        while(reqCap < requiredSize )
+        {
+            if(reqCap > maxSize / 2)
+            {
+                throw std::length_error(std::format("{} capacity overflow", source));
+            }
+            reqCap *= 2;
+        }
+
+        return reqCap;
+    }
 
 } // end namespace mylib
 
