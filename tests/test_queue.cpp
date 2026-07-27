@@ -664,3 +664,293 @@ TEST_CASE("Queue: Large data and performance (smoke)", "[queue][performance]")
     REQUIRE(vec[vec.size() - 1] == N + N/2 - 1);
 }
 
+TEST_CASE("Queue: capacity()", "[queue][capacity]")
+{
+    SECTION("Default constructed queue has capacity 0")
+    {
+        mylib::Queue<int> q;
+        REQUIRE(q.capacity() == 0);
+    }
+
+    SECTION("Constructor with explicit capacity")
+    {
+        mylib::Queue<int> q(10);
+        REQUIRE(q.capacity() >= 10);
+        REQUIRE(q.empty());
+    }
+
+    SECTION("Capacity grows after pushes")
+    {
+        mylib::Queue<int> q;
+        size_t prevCap = q.capacity();
+        for (int i = 0; i < 100; ++i)
+        {
+            q.push(i);
+            if (q.capacity() != prevCap)
+            {
+                // Capacity increased, should be at least size
+                REQUIRE(q.capacity() >= q.size());
+                prevCap = q.capacity();
+            }
+        }
+        REQUIRE(q.capacity() >= q.size());
+    }
+}
+
+TEST_CASE("Queue: reserve()", "[queue][reserve]")
+{
+    SECTION("Reserve increases capacity")
+    {
+        mylib::Queue<int> q;
+        REQUIRE(q.capacity() == 0);
+        q.reserve(20);
+        REQUIRE(q.capacity() >= 20);
+        REQUIRE(q.empty());
+    }
+
+    SECTION("Reserve with smaller value does nothing")
+    {
+        mylib::Queue<int> q(10);
+        size_t oldCap = q.capacity();
+        q.reserve(5);
+        REQUIRE(q.capacity() == oldCap);
+    }
+
+    SECTION("Reserve preserves existing elements")
+    {
+        mylib::Queue<int> q;
+        for (int i = 0; i < 10; ++i) q.push(i);
+        auto vecBefore = toVector(q);
+        q.reserve(50);
+        REQUIRE(q.capacity() >= 50);
+        REQUIRE(toVector(q) == vecBefore);
+    }
+
+    SECTION("Reserve with capacity greater than max throws")
+    {
+        mylib::Queue<int> q;
+        const size_t tooBig = std::numeric_limits<size_t>::max() / sizeof(int) + 1;
+        REQUIRE_THROWS_AS(q.reserve(tooBig), std::length_error);
+    }
+
+    SECTION("Reserve does not cause reallocation if already enough")
+    {
+        mylib::Queue<int> q(100);
+        size_t oldCap = q.capacity();
+        q.reserve(50);
+        REQUIRE(q.capacity() == oldCap);
+        q.reserve(100);
+        REQUIRE(q.capacity() == oldCap);
+    }
+}
+
+TEST_CASE("Queue: shrink_to_fit()", "[queue][shrink_to_fit]")
+{
+    SECTION("shrink_to_fit reduces capacity to size")
+    {
+        mylib::Queue<int> q;
+        for (int i = 0; i < 20; ++i)
+        {
+            q.push(i);
+        }
+        REQUIRE(q.capacity() >= 32); // MinCapacity growth
+        q.shrink_to_fit();
+        REQUIRE(q.capacity() == q.size());
+        std::vector<int> expected(20);
+        std::iota(expected.begin(), expected.end(), 0);
+        REQUIRE(toVector(q) == expected); // 0..19
+    }
+
+    SECTION("shrink_to_fit on empty queue releases memory")
+    {
+        mylib::Queue<int> q(100);
+        REQUIRE(q.capacity() >= 100);
+        q.shrink_to_fit();
+        REQUIRE(q.capacity() == 0);
+        REQUIRE(q.empty());
+    }
+
+    SECTION("shrink_to_fit preserves element order")
+    {
+        mylib::Queue<int> q;
+        for (int i = 0; i < 50; ++i) q.push(i * 2);
+        auto expected = toVector(q);
+        q.shrink_to_fit();
+        REQUIRE(toVector(q) == expected);
+    }
+
+    SECTION("shrink_to_fit with move-only types")
+    {
+        mylib::Queue<std::unique_ptr<int>> q;
+        q.push(std::make_unique<int>(1));
+        q.push(std::make_unique<int>(2));
+        q.shrink_to_fit();
+        REQUIRE(q.size() == 2);
+        REQUIRE(*q.front() == 1);
+        REQUIRE(*q.back() == 2);
+    }
+
+}
+
+TEST_CASE("Queue: swap()", "[queue][swap]")
+{
+    SECTION("Swap two non-empty queues")
+    {
+        mylib::Queue<int> q1, q2;
+        q1.push(1); q1.push(2);
+        q2.push(3); q2.push(4); q2.push(5);
+        auto vec1 = toVector(q1);
+        auto vec2 = toVector(q2);
+        q1.swap(q2);
+        REQUIRE(toVector(q1) == vec2);
+        REQUIRE(toVector(q2) == vec1);
+        REQUIRE(q1.size() == vec2.size());
+        REQUIRE(q2.size() == vec1.size());
+    }
+
+    SECTION("Swap with empty queue")
+    {
+        mylib::Queue<int> q1, q2;
+        q1.push(1); q1.push(2);
+        auto vec1 = toVector(q1);
+        q1.swap(q2);
+        REQUIRE(q1.empty());
+        REQUIRE(toVector(q2) == vec1);
+        REQUIRE(q2.size() == 2);
+    }
+
+    SECTION("Swap with itself (no effect)")
+    {
+        mylib::Queue<int> q;
+        q.push(1); q.push(2);
+        auto vec = toVector(q);
+        q.swap(q);
+        REQUIRE(toVector(q) == vec);
+    }
+
+    SECTION("Swap with different allocators (if supported)")
+    {
+        // Используем аллокатор, который хранит id для проверки обмена.
+        // Поскольку MySimpleAllocator не хранит состояние, пропустим.
+        // Проверим хотя бы, что после swap элементы корректны.
+        mylib::Queue<int> q1, q2;
+        q1.push(10);
+        q2.push(20);
+        q1.swap(q2);
+        REQUIRE(q1.front() == 20);
+        REQUIRE(q2.front() == 10);
+    }
+}
+
+TEST_CASE("Queue: get_allocator()", "[queue][allocator]")
+{
+    mylib::MySimpleAllocator<int> alloc;
+    mylib::Queue<int, mylib::MySimpleAllocator<int>> q(alloc);
+    auto returnedAlloc = q.get_allocator();
+    // Аллокаторы равны, так как MySimpleAllocator не хранит состояния
+    REQUIRE(returnedAlloc == alloc);
+}
+
+TEST_CASE("Queue: Constructor from initializer_list", "[queue][initializer_list]")
+{
+    SECTION("Create from empty list")
+    {
+        mylib::Queue<int> q{ std::initializer_list<int>{} };
+        REQUIRE(q.empty());
+        REQUIRE(q.size() == 0);
+        REQUIRE(q.capacity() >= 8); // выделяется MinCapacity
+    }
+
+    SECTION("Create from non-empty list")
+    {
+        mylib::Queue<int> q{1, 2, 3, 4, 5};
+        REQUIRE(q.size() == 5);
+        REQUIRE(toVector(q) == std::vector<int>{1, 2, 3, 4, 5});
+        REQUIRE(q.capacity() >= 5);
+    }
+
+    SECTION("Create with allocator")
+    {
+        mylib::MySimpleAllocator<int> alloc;
+        mylib::Queue<int, mylib::MySimpleAllocator<int>> q({10, 20}, alloc);
+        REQUIRE(q.size() == 2);
+        REQUIRE(toVector(q) == std::vector<int>{10, 20});
+        REQUIRE(q.get_allocator() == alloc);
+    }
+}
+
+TEST_CASE("Queue: Constructor from iterator range (forward_iterator)", "[queue][range_constructor]")
+{
+    SECTION("From vector (forward iterator)")
+    {
+        std::vector<int> vec = {1, 2, 3, 4, 5};
+        mylib::Queue<int> q(vec.begin(), vec.end());
+        REQUIRE(q.size() == 5);
+        REQUIRE(toVector(q) == vec);
+        REQUIRE(q.capacity() >= 5);
+    }
+
+    SECTION("From std::list (bidirectional iterator)")
+    {
+        std::list<int> lst = {10, 20, 30};
+        mylib::Queue<int> q(lst.begin(), lst.end());
+        REQUIRE(toVector(q) == std::vector<int>{10, 20, 30});
+    }
+
+    SECTION("From array (raw pointer counts as random_access_iterator)")
+    {
+        int arr[] = {7, 8, 9};
+        mylib::Queue<int> q(std::begin(arr), std::end(arr));
+        REQUIRE(toVector(q) == std::vector<int>{7, 8, 9});
+    }
+
+    SECTION("With allocator")
+    {
+        std::vector<int> vec = {1, 2, 3};
+        mylib::MySimpleAllocator<int> alloc;
+        mylib::Queue<int, mylib::MySimpleAllocator<int>> q(vec.begin(), vec.end(), alloc);
+        REQUIRE(q.get_allocator() == alloc);
+        REQUIRE(toVector(q) == vec);
+    }
+
+    SECTION("Empty range")
+    {
+        std::vector<int> vec;
+        mylib::Queue<int> q(vec.begin(), vec.end());
+        REQUIRE(q.empty());
+        REQUIRE(q.capacity() >= 8); // выделяется MinCapacity
+    }
+}
+
+TEST_CASE("Queue: Constructor from iterator range (input_iterator)", "[queue][range_constructor_input]")
+{
+    SECTION("From std::istream_iterator (input iterator)")
+    {
+        std::istringstream iss("1 2 3 4 5");
+        std::istream_iterator<int> first(iss), last;
+        mylib::Queue<int> q(first, last);
+        REQUIRE(q.size() == 5);
+        REQUIRE(toVector(q) == std::vector<int>{1, 2, 3, 4, 5});
+        // Проверяем, что после создания поток не испорчен (проверять необязательно)
+    }
+
+    SECTION("From std::istream_iterator with empty input")
+    {
+        std::istringstream iss("");
+        std::istream_iterator<int> first(iss), last;
+        mylib::Queue<int> q(first, last);
+        REQUIRE(q.empty());
+        REQUIRE(q.capacity() == 0); // т.к. создается через конструктор по умолчанию, который не выделяет память
+    }
+
+    SECTION("With allocator")
+    {
+        std::istringstream iss("10 20 30");
+        std::istream_iterator<int> first(iss), last;
+        mylib::MySimpleAllocator<int> alloc;
+        mylib::Queue<int, mylib::MySimpleAllocator<int>> q(first, last, alloc);
+        REQUIRE(q.get_allocator() == alloc);
+        REQUIRE(toVector(q) == std::vector<int>{10, 20, 30});
+    }
+}
+

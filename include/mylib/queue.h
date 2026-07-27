@@ -2,6 +2,7 @@
 #define QUEUE_H
 
 #include <cstddef>
+#include <initializer_list>
 #include <stdexcept>
 #include <utility>
 
@@ -28,6 +29,7 @@ namespace mylib
  *       Класс является final и не предназначен для наследования.
  */
 template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
+    requires std::is_nothrow_move_constructible_v<T>
 class Queue final
 {
 private:
@@ -135,26 +137,13 @@ private:
         m_capacity = 0;
     }
 
-    /**
-     * @brief Обменивает содержимое двух очередей.
-     * @param other Очередь, с которой производится обмен.
-     */
-    constexpr void swap(Queue& other) noexcept
-    {
-        std::swap(m_data, other.m_data);
-        std::swap(m_front, other.m_front);
-        std::swap(m_size, other.m_size);
-        std::swap(m_capacity, other.m_capacity);
-        std::swap(m_alloc, other.m_alloc);
-    }
-
 public:
     /**
      * @brief Конструктор по умолчанию.
      * @param alloc Аллокатор, который будет использоваться очередью.
      * @post Создаётся пустая очередь без выделенной памяти.
      */
-    explicit Queue(ALLOCATOR alloc = ALLOCATOR())
+    explicit Queue(const ALLOCATOR& alloc = ALLOCATOR())
         : m_data{ nullptr }
         , m_front{ 0 }
         , m_size{ 0 }
@@ -170,7 +159,7 @@ public:
      * @throw std::bad_alloc или исключение аллокатора при выделении памяти.
      * @post Очередь пуста, но память под capacity элементов выделена.
      */
-    explicit Queue(size_t capacity, ALLOCATOR alloc = ALLOCATOR())
+    explicit Queue(size_t capacity, const ALLOCATOR& alloc = ALLOCATOR())
         : m_data{ nullptr }
         , m_front{ 0 }
         , m_size{ 0 }
@@ -213,6 +202,73 @@ public:
 
             release();
             throw;
+        }
+    }
+
+    /**
+     * @brief Конструктор, создающий очередь из списка инициализации.
+     *
+     * @param list Список элементов для инициализации.
+     * @param alloc Аллокатор, который будет использоваться очередью.
+     *
+     * @throw Исключения при выделении памяти или копировании элементов.
+     */
+    Queue(const std::initializer_list<T>& list, const ALLOCATOR& alloc = ALLOCATOR())
+        : m_front{ 0 }
+        , m_size{ 0 }
+        , m_capacity{ calculateNewCapacity(list.size(), maxSize(), MinCapacity, "Queue::ListConstructor") }
+        , m_alloc{ alloc }
+    {
+        m_data = allocate(m_capacity);
+        BufferGuard guard{ m_data };
+
+        for (size_t i{}; i < list.size(); ++i)
+        {
+            constructElement(m_data + i, *(list.begin() + i));
+            guard.addConstructed();
+        }
+
+        guard.commit();
+    }
+
+    /**
+     * @brief Конструктор из произвольного диапазона итераторов.
+     * @tparam INPUT_IT Тип итератора ввода.
+     * @param first Начало диапазона.
+     * @param last  Конец диапазона.
+     * @param alloc Аллокатор.
+     */
+    template <typename INPUT_IT>
+        requires std::forward_iterator<INPUT_IT>
+    Queue(INPUT_IT first, INPUT_IT last, const ALLOCATOR& alloc = ALLOCATOR())
+        : m_front{ 0 }
+        , m_size{ 0 }
+        , m_capacity{ calculateNewCapacity(std::distance(first, last), maxSize(), MinCapacity, "Queue::RangeConstructor") }
+        , m_alloc{ alloc }
+    {
+        m_data = allocate(m_capacity);
+        BufferGuard guard{ m_data };
+
+        for(size_t i{}; first != last; ++i)
+        {
+            constructElement(m_data + i, *first);
+            guard.addConstructed();
+            ++first;
+        }
+
+        guard.commit();
+    }
+
+    /** @copydoc Queue(INPUT_IT, INPUT_IT, const ALLOCATOR&) */
+    template <typename INPUT_IT>
+        requires std::input_iterator<INPUT_IT> && (!std::forward_iterator<INPUT_IT>)
+    Queue(INPUT_IT first, INPUT_IT last, const ALLOCATOR& alloc = ALLOCATOR())
+        : Queue(alloc)  // делегируем конструктору по умолчанию
+    {
+        while (first != last)
+        {
+            push(*first);
+            ++first;
         }
     }
 
@@ -399,8 +455,9 @@ public:
     size_t size() const noexcept { return m_size; }
 
     /**
-     * @brief Возвращает вместимость очереди.
-     * @return Текущая вместимость очереди.
+     * @brief Возвращает текущую ёмкость очереди.
+     *
+     * @return size_t Количество элементов, под которые выделена память.
      */
     size_t capacity() const noexcept { return m_capacity; }
 
@@ -461,7 +518,82 @@ public:
         }
         return std::strong_ordering::equal;
     }
+
+    /**
+     * @brief Резервирует память для указанного количества элементов без их добавления.
+     *
+     * @param newCap Желаемая новая ёмкость. Если меньше текущей ёмкости, ничего не делает.
+     *
+     * @throw std::length_error Если newCap превышает максимально допустимый размер.
+     * @throw Исключения при выделении памяти.
+     */
+    void reserve(size_t newCap)
+    {
+        if(newCap <= capacity())
+        {
+            return;
+        }
+
+        Queue temp(calculateNewCapacity(newCap, maxSize(), MinCapacity, "mylib::Queue::Reserve"), m_alloc);
+
+        for(size_t i{}; i < size(); ++i)
+        {
+            temp.push(std::move(*(m_data + offset(i))));
+        }
+
+        swap(temp);
+    }
+
+    /**
+     * @brief Уменьшает ёмкость очереди до её текущего размера.
+     *
+     * @throw Исключения при выделении памяти или перемещении элементов.
+     * @note Если очередь пуста, освобождает всю память.
+     */
+    void shrink_to_fit()
+    {
+        if(empty())
+        {
+            deallocate();
+            release();
+            return;
+        }
+
+        Queue temp(size(), m_alloc);
+
+        for(size_t i{}; i < size(); ++i)
+        {
+            temp.push(std::move(*(m_data + offset(i))));
+        }
+
+        swap(temp);
+    }
+
+    /**
+     * @brief Обменивает содержимое двух очередей.
+     * @param other Очередь, с которой производится обмен.
+     */
+    constexpr void swap(Queue& other) noexcept
+    {
+        std::swap(m_data, other.m_data);
+        std::swap(m_front, other.m_front);
+        std::swap(m_size, other.m_size);
+        std::swap(m_capacity, other.m_capacity);
+        std::swap(m_alloc, other.m_alloc);
+    }
+
+    /**
+     * @brief Возвращает копию аллокатора, используемого очередью.
+     *
+     * @return ALLOCATOR Копия аллокатора.
+     */
+    ALLOCATOR get_allocator() const noexcept
+    {
+        return m_alloc;
+    }
 };
+
+
 
 } // end namespace
 
