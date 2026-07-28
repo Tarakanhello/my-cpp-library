@@ -25,6 +25,7 @@ add_library(mylib STATIC
 
     include/mylib/stack.h
     include/mylib/queue.h
+    include/mylib/bit_operations.h
 
 )
 target_include_directories(mylib PUBLIC include)
