@@ -2,8 +2,9 @@
 #define BIT_OPERATIONS_H
 
 #include <array>
-#include <bit>
+#include <cassert>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 namespace mylib
@@ -181,7 +182,7 @@ namespace mylib
          */
         [[nodiscard]] constexpr bool get(uint64_t x, int i)
         {
-            return x & twoPower(i);
+            return (x & twoPower(i)) != 0;
         }
 
         /**
@@ -192,7 +193,7 @@ namespace mylib
          * @return uint64_t Новое число с инвертированным битом.
          * @throws std::out_of_range если i вне допустимого диапазона (пробрасывается из twoPower).
          */
-        [[nodiscard]] uint64_t flip(uint64_t x, int i)
+        [[nodiscard]] constexpr uint64_t flip(uint64_t x, int i)
         {
             return x ^ twoPower(i);
         }
@@ -228,15 +229,19 @@ namespace mylib
         /**
          * @brief Создаёт маску со старшими битами, начиная с позиции n.
          *
-         * @param n Количество младших бит, которые будут равны 0 (0 … 63).
-         * @return constexpr uint64_t Маска с единицами в битах [n, 63].
-         * @throws std::out_of_range если n вне диапазона [0, 63].
+         * @param n Количество младших бит, которые будут равны 0 (0 … 64).
+         * @return constexpr uint64_t Маска с единицами в битах [n, 64].
+         * @throws std::out_of_range если n вне диапазона [0, 64].
          */
         [[nodiscard]] constexpr uint64_t upperMask(int n = 0)
         {
-            if(n < 0 || n >= 64)
+            if(n < 0 || n > 64)
             {
-                throw std::out_of_range("mylib::bit::upperMask(int): n must be in [0, 63]");
+                throw std::out_of_range("mylib::bit::upperMask(int): n must be in [0, 64]");
+            }
+            if(n == 64)
+            {
+                return ZERO;
             }
 
             return FULL << n;
@@ -245,15 +250,15 @@ namespace mylib
         /**
          * @brief Создаёт маску с младшими n битами, установленными в 1.
          *
-         * @param n Количество младших бит (0 … 63).
+         * @param n Количество младших бит (0 … 64).
          * @return constexpr uint64_t Маска с единицами в битах [0, n-1].
-         * @throws std::out_of_range если n вне диапазона [0, 63].
+         * @throws std::out_of_range если n вне диапазона [0, 64].
          */
         [[nodiscard]] constexpr uint64_t lowerMask(int n = 0)
         {
-            if(n < 0 || n >= 64)
+            if(n < 0 || n > 64)
             {
-                throw std::out_of_range("mylib::bit::lowerMask(int): n must be in [0, 63]");
+                throw std::out_of_range("mylib::bit::lowerMask(int): n must be in [0, 64]");
             }
             return ~upperMask(n);
         }
@@ -332,11 +337,19 @@ namespace mylib
         }
 
 
+        // ============================================================================
+        // Классы для табличного подсчёта и инвертирования
+        // ============================================================================
 
+        /**
+         * @brief Класс для быстрого подсчёта количества установленных бит (popcount) в 8‑битном числе.
+         *
+         * Использует предварительно вычисленную таблицу на 256 элементов, заполняемую на этапе компиляции.
+         */
         class PopCount8 final
         {
         private:
-            static inline constexpr std::array<uint8_t, 256> table = []() constexpr
+            static inline constexpr std::array<uint8_t, 256> m_table = []() constexpr
             {
                 std::array<uint8_t, 256> arr{};
                 for(size_t i{}; i < arr.max_size(); ++i)
@@ -357,12 +370,139 @@ namespace mylib
             }();
 
         public:
-            constexpr int operator()(uint8_t x) const { return table[x]; }
+            /**
+             * @brief Возвращает количество единичных бит в байте.
+             * @param x 8‑битное беззнаковое число.
+             * @return int число установленных бит (0 … 8).
+             */
+            constexpr int operator()(uint8_t x) const { return m_table[x]; }
         };
 
+
+        /**
+         * @brief Класс для быстрого инвертирования порядка бит (bit reversal) в 8‑битном числе.
+         *
+         * Таблица из 256 элементов заполняется на этапе компиляции.
+         */
+        class ReverseBits8 final
+        {
+        private:
+            static inline constexpr std::array<uint8_t, 256> m_table = []() constexpr
+            {
+                std::array<uint8_t, 256> arr{};
+
+                for(size_t i{}; i < arr.size(); ++i)
+                {
+                    uint8_t result{};
+                    uint8_t x{ static_cast<uint8_t>(i) };
+
+                    for(size_t j{}; j < 8; ++j)
+                    {
+                        result = (result << 1) + (x & 1);
+                        x >>= 1;
+                    }
+
+                    arr[i] = result;
+                }
+
+                return arr;
+            }();
+
+        public:
+            /**
+             * @brief Возвращает байт с битами, записанными в обратном порядке.
+             * @param x 8‑битное беззнаковое число.
+             * @return uint8_t инвертированное значение.
+             */
+            constexpr uint8_t operator()(uint8_t x) const { return m_table[x]; }
+        };
+
+        // ============================================================================
+        // Инвертирование бит (reverse)
+        // ============================================================================
+
+        /**
+         * @brief Инвертирует порядок всех бит в слове T.
+         *
+         * @tparam T Беззнаковый целый тип.
+         * @param x Исходное число.
+         * @return constexpr T Число с битами, расположенными в обратном порядке.
+         */
+        template<typename T>
+            requires std::is_unsigned_v<T>
+        constexpr T reverseAllBits(T x)
+        {
+            ReverseBits8 r8;
+
+            T result{};
+            for(size_t i{}; i < sizeof(x); ++i, x >>= 8)
+            {
+                result = (result << 8) + r8(x);
+            }
+
+            return result;
+        }
+
+        /**
+         * @brief Инвертирует порядок только младших n бит числа x.
+         *
+         * @tparam T Беззнаковый целый тип.
+         * @param x Исходное число.
+         * @param n Количество младших бит для инвертирования (по умолчанию все биты).
+         * @return constexpr T Число, у которого младшие n бит инвертированы, старшие биты обнулены.
+         * @note Если n == digits, функция эквивалентна reverseAllBits(x).
+         * @warning Для корректного использования старшие биты результата обнуляются (сдвиг вправо).
+         */
+        template<typename T>
+            requires std::is_unsigned_v<T>
+        constexpr T reverseBits(T x, int n = std::numeric_limits<T>::digits)
+        {
+            assert(n >= 0 && n <= std::numeric_limits<T>::digits);
+
+            int shift{ std::numeric_limits<T>::digits - n };
+            T mask{ lowerMask(n) };
+            return reverseAllBits(x & mask) >> shift;
+        }
+
+        // ============================================================================
+        // Подсчёт единичных бит (popcount)
+        // ============================================================================
+
+        /**
+         * @brief Вычисляет количество установленных бит (popcount) в беззнаковом числе произвольной разрядности.
+         *
+         * Использует таблицу PopCount8 для каждого байта числа.
+         *
+         * @tparam T Беззнаковый целый тип.
+         * @param x Исходное число.
+         * @return constexpr int Количество единичных бит.
+         */
+        template<typename T>
+            requires std::is_unsigned_v<T>
+        constexpr int popcount(T x)
+        {
+            PopCount8 p8;
+            int result{ 0 };
+            for(; x; x>>= 8)
+            {
+                result += p8(static_cast<uint8_t>(x));
+            }
+
+            return result;
+        }
+
+        /**
+         * @brief Вычисляет количество младших нулевых бит в 64‑битном числе.
+         *
+         * Использует выражение popcount(~x & (x-1)), которое даёт маску всех младших нулей.
+         *
+         * @param x 64‑битное беззнаковое число.
+         * @return constexpr int Количество подряд идущих нулевых бит, начиная с младшего.
+         * @note Для x == 0 возвращает 64, так как все биты нулевые.
+         */
         constexpr int rightmostNullCount(uint64_t x)
         {
-            return std::popcount(~x & (x - 1));
+            return popcount(~x & (x - 1));
         }
 
     } // end bit namespace
