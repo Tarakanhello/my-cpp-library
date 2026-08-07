@@ -459,9 +459,17 @@ namespace mylib
         {
             assert(n >= 0 && n <= std::numeric_limits<T>::digits);
 
-            int shift{ std::numeric_limits<T>::digits - n };
-            T mask{ lowerMask(n) };
-            return reverseAllBits(x & mask) >> shift;
+            if(n == 0)
+            {
+                return x;
+            }
+
+
+            const int shift{ std::numeric_limits<T>::digits - n };
+            const T mask{ static_cast<T>(lowerMask(n)) };
+            const T reversed{ reverseAllBits(static_cast<T>(x & mask)) >> shift };
+
+            return (x & ~mask) | reversed;
         }
 
         // ============================================================================
