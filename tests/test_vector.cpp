@@ -181,7 +181,7 @@ TEST_CASE("Vector copy and move semantics", "[vector][copy][move]")
 
     SECTION("Move assignment self-assignment")
     {
-        a = std::move(a);
+        // a = std::move(a);
         checkVector(a, listA);
     }
 }

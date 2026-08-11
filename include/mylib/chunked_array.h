@@ -901,8 +901,8 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
     : m_chunkBegin{ beginChunkPtr }
     , m_chunkPtr{ beginChunkPtr }
     , m_chunksEnd{ chunksEnd }
-    , m_offset{ startIndex % m_chunkSize }
     , m_currentElementPtr{ nullptr }
+    , m_offset{ startIndex % m_chunkSize }
 {
     if(m_chunkPtr && m_chunksEnd && m_chunkPtr < m_chunksEnd)
     {
@@ -1057,11 +1057,11 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         return (*this -= -n);
     }
 
-    if(n >= m_chunkSize)
+    if(static_cast<size_t>(n) >= m_chunkSize)
     {
-        size_t multiplier{ n / m_chunkSize };
+        size_t multiplier{ static_cast<size_t>(n) / m_chunkSize };
         m_chunkPtr += multiplier;
-        n -= (multiplier * m_chunkSize);
+        n -= static_cast<std::ptrdiff_t>((multiplier * m_chunkSize));
         if(m_chunkPtr >= m_chunksEnd)
         {
             m_currentElementPtr = nullptr;
@@ -1070,14 +1070,14 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         }
     }
 
-    if(m_offset + n >= m_chunkSize)
+    if(m_offset + static_cast<size_t>(n) >= m_chunkSize)
     {
         ++m_chunkPtr;
-        m_offset = m_offset + n - m_chunkSize;
+        m_offset = m_offset + static_cast<size_t>(n) - m_chunkSize;
     }
     else
     {
-        m_offset += n;
+        m_offset += static_cast<size_t>(n);
     }
 
     if(m_chunkPtr < m_chunksEnd)
@@ -1111,12 +1111,12 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         return (*this += -n);
     }
 
-    if(n >= m_chunkSize)
+    if(static_cast<size_t>(n) >= m_chunkSize)
     {
-        size_t multiplier{ n / m_chunkSize };
+        size_t multiplier{ static_cast<size_t>(n) / m_chunkSize };
 
         m_chunkPtr -= multiplier;
-        n -= (multiplier * m_chunkSize);
+        n -= static_cast<std::ptrdiff_t>((multiplier * m_chunkSize));
 
         if(m_chunkPtr < m_chunkBegin)
         {
@@ -1445,8 +1445,8 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::
         : m_chunkBegin{ beginChunkPtr }
         , m_chunkPtr{ beginChunkPtr }
         , m_chunksEnd{ chunksEnd }
-        , m_offset{ startIndex % m_chunkSize }
         , m_currentElementPtr{ nullptr }
+        , m_offset{ startIndex % m_chunkSize }
 {
     if(m_chunkPtr && m_chunksEnd && m_chunkPtr < m_chunksEnd)
     {
@@ -1590,11 +1590,11 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
         return (*this -= -n);
     }
 
-    if(n >= m_chunkSize)
+    if(static_cast<size_t>(n) >= m_chunkSize)
     {
-        size_t multiplier{ n / m_chunkSize };
+        size_t multiplier{ static_cast<size_t>(n) / m_chunkSize };
         m_chunkPtr += multiplier;
-        n -= (multiplier * m_chunkSize);
+        n -= static_cast<std::ptrdiff_t>((multiplier * m_chunkSize));
         if(m_chunkPtr >= m_chunksEnd)
         {
             m_currentElementPtr = nullptr;
@@ -1603,14 +1603,14 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
         }
     }
 
-    if(m_offset + n >= m_chunkSize)
+    if(m_offset + static_cast<size_t>(n) >= m_chunkSize)
     {
         ++m_chunkPtr;
-        m_offset = m_offset + n - m_chunkSize;
+        m_offset = m_offset + static_cast<size_t>(n) - m_chunkSize;
     }
     else
     {
-        m_offset += n;
+        m_offset += static_cast<size_t>(n);
     }
 
     if(m_chunkPtr < m_chunksEnd)
@@ -1644,12 +1644,12 @@ constexpr mylib::ChunkedArray<T, CHUNK_SIZE, ALLOCATOR>::Iterator&
         return (*this += -n);
     }
 
-    if(n >= m_chunkSize)
+    if(static_cast<size_t>(n) >= m_chunkSize)
     {
-        size_t multiplier{ n / m_chunkSize };
+        size_t multiplier{ static_cast<size_t>(n) / m_chunkSize };
 
         m_chunkPtr -= multiplier;
-        n -= (multiplier * m_chunkSize);
+        n -= static_cast<std::ptrdiff_t>((multiplier * m_chunkSize));
 
         if(m_chunkPtr < m_chunkBegin)
         {

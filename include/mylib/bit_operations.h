@@ -467,7 +467,7 @@ namespace mylib
 
             const int shift{ std::numeric_limits<T>::digits - n };
             const T mask{ static_cast<T>(lowerMask(n)) };
-            const T reversed{ reverseAllBits(static_cast<T>(x & mask)) >> shift };
+            const T reversed{ static_cast<T>(reverseAllBits(static_cast<T>(x & mask)) >> shift) };
 
             return (x & ~mask) | reversed;
         }

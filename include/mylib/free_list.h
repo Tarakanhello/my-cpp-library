@@ -254,7 +254,7 @@ void mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
 template<typename T, size_t minBlockSize, size_t maxBlockSize, typename ALLOCATOR>
 mylib::FreeList<T, minBlockSize,maxBlockSize, ALLOCATOR>::
     FreeList(size_t initialSize)
-    : m_currentBlockSize{ m_minBlockSize }
+    : m_currentBlockSize{ minBlockSize }
     , m_size{ 0 }
     , m_capacity{ 0 }
     , m_numberOfEmptyBlock{ 0 }

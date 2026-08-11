@@ -5,12 +5,26 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Определим функцию, чтобы не дублировать код для каждой цели
+function(target_set_warnings TARGET)
+    if(MSVC)
+        target_compile_options(${TARGET} PRIVATE /W4 /WX)
+        # если нужно /WX - раскомментируйте следующую строку
+        # target_compile_options(${TARGET} PRIVATE /WX)
+    else()
+        target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        # если нужно -Werror - раскомментируйте
+        # target_compile_options(${TARGET} PRIVATE -Werror)
+    endif()
+endfunction()
+
 # Подключение тестов
 option(BUILD_TESTING "Build unit tests" ON)
 if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(third_party/catch2)
     add_subdirectory(tests)
+    target_set_warnings(unit_tests)
 endif()
 
 # Библиотека mylib
@@ -38,3 +52,5 @@ target_sources(mylib PUBLIC
         include/mylib/math.h
         include/mylib/memory.h
 )
+
+target_set_warnings(mylib)

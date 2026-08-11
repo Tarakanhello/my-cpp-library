@@ -837,7 +837,7 @@ TEST_CASE("FreeList::emplace", "[FreeList][emplace]")
         {
             int* p = list.emplace(static_cast<int>(i * 10));
             REQUIRE(p != nullptr);
-            REQUIRE(*p == i * 10);
+            REQUIRE(*p == static_cast<int>(i * 10));
             ptrs.push_back(p);
         }
 
@@ -864,7 +864,7 @@ TEST_CASE("FreeList::emplace", "[FreeList][emplace]")
     {
         mylib::FreeList<TestObject> list(2);
         TestObject* p1 = list.emplace(1);
-        TestObject* p2 = list.emplace(2);
+        list.emplace(2);
         REQUIRE(TestObject::alive == 2);
         REQUIRE(list.size() == 2);
 

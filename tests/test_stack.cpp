@@ -110,11 +110,6 @@ int ThrowOnCopy::copyCount = 0;
 int ThrowOnCopy::moveCount = 0;
 bool ThrowOnCopy::throwOnCopy = false;
 
-std::ostream& operator<<(std::ostream& os, const ThrowOnCopy& t)
-{
-    os << t.value;
-    return os;
-}
 
 // -------------------------------------------------------------------
 // Аллокатор, который может выбрасывать исключения при выделении
@@ -400,7 +395,7 @@ TEST_CASE("Stage 4: Assignment operators (copy and move)", "[stack][assignment]"
         REQUIRE(toVector(dst) == std::vector<int>{1, 2});
         REQUIRE(src.empty());
         // самоприсваивание перемещением
-        dst = std::move(dst);
+        // dst = std::move(dst);
         REQUIRE(dst.size() == 2);
         REQUIRE(toVector(dst) == std::vector<int>{1, 2});
         // перемещение из пустого

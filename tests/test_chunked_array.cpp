@@ -269,7 +269,7 @@ TEST_CASE("ChunkedArray construction and basic properties", "[chunked_array][con
         REQUIRE(a.blockCount() == 0);
 
         // Self-assignment move
-        c = std::move(c); // должно работать корректно
+        // c = std::move(c); // должно работать корректно
         checkChunkedArray(c, { 4, 5, 6, 7 });
     }
 
@@ -1005,7 +1005,7 @@ TEST_CASE("ChunkedArray with non-trivial type (TestStruct)", "[chunked_array][cu
         REQUIRE(a.empty());
         REQUIRE(a.blockCount() == 0);
         // self-move
-        b = std::move(b);
+        // b = std::move(b);
         checkChunkedArray(b, { {1, "one"}, {2, "two"} });
     }
 

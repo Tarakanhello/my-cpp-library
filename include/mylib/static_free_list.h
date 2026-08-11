@@ -277,7 +277,7 @@ void mylib::StaticFreeList<T, ALLOCATOR>::
 {
     if(node)
     {
-        assert(node - m_nodes >= 0 && node - m_nodes < m_constructedSize);
+        assert(node >= m_nodes && static_cast<size_t>(node - m_nodes) < m_constructedSize);
         node->next = m_returned;
         m_returned = node;
         --m_currentSize;
@@ -292,7 +292,7 @@ void mylib::StaticFreeList<T, ALLOCATOR>::
 {
     if(node)
     {
-        assert(node - m_nodes >= 0 && node - m_nodes < m_constructedSize);
+        assert(node >= m_nodes && static_cast<size_t>(node - m_nodes) < m_constructedSize);
         node->value.~T();
         releaseNode(node);
     }
@@ -303,13 +303,18 @@ void mylib::StaticFreeList<T, ALLOCATOR>::
 template<typename T, typename ALLOCATOR>
 mylib::StaticFreeList<T, ALLOCATOR>::
     StaticFreeList(size_t capacity, ALLOCATOR alloc)
-    : m_capacity{ capacity }
-    , m_currentSize{}
+    : m_currentSize{}
     , m_constructedSize{}
+    , m_capacity{ capacity }
     , m_returned{ nullptr }
+    , m_nodes{ nullptr }
     , m_nodeAllocator{ alloc }
-    , m_nodes{ capacity > 0 ? allocateNodes() : nullptr }
-{}
+{
+    if(m_capacity > 0)
+    {
+        m_nodes = allocateNodes();
+    }
+}
 
 
 

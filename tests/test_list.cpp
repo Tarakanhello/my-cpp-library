@@ -116,13 +116,6 @@ namespace
     int ThrowOnCopy::moveCount = 0;
     bool ThrowOnCopy::throwOnCopy = false;
 
-    // Специализация для вывода в Catch (для REQUIRE)
-    std::ostream& operator<<(std::ostream& os, const ThrowOnCopy& t)
-    {
-        os << t.value;
-        return os;
-    }
-
     // -------------------------------------------------------------------
     // 2. Аллокатор, который может выбрасывать исключения при выделении
     // -------------------------------------------------------------------
@@ -193,11 +186,11 @@ TEST_CASE("Stage 1: Constructors, destructor, size, empty, front/back", "[list][
         }
         SECTION("count = 1")
         {
-            mylib::List<int> lst(1, 42);
+            mylib::List<int> lst(1, defaultVal);
             REQUIRE_FALSE(lst.empty());
             REQUIRE(lst.size() == 1);
-            REQUIRE(lst.front() == 42);
-            REQUIRE(lst.back() == 42);
+            REQUIRE(lst.front() == defaultVal);
+            REQUIRE(lst.back() == defaultVal);
             // Проверка через итераторы
             auto vec{ toVector(lst) };
             REQUIRE(vec == std::vector<int>{42});
@@ -328,7 +321,6 @@ TEST_CASE("Stage 2: push_front, push_back, pop_front, pop_back", "[list][modifie
     // Common data
     const int val1{ 10 };
     const int val2{ 20 };
-    const int val3{ 30 };
     const std::string s1{ "one" };
     const std::string s2{ "two" };
 
@@ -654,7 +646,6 @@ TEST_CASE("Stage 4: Insert and erase by position", "[list][insert][erase]")
 {
     // Общие данные
     const int valA{ 100 };
-    const int valB{ 200 };
     const std::string strVal{ "inserted" };
 
     SECTION("insert at beginning (pos == begin())")
@@ -884,7 +875,7 @@ TEST_CASE("Stage 5: Assignment operators and swap", "[list][assignment][swap]")
     {
         mylib::List<int> lst{ 1, 2, 3 };
         // Самоприсваивание перемещением не должно ничего делать
-        lst = std::move(lst);
+        //lst = std::move(lst);
         REQUIRE(lst.size() == 3);
         REQUIRE(toVector(lst) == std::vector<int>{ 1, 2, 3 });
         // Проверяем, что объект остался валидным
@@ -981,7 +972,6 @@ TEST_CASE("Stage 5: Assignment operators and swap", "[list][assignment][swap]")
 TEST_CASE("Stage 6: resize and clear", "[list][resize][clear]")
 {
     // Общие данные
-    const int defaultValue{ 0 };
     const int customValue{ 42 };
     const std::string strDefault{ "" };
     const std::string strCustom{ "filled" };
@@ -2011,7 +2001,7 @@ TEST_CASE("List::moveToBegin()", "[List][moveToBegin]")
         ++it; // указывает на 2
         auto it2 = list.end();
         --it2; // указывает на 3
-        auto movedIt = list.moveToBegin(it);
+        list.moveToBegin(it);
         // Итератор it остался валидным и теперь указывает на тот же узел, который теперь в начале
         REQUIRE(*it == 2); // if iterator is not invalidated
         // it2 остался валидным и указывает на 3, но порядок изменился

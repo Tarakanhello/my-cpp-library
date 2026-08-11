@@ -488,10 +488,10 @@ namespace mylib
 
 template<typename T, typename ALLOCATOR>
 constexpr mylib::Vector<T, ALLOCATOR>::Vector() noexcept
-    : m_capacity{ 0 }
+    : m_allocator{}
+    , m_capacity{ 0 }
     , m_size{ 0 }
     , m_data{ nullptr }
-    , m_allocator{}
 {}
 
 
@@ -511,10 +511,10 @@ mylib::Vector<T, ALLOCATOR>::Vector(size_t capacity, const ALLOCATOR& alloc)
 
 template<typename T, typename ALLOCATOR>
 mylib::Vector<T, ALLOCATOR>::Vector(size_t size, const T& value, const ALLOCATOR& alloc)
-    : m_capacity{ 0 }
+    : m_allocator{ alloc }
+    , m_capacity{ 0 }
     , m_size{ 0 }
     , m_data{ nullptr }
-    , m_allocator{ alloc }
 {
     if(size == 0)
         return;
@@ -527,10 +527,10 @@ mylib::Vector<T, ALLOCATOR>::Vector(size_t size, const T& value, const ALLOCATOR
 
 template<typename T, typename ALLOCATOR>
 mylib::Vector<T, ALLOCATOR>::Vector(const std::initializer_list<T>& list, const ALLOCATOR& alloc)
-    : m_capacity{ 0 }
+    : m_allocator{ alloc }
+    , m_capacity{ 0 }
     , m_size{ 0 }
     , m_data{ nullptr }
-    , m_allocator{ alloc }
 {
     if(list.size() == 0)
     {
@@ -557,9 +557,10 @@ mylib::Vector<T, ALLOCATOR>::Vector(const std::initializer_list<T>& list, const 
 
 template<typename T, typename ALLOCATOR>
 mylib::Vector<T, ALLOCATOR>::Vector(const Vector<T, ALLOCATOR>& other)
-    : m_capacity{ other.m_capacity }
+    : m_allocator{ other.m_allocator }
+    , m_capacity{ other.m_capacity }
     , m_size{ other.m_size }
-    , m_allocator{ other.m_allocator }
+    , m_data{ nullptr }
 {
     if(m_capacity == 0)
     {
@@ -599,10 +600,10 @@ mylib::Vector<T, ALLOCATOR>& mylib::Vector<T, ALLOCATOR>::operator=(const Vector
 
 template<typename T, typename ALLOCATOR>
 mylib::Vector<T, ALLOCATOR>::Vector(Vector<T, ALLOCATOR>&& other) noexcept
-    : m_capacity{ other.m_capacity }
+    : m_allocator{ std::move(other.m_allocator) }
+    , m_capacity{ other.m_capacity }
     , m_size{ other.m_size }
     , m_data{ other.m_data }
-    , m_allocator{ std::move(other.m_allocator) }
 {
     other.release();
 }
