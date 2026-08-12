@@ -267,15 +267,15 @@ namespace mylib
          * @brief Создаёт маску для поля длиной n бит, начиная с позиции i.
          *
          * @param i Начальная позиция (0 … 63).
-         * @param n Длина поля в битах (0 … 63).
+         * @param n Длина поля в битах (0 … 64).
          * @return constexpr uint64_t Маска с единицами в битах [i, i+n-1].
-         * @throws std::out_of_range если i или n вне [0, 63] или i + n > 64.
+         * @throws std::out_of_range если i [0, 63] или n вне [0, 64] или i + n > 64.
          */
         [[nodiscard]] constexpr uint64_t middleMask(int i, int n)
         {
-            if((n < 0 || n >= 64) || (i < 0 || i >=64))
+            if((n < 0 || n > 64) || (i < 0 || i >=64))
             {
-                throw std::out_of_range("mylib::bit::middleMask(int, int): i and n must be in [0, 63]");
+                throw std::out_of_range("mylib::bit::middleMask(int, int): i must be in [0, 63], n must be in [0, 64]");
             }
             if (i + n > 64)
             {
@@ -289,13 +289,13 @@ namespace mylib
          *
          * @param x Исходное число.
          * @param i Начальная позиция (0 … 63).
-         * @param n Длина поля (0 … 63).
+         * @param n Длина поля (1 … 64).
          * @return constexpr uint64_t Значение поля (в младших n битах результата).
          * @throws std::out_of_range если i или n вне [0, 63] или i + n > 64.
          */
         [[nodiscard]] constexpr uint64_t getValue(uint64_t x, int i, int n)
         {
-            if((n < 0 || n >= 64) || (i < 0 || i >= 64))
+            if((n < 1 || n > 64) || (i < 0 || i >= 64))
             {
                 throw std::out_of_range("mylib::bit::getValue(uint64_t, int, int): x and i must be in [0, 63]");
             }
@@ -313,21 +313,21 @@ namespace mylib
          * @param x Ссылка на изменяемое число.
          * @param value Значение для записи (используются только младшие n бит).
          * @param i Начальная позиция (0 … sizeof(T)*8 - 1).
-         * @param n Длина поля (0 … sizeof(T)*8 - 1).
+         * @param n Длина поля (0 … sizeof(T)*8).
          * @throws std::out_of_range если i или n вне допустимого диапазона, или i + n > sizeof(T)*8.
          */
-        template<typename T>
-            requires std::is_unsigned_v<T>
-        void setValue(T& x, T value, int i, int n)
+        template<typename T, typename Z>
+            requires std::is_unsigned_v<T> && std::is_unsigned_v<Z>
+        void setValue(T& x, Z value, int i = 0, int n = static_cast<int>(sizeof(Z)) * 8)
         {
             const int bits{ static_cast<int>(sizeof(T)) * 8 };
-            if((n < 0 || n >= bits) || (i < 0 || i >= bits))
+            if((n < 0 || n > bits) || (i < 0 || i >= bits))
             {
-                throw std::out_of_range("mylib::bit::setValue(T, T, int, int): i and n must be in [0, bits-1]");
+                throw std::out_of_range("mylib::bit::setValue(T, Z, int, int): i must be in [0, bits-1], n must be in [0, bits]");
             }
             if (i + n > bits)
             {
-                throw std::out_of_range("mylib::bit::setValue(T, T, int, int): i + n exceeds type width");
+                throw std::out_of_range("mylib::bit::setValue(T, Z, int, int): i + n exceeds type width");
             }
 
             T mask{ static_cast<T>(middleMask(i, n)) };
