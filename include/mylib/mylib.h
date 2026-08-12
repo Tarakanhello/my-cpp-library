@@ -3,6 +3,7 @@
 
 #include "mylib/bit_operations.h"
 #include "mylib/chunked_array.h"
+#include "flag_set.h"
 #include "mylib/list.h"
 #include "mylib/math.h"
 #include "mylib/memory.h"

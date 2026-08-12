@@ -11,6 +11,7 @@ add_executable(unit_tests
     test_stack.cpp
     test_queue.cpp
     test_bit_operations.cpp
+    test_flag_set.cpp
 )
 target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 
