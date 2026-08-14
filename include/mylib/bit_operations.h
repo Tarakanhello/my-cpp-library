@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <format>
 #include <limits>
 #include <stdexcept>
 
@@ -180,9 +181,15 @@ namespace mylib
          * @return constexpr bool true, если бит установлен, иначе false.
          * @throws std::out_of_range если i вне допустимого диапазона (пробрасывается из twoPower).
          */
-        [[nodiscard]] constexpr bool get(uint64_t x, int i)
+        template<typename T>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr bool get(T x, int i)
         {
-            return (x & twoPower(i)) != 0;
+            if(i < 0 || static_cast<T>(i) >= sizeof(T) * 8)
+            {
+                throw std::out_of_range(std::format("mylib::bit::get(T x, int i): i({}) must be in [0, {}]", i, sizeof(T) * 8 - 1));
+            }
+            return (x & static_cast<T>(twoPower(i))) != 0;
         }
 
         /**
@@ -193,9 +200,16 @@ namespace mylib
          * @return uint64_t Новое число с инвертированным битом.
          * @throws std::out_of_range если i вне допустимого диапазона (пробрасывается из twoPower).
          */
-        [[nodiscard]] constexpr uint64_t flip(uint64_t x, int i)
+        template<typename T>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr uint64_t flip(T x, int i)
         {
-            return x ^ twoPower(i);
+            if(i < 0 || static_cast<T>(i) >= sizeof(T) * 8)
+            {
+                throw std::out_of_range(std::format("mylib::bit::flip(T x, int i): i({}) must be in [0, {}]", i, sizeof(T) * 8 - 1));
+            }
+
+            return x ^ static_cast<T>(twoPower(i));
         }
 
         /**
