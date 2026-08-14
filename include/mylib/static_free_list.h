@@ -361,8 +361,7 @@ mylib::StaticFreeList<T, ALLOCATOR>& mylib::StaticFreeList<T, ALLOCATOR>::
 
 
 template<typename T, typename ALLOCATOR>
-mylib::StaticFreeList<T, ALLOCATOR>::
-    ~StaticFreeList() noexcept
+mylib::StaticFreeList<T, ALLOCATOR>::~StaticFreeList() noexcept
 {
     destroyList();
 }
