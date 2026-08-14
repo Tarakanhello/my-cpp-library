@@ -41,6 +41,7 @@ add_library(mylib STATIC
     include/mylib/queue.h
     include/mylib/bit_operations.h
     include/mylib/flag_set.h
+    include/mylib/bitset.h
 
 )
 target_include_directories(mylib PUBLIC include)
