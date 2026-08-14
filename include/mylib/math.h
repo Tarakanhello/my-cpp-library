@@ -27,7 +27,9 @@ namespace mylib
      * math::ceiling(8, 2)  == 4   // 8/2 = 4 → 4
      * \endcode
      */
-    inline std::int64_t ceiling(std::uint64_t dividend, std::int64_t divisor)
+    template<typename T, typename Z>
+        requires std::integral<T> && std::integral<Z>
+    inline std::int64_t ceiling(T dividend, Z divisor)
     {
         if(0 == divisor)
         {
