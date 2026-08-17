@@ -19,7 +19,10 @@ namespace mylib
     {
     private:
         using Container = Vector<WORD>;
+    public:
+        class BitReference;
 
+    private:
         enum{ numberOfDigits = std::numeric_limits<WORD>::digits };
         size_t m_bitSize{};
         Container m_storage{};
@@ -45,41 +48,6 @@ namespace mylib
         std::uint64_t wordsNeeded() const { return math::ceiling(m_bitSize, numberOfDigits); }
 
     public:
-        class BitReference final
-        {
-        private:
-            WORD* m_blockPtr{ nullptr };
-            int m_index{};
-
-        public:
-            BitReference(WORD* ptr, size_t offset)
-                : m_blockPtr{ ptr }
-            {
-                size_t limit{ 8 * sizeof(WORD) };
-                if(offset >= limit)
-                {
-                    throw std::out_of_range(std::format("mylib::Bitset::BitReference(WORD, size_t): offset must be in [0, {}]", limit - 1));
-                }
-
-                m_index = static_cast<int>(offset);
-            }
-
-            explicit operator bool() const { return (bit::get(*m_blockPtr, m_index)); }
-
-            BitReference& operator=(bool value)
-            {
-                bit::set(*m_blockPtr, m_index, value);
-
-                return *this;
-            }
-
-            BitReference& operator=(const BitReference& other)
-            {
-                *this = static_cast<bool>(other);
-                return *this;
-            }
-        };
-
         explicit Bitset(std::uint64_t initialSize = 0)
             : m_bitSize{ initialSize }
             , m_storage(wordsNeeded())
@@ -116,7 +84,7 @@ namespace mylib
         const WORD* getData() const noexcept { return m_storage.data(); }
 
         size_t size() const noexcept { return m_bitSize; }
-        size_t wordSize() const noexcept { return m_storage.size(); }
+        size_t storageSize() const noexcept { return m_storage.size(); }
 
         explicit operator bool() const noexcept { return !m_storage.empty(); }
 
@@ -138,8 +106,63 @@ namespace mylib
             bit::set(m_storage[index(i)], offset(i), value);
         }
 
+        void append(bool value)
+        {
+            if(storageSize() < wordsNeeded())
+            {
+                m_storage.push_back(0);
+            }
+            set(m_bitSize, value);
+            ++m_bitSize;
+        }
 
+        void removeLast()
+        {
+            assert(m_bitSize > 0);
+            if(lastWordBits() == 1)
+            {
+                m_storage.pop_back();
+            }
 
+            --m_bitSize;
+            zeroOutReminder();
+        }
+
+    public:
+        class BitReference final
+        {
+        private:
+            WORD* m_blockPtr{ nullptr };
+            int m_index{};
+
+        public:
+            BitReference(WORD* ptr, size_t offset)
+                : m_blockPtr{ ptr }
+            {
+                size_t limit{ 8 * sizeof(WORD) };
+                if(offset >= limit)
+                {
+                    throw std::out_of_range(std::format("mylib::Bitset::BitReference(WORD, size_t): offset must be in [0, {}]", limit - 1));
+                }
+
+                m_index = static_cast<int>(offset);
+            }
+
+            explicit operator bool() const { return (bit::get(*m_blockPtr, m_index)); }
+
+            BitReference& operator=(bool value)
+            {
+                bit::set(*m_blockPtr, m_index, value);
+
+                return *this;
+            }
+
+            BitReference& operator=(const BitReference& other)
+            {
+                *this = static_cast<bool>(other);
+                return *this;
+            }
+        };
     };
 
     template<typename CONTAINER>
