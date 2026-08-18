@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <format>
 #include <limits>
+#include <stdexcept>
 
 #include "mylib/bit_operations.h"
 #include "mylib/math.h"
@@ -126,6 +127,31 @@ namespace mylib
 
             --m_bitSize;
             zeroOutReminder();
+        }
+
+        void pop_back()
+        {
+            removeLast();
+        }
+
+        bool operator==(const Bitset& other) const noexcept
+        {
+            return m_storage == other.m_storage;
+        }
+
+        Bitset& operator &=(const Bitset& other)
+        {
+            if(m_bitSize != other.m_bitSize)
+            {
+                throw std::length_error("Bitset::operator &=: length is not the same");
+            }
+
+            for(size_t i{}; i < storageSize(); ++i)
+            {
+                m_storage[i] &= other.m_storage[i];
+            }
+
+            return *this;
         }
 
     public:
