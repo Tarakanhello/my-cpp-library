@@ -49,7 +49,7 @@ namespace mylib
         std::uint64_t wordsNeeded() const { return math::ceiling(m_bitSize, numberOfDigits); }
 
     public:
-        explicit Bitset(std::uint64_t initialSize = 0)
+        explicit Bitset(size_t initialSize = 0)
             : m_bitSize{ initialSize }
             , m_storage(wordsNeeded())
         {}
@@ -152,6 +152,16 @@ namespace mylib
             }
 
             return *this;
+        }
+
+        void flip()
+        {
+            for(size_t i{}; i < storageSize(); ++i)
+            {
+                m_storage[i] = ~m_storage[i];
+            }
+
+            zeroOutReminder();
         }
 
     public:
