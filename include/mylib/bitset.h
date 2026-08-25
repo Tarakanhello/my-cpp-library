@@ -46,7 +46,7 @@ namespace mylib
             return bit::get(m_storage[index(i)], offset(i));
         }
 
-        std::uint64_t wordsNeeded() const { return math::ceiling(m_bitSize, numberOfDigits); }
+        size_t wordsNeeded() const { return static_cast<size_t>(math::ceiling(m_bitSize, numberOfDigits)); }
 
     public:
         explicit Bitset(size_t initialSize = 0)
@@ -68,6 +68,7 @@ namespace mylib
             , m_storage(container.size())
         {
             std::ranges::copy(container, m_storage);
+            zeroOutReminder();
         }
 
         int lastWordBits() const noexcept
@@ -99,22 +100,42 @@ namespace mylib
             return BitReference(&m_storage[index(i)], offset(i));
         }
 
-        bool operator[](size_t i) const { return getBit(i); }
+        bool operator[](size_t i) const
+        {
+            if (i >= m_bitSize)
+            {
+                throw std::out_of_range("mylib::BitSet::operator[] const: index out of range");
+            }
+            return getBit(i);
+        }
 
         void set(int i, bool value = true)
         {
-            assert(i >= 0 && i < m_bitSize);
+            if (i >= m_bitSize)
+            {
+                throw std::out_of_range("mylib::BitSet::set: index out of range");
+            }
+
             bit::set(m_storage[index(i)], offset(i), value);
         }
 
         void append(bool value)
         {
+            ++m_bitSize;
             if(storageSize() < wordsNeeded())
             {
-                m_storage.push_back(0);
+                try
+                {
+                    m_storage.push_back(0);
+                }
+                catch(...)
+                {
+                    --m_bitSize;
+                    throw;
+                }
+
             }
-            set(m_bitSize, value);
-            ++m_bitSize;
+            set(m_bitSize - 1, value);
         }
 
         void removeLast()
@@ -151,6 +172,7 @@ namespace mylib
                 m_storage[i] &= other.m_storage[i];
             }
 
+            zeroOutReminder();
             return *this;
         }
 
@@ -175,7 +197,7 @@ namespace mylib
             BitReference(WORD* ptr, size_t offset)
                 : m_blockPtr{ ptr }
             {
-                size_t limit{ 8 * sizeof(WORD) };
+                size_t limit{ std::numeric_limits<WORD>::digits };
                 if(offset >= limit)
                 {
                     throw std::out_of_range(std::format("mylib::Bitset::BitReference(WORD, size_t): offset must be in [0, {}]", limit - 1));
