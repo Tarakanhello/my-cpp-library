@@ -176,6 +176,38 @@ namespace mylib
             return *this;
         }
 
+        Bitset& operator |=(const Bitset& other)
+        {
+            if(m_bitSize != other.m_bitSize)
+            {
+                throw std::length_error("Bitset::operator |=: length is not the same");
+            }
+
+            for(size_t i{}; i < storageSize(); ++i)
+            {
+                m_storage[i] |= other.m_storage[i];
+            }
+
+            zeroOutReminder();
+            return *this;
+        }
+
+        Bitset& operator ^=(const Bitset& other)
+        {
+            if(m_bitSize != other.m_bitSize)
+            {
+                throw std::length_error("Bitset::operator ^=: length is not the same");
+            }
+
+            for(size_t i{}; i < storageSize(); ++i)
+            {
+                m_storage[i] ^= other.m_storage[i];
+            }
+
+            zeroOutReminder();
+            return *this;
+        }
+
         void flip()
         {
             for(size_t i{}; i < storageSize(); ++i)
@@ -184,6 +216,89 @@ namespace mylib
             }
 
             zeroOutReminder();
+        }
+
+        Bitset& operator >>=(int shift)
+        {
+            if(m_bitSize == 0)
+            {
+                return *this;   // защита от деления на ноль
+            }
+
+            if(shift < 0)
+            {
+                return (operator <<=(-shift));
+            }
+
+            size_t normalShift{ static_cast<size_t>(shift) % m_bitSize };
+            size_t wordShift{ index(normalShift) };
+            int bitShift{ offset(normalShift) };
+
+            if(wordShift > 0) // сдвиг слов
+            {
+                for(size_t i{}; i + wordShift < storageSize(); ++i)
+                {
+                    m_storage[i] = m_storage[i + wordShift];
+                    m_storage[i + wordShift] = 0;
+                }
+            }
+            if(bitShift > 0) // сдвиг битов
+            {
+                // для слова 00000101 | 00111000 >>= 4 -> 10000000 | 00000011
+                WORD carry{};
+                for(int i{ static_cast<int>(storageSize()) - 1 - static_cast<int>(wordShift) }; i >= 0; --i)
+                {
+                    WORD tempCarry{ m_storage[static_cast<size_t>(i)] << (numberOfDigits - bitShift) };
+                    m_storage[static_cast<size_t>(i)] >>= bitShift;
+                    m_storage[static_cast<size_t>(i)] |= carry;
+                    carry = tempCarry;
+                }
+            }
+
+            zeroOutReminder();
+            return *this;
+        }
+
+
+        Bitset& operator <<=(int shift)
+        {
+            if(m_bitSize == 0)
+            {
+                return *this;   // защита от деления на ноль
+            }
+
+            if(shift < 0)
+            {
+                return (operator >>=(-shift));
+            }
+
+            size_t normalShift{ static_cast<size_t>(shift) % m_bitSize };
+            size_t wordShift{ index(normalShift) };
+            int bitShift{ offset(normalShift) };
+
+            if(wordShift > 0) // сдвиг слов
+            {
+                for(int i{ static_cast<int>(storageSize()) - 1 }; i - wordShift >= 0; --i)
+                {
+                    m_storage[i] = m_storage[i - wordShift];
+                    m_storage[i - wordShift] = 0;
+                }
+            }
+            if(bitShift > 0) // сдвиг битов
+            {
+                // для слова 10000000 | 00000011 <<= 4 -> 00000000 | 00111000
+                WORD carry{};
+                for(size_t i{ wordShift }; i < storageSize(); ++i)
+                {
+                    WORD tempCarry{ m_storage[i] >> (numberOfDigits - bitShift) };
+                    m_storage[i] <<= bitShift;
+                    m_storage[i] |= carry;
+                    carry = tempCarry;
+                }
+            }
+
+            zeroOutReminder();
+            return *this;
         }
 
     public:
