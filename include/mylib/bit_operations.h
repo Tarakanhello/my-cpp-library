@@ -573,13 +573,21 @@ namespace mylib
             requires std::unsigned_integral<T>
         constexpr T reverseAllBits(T x)
         {
-            ReverseBits8 r8;
-            T result = 0;
-            for (size_t i = 0; i < sizeof(T); ++i, x >>= 8)
+            if constexpr(sizeof(T) == 1)
             {
-                result = (result << 8) | r8(static_cast<uint8_t>(x));
+                ReverseBits8 r8;
+                return static_cast<T>(r8(static_cast<uint8_t>(x)));
             }
-            return result;
+            else
+            {
+                ReverseBits8 r8;
+                T result = 0;
+                for (size_t i = 0; i < sizeof(T); ++i, x >>= 8)
+                {
+                    result = (result << 8) | r8(static_cast<uint8_t>(x));
+                }
+                return result;
+            }
         }
 
         /**
@@ -624,10 +632,17 @@ namespace mylib
         {
             PopCount8 p8;
             int result = 0;
-            while (x)
+            if constexpr(sizeof(T) == 1)
             {
-                result += p8(static_cast<uint8_t>(x));
-                x >>= 8;
+                result = p8(static_cast<uint8_t>(x));
+            }
+            else
+            {
+                while (x)
+                {
+                    result += p8(static_cast<uint8_t>(x));
+                    x >>= 8;
+                }
             }
             return result;
         }
