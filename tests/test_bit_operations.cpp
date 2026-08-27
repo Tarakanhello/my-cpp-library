@@ -53,13 +53,13 @@ TEST_CASE("twoPower", "[twopower]")
 // -----------------------------------------------------------------------------
 TEST_CASE("isPowerOfTwo", "[ispoweroftwo]")
 {
-    REQUIRE(mylib::bit::isPowerOfTwo(0) == false);
-    REQUIRE(mylib::bit::isPowerOfTwo(1) == true);
-    REQUIRE(mylib::bit::isPowerOfTwo(2) == true);
-    REQUIRE(mylib::bit::isPowerOfTwo(3) == false);
-    REQUIRE(mylib::bit::isPowerOfTwo(4) == true);
-    REQUIRE(mylib::bit::isPowerOfTwo(8) == true);
-    REQUIRE(mylib::bit::isPowerOfTwo(16) == true);
+    REQUIRE(mylib::bit::isPowerOfTwo(0ULL) == false);
+    REQUIRE(mylib::bit::isPowerOfTwo(1ULL) == true);
+    REQUIRE(mylib::bit::isPowerOfTwo(2ULL) == true);
+    REQUIRE(mylib::bit::isPowerOfTwo(3ULL) == false);
+    REQUIRE(mylib::bit::isPowerOfTwo(4ULL) == true);
+    REQUIRE(mylib::bit::isPowerOfTwo(8ULL) == true);
+    REQUIRE(mylib::bit::isPowerOfTwo(16ULL) == true);
     REQUIRE(mylib::bit::isPowerOfTwo(1ULL << 63) == true);
     REQUIRE(mylib::bit::isPowerOfTwo((1ULL << 63) + 1) == false);
     REQUIRE(mylib::bit::isPowerOfTwo(mylib::bit::FULL) == false);
@@ -72,11 +72,11 @@ TEST_CASE("log2floor и log2ceiling", "[log2]")
 {
     SECTION("Компиляционные версии")
     {
-        static_assert(mylib::bit::log2floor<2>() == 1);
-        static_assert(mylib::bit::log2floor<3>() == 1);
-        static_assert(mylib::bit::log2floor<4>() == 2);
-        static_assert(mylib::bit::log2floor<8>() == 3);
-        static_assert(mylib::bit::log2floor<16>() == 4);
+        static_assert(mylib::bit::log2floor<2ULL>() == 1);
+        static_assert(mylib::bit::log2floor<3ULL>() == 1);
+        static_assert(mylib::bit::log2floor<4ULL>() == 2);
+        static_assert(mylib::bit::log2floor<8ULL>() == 3);
+        static_assert(mylib::bit::log2floor<16ULL>() == 4);
         static_assert(mylib::bit::log2floor<1ULL << 63>() == 63);
 
         static_assert(mylib::bit::log2ceiling<1>() == 0);
@@ -395,7 +395,7 @@ TEST_CASE("popcount", "[popcount]")
 // -----------------------------------------------------------------------------
 TEST_CASE("rightmostNullCount", "[trailingzeros]")
 {
-    REQUIRE(mylib::bit::rightmostNullCount(0) == 64);
+    REQUIRE(mylib::bit::rightmostNullCount(0ULL) == 64);
     REQUIRE(mylib::bit::rightmostNullCount(1) == 0);
     REQUIRE(mylib::bit::rightmostNullCount(2) == 1);   // 2 = 10, младший бит 0, следующий 1 -> один ноль
     REQUIRE(mylib::bit::rightmostNullCount(3) == 0);

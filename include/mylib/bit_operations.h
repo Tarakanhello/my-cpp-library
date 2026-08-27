@@ -3,10 +3,12 @@
 
 #include <array>
 #include <cassert>
+#include <concepts>
 #include <cstdint>
 #include <format>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 
 namespace mylib
 {
@@ -15,147 +17,221 @@ namespace mylib
     {
 
     // ============================================================================
-    // Базовые функции – степени двойки и проверка
-    // ============================================================================
+        // Базовые функции – степени двойки и проверка (обобщённые)
+        // ============================================================================
 
         /**
          * @brief Вычисляет 2 в степени x (шаблонная версия, x известен на этапе компиляции).
          *
-         * @tparam x Степень двойки, должна быть в диапазоне [0, 63].
-         * @return constexpr uint64_t 2^x.
+         * @tparam x Степень двойки, должна быть в диапазоне [0, digits-1].
+         * @tparam T Беззнаковый целый тип (выводится автоматически).
+         * @return constexpr T 2^x.
          */
-        template<int x>
-        [[nodiscard]] constexpr uint64_t twoPower() noexcept
+        template<int x, typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T twoPower() noexcept
         {
-            static_assert(x >= 0 && x < 64, "mylib::bit::twoPower(): x must be in [0, 63]");
-            return uint64_t{ 1 } << x;
+            static_assert(x >= 0 && x < std::numeric_limits<T>::digits,
+                          "mylib::bit::twoPower(): x must be in [0, digits-1]");
+            return T{1} << x;
         }
 
         /**
          * @brief Вычисляет 2 в степени x (рантайм-версия).
          *
-         * @param x Степень двойки, должна быть в диапазоне [0, 63].
-         * @return constexpr uint64_t 2^x.
+         * @param x Степень двойки, должна быть в диапазоне [0, digits-1].
+         * @tparam T Беззнаковый целый тип.
+         * @return constexpr T 2^x.
          * @throws std::out_of_range если x вне допустимого диапазона.
          */
-        [[nodiscard]] constexpr uint64_t twoPower(int x)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T twoPower(int x)
         {
-            if(x < 0 || x >= 64)
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (x < 0 || x >= digits)
             {
-                throw std::out_of_range("mylib::bit::twoPower(int): x must be in [0, 63]");
+                throw std::out_of_range(
+                    std::format("mylib::bit::twoPower<T>(int): x({}) must be in [0, {}]", x, digits - 1));
             }
-
-            return uint64_t{ 1 } << x;
+            return T{1} << x;
         }
 
         /**
          * @brief Проверяет, является ли число степенью двойки.
          *
-         * @param x Проверяемое число (беззнаковое 64-битное).
-         * @return constexpr bool true, если x является степенью двойки (x > 0 и имеет ровно один установленный бит).
+         * @tparam T Беззнаковый целый тип.
+         * @param x Проверяемое число.
+         * @return constexpr bool true, если x > 0 и имеет ровно один установленный бит.
          */
-        [[nodiscard]] constexpr bool isPowerOfTwo(uint64_t x) noexcept
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr bool isPowerOfTwo(T x) noexcept
         {
-            return (x !=0 ) && ((x & (x - 1)) == 0);
+            return (x != 0) && ((x & (x - 1)) == 0);
         }
 
+        template<typename T>
+            requires std::signed_integral<T>
+        [[nodiscard]] constexpr bool isPowerOfTwo(T x) noexcept
+        {
+            if(x <= 0)
+            {
+                return false;
+            }
+
+            using U = std::make_unsigned_t<T>;
+            return isPowerOfTwo(static_cast<U>(x));
+        }
+
+
         // ============================================================================
-        // Логарифмы по основанию 2 и следующая степень двойки
+        // Логарифмы по основанию 2 и следующая степень двойки (обобщённые)
         // ============================================================================
 
         /**
-         * @brief Вычисляет целую часть двоичного логарифма (floor(log2(x))) для константы времени компиляции.
+         * @brief Вычисляет целую часть двоичного логарифма (floor(log2(X))) для константы времени компиляции.
          *
-         * @tparam X Положительное число (X > 0).
+         * @tparam X Значение (X > 0).
          * @return constexpr int floor(log2(X)).
-         * @note Для X == 0 срабатывает static_assert.
          */
-        template<uint64_t X>
+        template<auto X>
+            requires std::integral<decltype(X)> && (X > 0)
         [[nodiscard]] constexpr int log2floor() noexcept
         {
-            static_assert(X != 0, "mylib::bit::log2floor(): X must be positive");
-            uint64_t n{ X };
-            int result{ 0 };
-            while(n >>= 1)
-            {
+            using T = std::make_unsigned_t<decltype(X)>;
+            T n{ static_cast<T>(X) };
+            int result{};
+            while (n >>= 1)
                 ++result;
-            }
-
             return result;
         }
 
         /**
          * @brief Вычисляет целую часть двоичного логарифма (floor(log2(x))) для рантайм-значения.
          *
-         * Использует встроенные инструкции процессора (GCC/Clang: __builtin_clzll, MSVC: _BitScanReverse64)
-         * или запасной цикл.
+         * Использует встроенные инструкции для 64‑битных типов, иначе — цикл.
          *
+         * @tparam T Беззнаковый целый тип.
          * @param x Положительное число (x > 0).
          * @return constexpr int floor(log2(x)).
          * @throws std::out_of_range если x == 0.
          */
-        [[nodiscard]] constexpr int log2floor(uint64_t x)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr int log2floor(T x)
         {
-            if(0 == x)
-            {
-                throw std::out_of_range("mylib::bit:log2floor(uint64_t): x must be positive");
-            }
+            if (x == 0)
+                throw std::out_of_range("mylib::bit::log2floor<T>(T): x must be positive");
+
+            constexpr int digits = std::numeric_limits<T>::digits;
+
 #if defined(__GNUC__) || defined(__clang__)
-            return 63 - __builtin_clzll(x);
-#elif defined(_MSC_VER)
-            unsigned long index;
-            _BitScanReverse64(&index, x);
-            return static_cast<int>(index);
-#else
-            int result{ 0 };
-            while(x >>= 1)
+            if constexpr (digits == 64)
+                return 63 - __builtin_clzll(static_cast<unsigned long long>(x));
+            else if constexpr (digits == 32)
+                return 31 - __builtin_clz(static_cast<unsigned int>(x));
+            else
+#endif
             {
-                ++result;
+                int result = 0;
+                while (x >>= 1)
+                    ++result;
+                return result;
+            }
+        }
+
+        template<typename T>
+            requires std::signed_integral<T>
+        [[nodiscard]] constexpr int log2floor(T x)
+        {
+            if(x <= 0)
+            {
+                throw std::out_of_range("mylib::bit::log2floor: x must be positive");
             }
 
-            return result;
-#endif
+            using U = std::make_unsigned_t<T>;
+            return log2floor(static_cast<U>(x));
         }
 
         /**
-         * @brief Вычисляет потолок двоичного логарифма (ceil(log2(X))) для константы времени компиляции.
+         * @brief Вычисляет потолок двоичного логарифма (ceil(log2(X))) для константы.
          *
-         * @tparam X Положительное число (X > 0).
+         * @tparam X Значение (X > 0).
          * @return constexpr int ceil(log2(X)).
          */
-        template<uint64_t X>
+        template<auto X>
+            requires std::integral<decltype(X)> && (X > 0)
         [[nodiscard]] constexpr int log2ceiling() noexcept
         {
-            return log2floor<X>() + static_cast<int>(!isPowerOfTwo(X));
+            using T = std::make_unsigned_t<decltype(X)>;
+            T n{ static_cast<T>(X) };
+            return log2floor<X>() + static_cast<int>(!isPowerOfTwo(n));
         }
-
 
         /**
          * @brief Вычисляет потолок двоичного логарифма (ceil(log2(x))) для рантайм-значения.
          *
+         * @tparam T Беззнаковый целый тип.
          * @param x Положительное число (x > 0).
          * @return constexpr int ceil(log2(x)).
          * @throws std::out_of_range если x == 0 (пробрасывается из log2floor).
          */
-        [[nodiscard]] constexpr int log2ceiling(uint64_t x)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr int log2ceiling(T x)
         {
             return log2floor(x) + static_cast<int>(!isPowerOfTwo(x));
+        }
+
+
+        template<typename T>
+            requires std::signed_integral<T>
+        [[nodiscard]] constexpr int log2ceiling(T x)
+        {
+            if(x <= 0)
+            {
+                throw std::out_of_range("mylib::bit::log2ceiling: x must be positive");
+            }
+
+            using U = std::make_unsigned_t<T>;
+            return log2ceiling(static_cast<U>(x));
         }
 
         /**
          * @brief Возвращает наименьшую степень двойки, не меньшую x.
          *
+         * @tparam T Беззнаковый целый тип.
          * @param x Исходное число.
-         * @return constexpr uint64_t nextPowerOfTwo(x). Для x == 0 возвращает 0.
+         * @return constexpr T nextPowerOfTwo(x). Для x == 0 возвращает 0.
          */
-        [[nodiscard]] constexpr uint64_t nextPowerOfTwo(uint64_t x) noexcept
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T nextPowerOfTwo(T x) noexcept
         {
+            if (x == 0)
+                return 0;
+            if (isPowerOfTwo(x))
+                return x;
+            return twoPower<T>(log2floor(x) + 1);
+        }
+
+
+        template<typename T>
+            requires std::signed_integral<T>
+        [[nodiscard]] constexpr T nextPowerOfTwo(T x)
+        {
+            if(x < 0)
+            {
+                throw std::out_of_range("mylib::bit::nextPowerOfTwo: x must be non-negative");
+            }
             if(x == 0)
             {
                 return 0;
             }
 
-            return isPowerOfTwo(x) ? x : twoPower(log2floor(x) + 1);
+            using U = std::make_unsigned_t<T>;
+            return nextPowerOfTwo(static_cast<U>(x));
         }
 
 
@@ -169,185 +245,236 @@ namespace mylib
         /// @brief Константа, представляющая полностью заполненное слово (все биты установлены).
         constexpr const uint64_t FULL{ ~ZERO };
 
-        // ============================================================================
-        // Блок 4: Операции с отдельными битами
-        // ============================================================================
-
-        /**
-         * @brief Получает значение бита с индексом i в числе x.
-         *
-         * @param x Исходное число.
-         * @param i Индекс бита (0 … 63).
-         * @return constexpr bool true, если бит установлен, иначе false.
-         * @throws std::out_of_range если i вне допустимого диапазона (пробрасывается из twoPower).
-         */
-        template<typename T>
+        /// @brief Возвращает нулевое значение типа T (все биты сброшены).
+        template<typename T = uint64_t>
             requires std::unsigned_integral<T>
-        [[nodiscard]] constexpr bool get(T x, int i)
+        [[nodiscard]] constexpr T zero() noexcept
         {
-            if(i < 0 || static_cast<T>(i) >= sizeof(T) * 8)
-            {
-                throw std::out_of_range(std::format("mylib::bit::get(T x, int i): i({}) must be in [0, {}]", i, sizeof(T) * 8 - 1));
-            }
-            return (x & static_cast<T>(twoPower(i))) != 0;
+            return T{0};
         }
 
-        /**
-         * @brief Инвертирует бит с индексом i в числе x и возвращает новое число.
-         *
-         * @param x Исходное число.
-         * @param i Индекс бита (0 … 63).
-         * @return uint64_t Новое число с инвертированным битом.
-         * @throws std::out_of_range если i вне допустимого диапазона (пробрасывается из twoPower).
-         */
-        template<typename T>
+        /// @brief Возвращает полностью заполненное слово типа T (все биты установлены).
+        template<typename T = uint64_t>
             requires std::unsigned_integral<T>
-        [[nodiscard]] constexpr uint64_t flip(T x, int i)
+        [[nodiscard]] constexpr T full() noexcept
         {
-            if(i < 0 || static_cast<T>(i) >= sizeof(T) * 8)
-            {
-                throw std::out_of_range(std::format("mylib::bit::flip(T x, int i): i({}) must be in [0, {}]", i, sizeof(T) * 8 - 1));
-            }
-
-            return x ^ static_cast<T>(twoPower(i));
+            return ~T{0};
         }
-
-        /**
-         * @brief Устанавливает бит с индексом i в число x в заданное значение (0 или 1).
-         *
-         * @tparam T Тип числа, должен быть беззнаковым целым.
-         * @param x Ссылка на изменяемое число.
-         * @param i Индекс бита (0 … sizeof(T)*8 - 1).
-         * @param value Устанавливаемое значение (true = 1, false = 0).
-         * @throws std::out_of_range если i выходит за допустимые границы для типа T.
-         */
-        template<typename T>
-            requires std::is_unsigned_v<T>
-        constexpr void set(T& x, int i, bool value)
-        {
-            if(i < 0 || i >= static_cast<int>(sizeof(T) * 8))
-            {
-                throw std::out_of_range("mylib::bit::set(T, int, bool): index out of range");
-            }
-
-            T mask{ static_cast<T>(twoPower(i)) };
-
-            x = (value ? (x | mask) : (x & (~mask)));
-        }
-
 
         // ============================================================================
-        // Битовые поля (маски и работа с группами бит)
+        // Битовые маски (обобщённые)
         // ============================================================================
 
         /**
          * @brief Создаёт маску со старшими битами, начиная с позиции n.
          *
-         * @param n Количество младших бит, которые будут равны 0 (0 … 64).
-         * @return constexpr uint64_t Маска с единицами в битах [n, 64].
-         * @throws std::out_of_range если n вне диапазона [0, 64].
+         * @tparam T Беззнаковый целый тип.
+         * @param n Количество младших бит, которые будут равны 0 (0 … digits).
+         * @return constexpr T Маска с единицами в битах [n, digits-1].
+         * @throws std::out_of_range если n вне [0, digits].
          */
-        [[nodiscard]] constexpr uint64_t upperMask(int n = 0)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T upperMask(int n)
         {
-            if(n < 0 || n > 64)
-            {
-                throw std::out_of_range("mylib::bit::upperMask(int): n must be in [0, 64]");
-            }
-            if(n == 64)
-            {
-                return ZERO;
-            }
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (n < 0 || n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::upperMask<T>(int): n({}) must be in [0, {}]", n, digits));
 
-            return FULL << n;
+            if (n == digits)
+                return T{0};
+            if (n == 0)
+                return full<T>();
+            // Сдвиг на n (n < digits) безопасен
+            return full<T>() << n;
         }
 
         /**
          * @brief Создаёт маску с младшими n битами, установленными в 1.
          *
-         * @param n Количество младших бит (0 … 64).
-         * @return constexpr uint64_t Маска с единицами в битах [0, n-1].
-         * @throws std::out_of_range если n вне диапазона [0, 64].
+         * @tparam T Беззнаковый целый тип.
+         * @param n Количество младших бит (0 … digits).
+         * @return constexpr T Маска с единицами в битах [0, n-1].
+         * @throws std::out_of_range если n вне [0, digits].
          */
-        [[nodiscard]] constexpr uint64_t lowerMask(int n = 0)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T lowerMask(int n)
         {
-            if(n < 0 || n > 64)
-            {
-                throw std::out_of_range("mylib::bit::lowerMask(int): n must be in [0, 64]");
-            }
-            return ~upperMask(n);
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (n < 0 || n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::lowerMask<T>(int): n({}) must be in [0, {}]", n, digits));
+
+            if (n == digits)
+                return full<T>();
+            if (n == 0)
+                return T{0};
+            // n < digits, сдвиг безопасен
+            return (T{1} << n) - 1;
         }
 
         /**
          * @brief Создаёт маску для поля длиной n бит, начиная с позиции i.
          *
-         * @param i Начальная позиция (0 … 63).
-         * @param n Длина поля в битах (0 … 64).
-         * @return constexpr uint64_t Маска с единицами в битах [i, i+n-1].
-         * @throws std::out_of_range если i [0, 63] или n вне [0, 64] или i + n > 64.
+         * @tparam T Беззнаковый целый тип.
+         * @param i Начальная позиция (0 … digits-1).
+         * @param n Длина поля в битах (0 … digits).
+         * @return constexpr T Маска с единицами в битах [i, i+n-1].
+         * @throws std::out_of_range если i или n вне допустимых диапазонов или i + n > digits.
          */
-        [[nodiscard]] constexpr uint64_t middleMask(int i, int n)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T middleMask(int i, int n)
         {
-            if((n < 0 || n > 64) || (i < 0 || i >=64))
-            {
-                throw std::out_of_range("mylib::bit::middleMask(int, int): i must be in [0, 63], n must be in [0, 64]");
-            }
-            if (i + n > 64)
-            {
-                throw std::out_of_range("mylib::bit::middleMask(int, int): i + n exceeds 64");
-            }
-            return lowerMask(n) << i;
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (i < 0 || i >= digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::middleMask<T>(int,int): i({}) must be in [0, {}]", i, digits - 1));
+            if (n < 0 || n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::middleMask<T>(int,int): n({}) must be in [0, {}]", n, digits));
+            if (i + n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::middleMask<T>(int,int): i + n ({}) exceeds digits ({})", i + n, digits));
+
+            if (n == 0)
+                return T{0};
+            // i + n <= digits, значит i < digits и n > 0, сдвиг безопасен
+            return lowerMask<T>(n) << i;
         }
+
+        // ============================================================================
+        // Операции с отдельными битами (обобщённые)
+        // ============================================================================
+
+        /**
+         * @brief Получает значение бита с индексом i в числе x.
+         *
+         * @tparam T Беззнаковый целый тип.
+         * @param x Исходное число.
+         * @param i Индекс бита (0 … digits-1).
+         * @return constexpr bool true, если бит установлен.
+         * @throws std::out_of_range если i вне диапазона.
+         */
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr bool get(T x, int i)
+        {
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (i < 0 || i >= digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::get<T>(T,int): i({}) must be in [0, {}]", i, digits - 1));
+            return (x & twoPower<T>(i)) != 0;
+        }
+
+        /**
+         * @brief Инвертирует бит с индексом i в числе x и возвращает новое число.
+         *
+         * @tparam T Беззнаковый целый тип.
+         * @param x Исходное число.
+         * @param i Индекс бита (0 … digits-1).
+         * @return constexpr T Новое число с инвертированным битом.
+         * @throws std::out_of_range если i вне диапазона.
+         */
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T flip(T x, int i)
+        {
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (i < 0 || i >= digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::flip<T>(T,int): i({}) must be in [0, {}]", i, digits - 1));
+            return x ^ twoPower<T>(i);
+        }
+
+        /**
+         * @brief Устанавливает бит с индексом i в число x в заданное значение (0 или 1).
+         *
+         * @tparam T Беззнаковый целый тип.
+         * @param x Ссылка на изменяемое число.
+         * @param i Индекс бита (0 … digits-1).
+         * @param value Устанавливаемое значение (true = 1, false = 0).
+         * @throws std::out_of_range если i вне диапазона.
+         */
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        constexpr void set(T& x, int i, bool value)
+        {
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (i < 0 || i >= digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::set<T>(T&,int,bool): i({}) must be in [0, {}]", i, digits - 1));
+
+            T mask = twoPower<T>(i);
+            x = value ? (x | mask) : (x & ~mask);
+        }
+
+        // ============================================================================
+        // Битовые поля (извлечение и запись) – обобщённые
+        // ============================================================================
+
 
         /**
          * @brief Извлекает битовое поле длиной n из числа x, начиная с позиции i.
          *
+         * @tparam T Беззнаковый целый тип.
          * @param x Исходное число.
-         * @param i Начальная позиция (0 … 63).
-         * @param n Длина поля (1 … 64).
-         * @return constexpr uint64_t Значение поля (в младших n битах результата).
-         * @throws std::out_of_range если i или n вне [0, 63] или i + n > 64.
+         * @param i Начальная позиция (0 … digits-1).
+         * @param n Длина поля (1 … digits).
+         * @return constexpr T Значение поля (в младших n битах результата).
+         * @throws std::out_of_range если i или n вне допустимых диапазонов или i + n > digits.
          */
-        [[nodiscard]] constexpr uint64_t getValue(uint64_t x, int i, int n)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr T getValue(T x, int i, int n)
         {
-            if((n < 1 || n > 64) || (i < 0 || i >= 64))
-            {
-                throw std::out_of_range("mylib::bit::getValue(uint64_t, int, int): x and i must be in [0, 63]");
-            }
-            if (i + n > 64)
-            {
-                throw std::out_of_range("mylib::bit::getValue(uint64_t, int, int): i + n exceeds 64");
-            }
-            return (x >> i) & lowerMask(n);
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (i < 0 || i >= digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::getValue<T>(T,int,int): i({}) must be in [0, {}]", i, digits - 1));
+            if (n < 1 || n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::getValue<T>(T,int,int): n({}) must be in [1, {}]", n, digits));
+            if (i + n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::getValue<T>(T,int,int): i + n ({}) exceeds digits ({})", i + n, digits));
+
+            return (x >> i) & lowerMask<T>(n);
         }
 
         /**
          * @brief Записывает младшие n бит значения value в поле числа x, начиная с позиции i.
          *
-         * @tparam T Беззнаковый целый тип.
+         * @tparam T Тип изменяемого числа (беззнаковый).
+         * @tparam Z Тип значения (беззнаковый, может отличаться от T).
          * @param x Ссылка на изменяемое число.
          * @param value Значение для записи (используются только младшие n бит).
-         * @param i Начальная позиция (0 … sizeof(T)*8 - 1).
-         * @param n Длина поля (0 … sizeof(T)*8).
-         * @throws std::out_of_range если i или n вне допустимого диапазона, или i + n > sizeof(T)*8.
+         * @param i Начальная позиция (0 … digits-1).
+         * @param n Длина поля (0 … digits). По умолчанию – все биты Z.
+         * @throws std::out_of_range если i или n вне допустимых диапазонов, или i + n > digits.
          */
-        template<typename T, typename Z>
-            requires std::is_unsigned_v<T> && std::is_unsigned_v<Z>
-        void setValue(T& x, Z value, int i = 0, int n = static_cast<int>(sizeof(Z)) * 8)
+        template<typename T = uint64_t, typename Z = uint64_t>
+            requires std::unsigned_integral<T> && std::unsigned_integral<Z>
+        constexpr void setValue(T& x, Z value, int i = 0, int n = std::numeric_limits<Z>::digits)
         {
-            const int bits{ static_cast<int>(sizeof(T)) * 8 };
-            if((n < 0 || n > bits) || (i < 0 || i >= bits))
-            {
-                throw std::out_of_range("mylib::bit::setValue(T, Z, int, int): i must be in [0, bits-1], n must be in [0, bits]");
-            }
-            if (i + n > bits)
-            {
-                throw std::out_of_range("mylib::bit::setValue(T, Z, int, int): i + n exceeds type width");
-            }
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (i < 0 || i >= digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::setValue<T,Z>(T&,Z,int,int): i({}) must be in [0, {}]", i, digits - 1));
+            if (n < 0 || n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::setValue<T,Z>(T&,Z,int,int): n({}) must be in [0, {}]", n, digits));
+            if (i + n > digits)
+                throw std::out_of_range(
+                    std::format("mylib::bit::setValue<T,Z>(T&,Z,int,int): i + n ({}) exceeds digits ({})", i + n, digits));
 
-            T mask{ static_cast<T>(middleMask(i, n)) };
+            if (n == 0)
+                return; // ничего не делаем
 
-            x &= ~mask;  // удаление
-            x |= mask & (value << i); // установка
+            T mask = middleMask<T>(i, n);
+            x = (x & ~mask) | ( (static_cast<T>(value) << i) & mask );
         }
 
 
@@ -432,7 +559,7 @@ namespace mylib
         };
 
         // ============================================================================
-        // Инвертирование бит (reverse)
+        // Инвертирование бит (reverse) – обобщённое
         // ============================================================================
 
         /**
@@ -440,20 +567,18 @@ namespace mylib
          *
          * @tparam T Беззнаковый целый тип.
          * @param x Исходное число.
-         * @return constexpr T Число с битами, расположенными в обратном порядке.
+         * @return constexpr T Число с битами в обратном порядке.
          */
-        template<typename T>
-            requires std::is_unsigned_v<T>
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
         constexpr T reverseAllBits(T x)
         {
             ReverseBits8 r8;
-
-            T result{};
-            for(size_t i{}; i < sizeof(x); ++i, x >>= 8)
+            T result = 0;
+            for (size_t i = 0; i < sizeof(T); ++i, x >>= 8)
             {
-                result = (result << 8) + r8(x);
+                result = (result << 8) | r8(static_cast<uint8_t>(x));
             }
-
             return result;
         }
 
@@ -462,29 +587,25 @@ namespace mylib
          *
          * @tparam T Беззнаковый целый тип.
          * @param x Исходное число.
-         * @param n Количество младших бит для инвертирования (по умолчанию все биты).
+         * @param n Количество младших бит для инвертирования (0 … digits).
          * @return constexpr T Число, у которого младшие n бит инвертированы, старшие биты обнулены.
-         * @note Если n == digits, функция эквивалентна reverseAllBits(x).
-         * @warning Для корректного использования старшие биты результата обнуляются (сдвиг вправо).
          */
-        template<typename T>
-            requires std::is_unsigned_v<T>
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
         constexpr T reverseBits(T x, int n = std::numeric_limits<T>::digits)
         {
-            assert(n >= 0 && n <= std::numeric_limits<T>::digits);
+            constexpr int digits = std::numeric_limits<T>::digits;
+            assert(n >= 0 && n <= digits);
 
-            if(n == 0)
-            {
+            if (n == 0)
                 return x;
-            }
 
-
-            const int shift{ std::numeric_limits<T>::digits - n };
-            const T mask{ static_cast<T>(lowerMask(n)) };
-            const T reversed{ static_cast<T>(reverseAllBits(static_cast<T>(x & mask)) >> shift) };
-
+            const int shift = digits - n;
+            T mask = lowerMask<T>(n);
+            T reversed = reverseAllBits(static_cast<T>(x & mask)) >> shift;
             return (x & ~mask) | reversed;
         }
+
 
         // ============================================================================
         // Подсчёт единичных бит (popcount)
@@ -493,40 +614,55 @@ namespace mylib
         /**
          * @brief Вычисляет количество установленных бит (popcount) в беззнаковом числе произвольной разрядности.
          *
-         * Использует таблицу PopCount8 для каждого байта числа.
-         *
          * @tparam T Беззнаковый целый тип.
          * @param x Исходное число.
          * @return constexpr int Количество единичных бит.
          */
-        template<typename T>
-            requires std::is_unsigned_v<T>
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
         constexpr int popcount(T x)
         {
             PopCount8 p8;
-            int result{ 0 };
-            for(; x; x>>= 8)
+            int result = 0;
+            while (x)
             {
                 result += p8(static_cast<uint8_t>(x));
+                x >>= 8;
             }
-
             return result;
         }
 
         /**
-         * @brief Вычисляет количество младших нулевых бит в 64‑битном числе.
+         * @brief Вычисляет количество младших нулевых бит в числе T.
          *
          * Использует выражение popcount(~x & (x-1)), которое даёт маску всех младших нулей.
          *
-         * @param x 64‑битное беззнаковое число.
+         * @tparam T Беззнаковый целый тип.
+         * @param x Исходное число.
          * @return constexpr int Количество подряд идущих нулевых бит, начиная с младшего.
-         * @note Для x == 0 возвращает 64, так как все биты нулевые.
+         * @note Для x == 0 возвращает digits (все биты нулевые).
          */
-        constexpr int rightmostNullCount(uint64_t x)
+        template<typename T = uint64_t>
+            requires std::unsigned_integral<T>
+        [[nodiscard]] constexpr int rightmostNullCount(T x)
         {
+            constexpr int digits = std::numeric_limits<T>::digits;
+            if (x == 0)
+                return digits;
             return popcount(~x & (x - 1));
         }
 
+        template<typename T>
+            requires std::signed_integral<T>
+        [[nodiscard]] constexpr int rightmostNullCount(T x)
+        {
+            if(x < 0)
+            {
+                throw std::out_of_range("mylib::bit::rightmostNullCount: x must be non-negative");
+            }
+            using U = std::make_unsigned_t<T>;
+            return rightmostNullCount(static_cast<U>(x));
+        }
     } // end bit namespace
 
 } // end mylib namespace
