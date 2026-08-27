@@ -88,8 +88,6 @@ namespace mylib
         size_t size() const noexcept { return m_bitSize; }
         size_t storageSize() const noexcept { return m_storage.size(); }
 
-        explicit operator bool() const noexcept { return !m_storage.empty(); }
-
         BitReference operator[](size_t i)
         {
             if(i >= m_bitSize)
@@ -136,6 +134,82 @@ namespace mylib
 
             }
             set(m_bitSize - 1, value);
+        }
+
+        void push_back(WORD value, size_t size)
+        {
+            if(0 == size)
+            {
+                return;
+            }
+            if (size > std::numeric_limits<WORD>::digits)
+            {
+                throw std::out_of_range("mylib::Bitset::push_back: size exceeds WORD bits");
+            }
+            size_t start{ m_bitSize };
+            m_bitSize += size;
+            size_t k{ wordsNeeded() - storageSize() };
+            for(size_t i{}; i < k; ++i)
+            {
+                m_storage.push_back(0);
+            }
+
+            setValue(value, start, size);
+        }
+
+        void push_back(const Bitset& other)
+        {
+            if (this == &other)
+            {
+                Bitset temp{ other };
+                push_back(temp);
+                return;
+            }
+
+            if (other.size() == 0)
+                return;
+
+            // ¬ычисл€ем новый размер и резервируем пам€ть
+            size_t newBitSize{ m_bitSize + other.size() };
+            size_t needed{ static_cast<size_t>(math::ceiling(newBitSize, numberOfDigits)) };
+            if (needed > storageSize())
+            {
+                m_storage.resize(needed);
+            }
+
+            //  опируем биты из other в конец текущего
+            size_t destWord{ index(m_bitSize) };
+            size_t destBit{ offset(m_bitSize) };
+
+            size_t srcPos{ 0 };  // позици€ в битах в other
+            size_t srcBits{ other.size() };
+
+            while(srcPos < srcBits)
+            {
+                // —колько бит осталось скопировать из other
+                size_t remaining{ srcBits - srcPos };
+                // —колько бит можно записать в текущее целевое слово
+                size_t spaceInWord{ numberOfDigits - destBit };
+                size_t chunk{ std::min(remaining, spaceInWord) };
+
+                // »звлекаем chunk бит из other, начина€ с позиции srcPos
+                WORD chunkValue{ other.getValue(srcPos, chunk) };  // используем метод getValue
+
+                // «аписываем в целевое слово
+                bit::setValue(m_storage[destWord], chunkValue, static_cast<int>(destBit), static_cast<int>(chunk));
+
+                // ѕродвигаем позиции
+                srcPos += chunk;
+                destBit += chunk;
+                if(destBit == numberOfDigits)
+                {
+                    destBit = 0;
+                    ++destWord;
+                }
+            }
+
+            m_bitSize = newBitSize;
+            zeroOutReminder();
         }
 
         void removeLast()
@@ -299,6 +373,88 @@ namespace mylib
 
             zeroOutReminder();
             return *this;
+        }
+
+        void setAll(bool value = true)
+        {
+            for(size_t i{}; i < storageSize(); ++i)
+            {
+                m_storage[i] = value ? static_cast<WORD>(bit::FULL) : static_cast<WORD>(bit::ZERO);
+            }
+
+            zeroOutReminder();
+        }
+
+        void clear() noexcept
+        {
+            setAll(false);
+        }
+
+        bool isZero() const noexcept
+        {
+            for(size_t i{}; i < storageSize(); ++i)
+            {
+                if(static_cast<bool>(m_storage[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        explicit operator bool() const noexcept { return !isZero(); }
+
+        WORD getValue(size_t i, size_t n) const
+        {
+            if(n > std::numeric_limits<WORD>::digits ||
+               i + n > m_bitSize)
+            {
+                throw std::out_of_range("mylib::Bitset::getValue: invalid range");
+            }
+
+            WORD result{};
+            size_t word{ index(i) };
+            size_t bit{ offset(i) };
+            size_t shift{};
+
+            int numbers{ static_cast<int>(n) };
+            while(numbers > 0)
+            {
+                size_t m{ std::min(static_cast<size_t>(numbers), numberOfDigits - bit) };   // либо все биты, либо столько,
+                                                                                            // сколько поместилось в слове
+                result |= bit::getValue(m_storage[word++], static_cast<int>(bit), static_cast<int>(m)) << shift;
+                shift += m;
+                numbers -= static_cast<int>(m);
+
+                bit = 0;
+            }
+
+            return result;
+        }
+
+        void setValue(WORD value, size_t i, size_t n)
+        {
+            if(n > std::numeric_limits<WORD>::digits ||
+               i + n > m_bitSize)
+            {
+                throw std::out_of_range("mylib::Bitset::setValue: invalid range");
+            }
+
+            size_t word{ index(i) };
+            size_t bit{ offset(i) };
+            size_t shift{};
+
+            int numbers{ static_cast<int>(n) };
+            while(numbers > 0)
+            {
+                size_t m{ std::min(numbers, numberOfDigits - bit) };
+                bit::setValue(m_storage[word++], value >> shift, static_cast<int>(bit), static_cast<int>(m));
+                shift += m;
+                numbers -= static_cast<int>(m);
+
+                bit = 0;
+            }
         }
 
     public:
