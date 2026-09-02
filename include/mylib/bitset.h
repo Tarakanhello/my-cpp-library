@@ -13,12 +13,25 @@
 
 namespace mylib
 {
+    /**
+     * @brief Concept to check if a container has a reverse() method.
+     */
     template<typename CONTAINER>
     concept HasReverse = requires(CONTAINER& c)
     {
         c.reverse();
     };
 
+    /**
+     * @brief A dynamic bitset (bit array) with arbitrary size.
+     *
+     * @tparam WORD Underlying unsigned integer type used as a storage word.
+     *         Must be an unsigned integral type (e.g., uint64_t, uint32_t).
+     *
+     * The bitset stores bits in a vector of WORDs, with automatic resizing.
+     * Provides standard bitwise operations, shifts, reversal, and popcount.
+     * Supports direct bit access via proxy reference.
+     */
     template<typename WORD = std::uint64_t>
         requires std::unsigned_integral<WORD>
     class Bitset final
@@ -30,9 +43,12 @@ namespace mylib
 
     private:
         enum{ numberOfDigits = std::numeric_limits<WORD>::digits };
-        size_t m_bitSize{};
-        Container m_words{};
+        size_t m_bitSize{};     ///< Number of bits in the bitset.
+        Container m_words{};    ///< Storage for words.
 
+        /**
+         * @brief Clears the unused bits in the last word.
+         */
         void zeroOutReminder()
         {
             if(m_bitSize > 0)
@@ -41,9 +57,19 @@ namespace mylib
             }
         }
 
+        /**
+         * @brief Returns the word index for a given bit index.
+         */
         size_t index(size_t index) const noexcept { return index / numberOfDigits; }
+
+        /**
+         * @brief Returns the bit offset within a word for a given bit index.
+         */
         size_t offset(size_t index) const noexcept { return index % numberOfDigits; }
 
+        /**
+         * @brief Returns the value of a specific bit (no bounds check).
+         */
         bool getBit(size_t i) const
         {
             assert(i >= 0 && i < m_bitSize);
@@ -51,20 +77,36 @@ namespace mylib
             return bit::get(m_words[index(i)], offset(i));
         }
 
+        /**
+         * @brief Computes the number of words needed to store m_bitSize bits.
+         */
         size_t wordsNeeded() const { return static_cast<size_t>(math::ceiling(m_bitSize, numberOfDigits)); }
 
     public:
+        /**
+         * @brief Default constructor creating an empty bitset.
+         * @param initialSize Initial number of bits (all zero). Default 0.
+         */
         explicit Bitset(size_t initialSize = 0)
             : m_bitSize{ initialSize }
             , m_words(wordsNeeded())
         {}
 
+        /**
+         * @brief Constructs a bitset from a container of WORDs.
+         * @tparam CONTAINER Type of the container. Must provide begin(), end(), size(), data().
+         *                   value_type must be WORD.
+         * @param container Container with initial data.
+         * @note The size is set to numberOfDigits * container.size().
+         *       Unused bits in the last word are zeroed out.
+         */
         template<typename CONTAINER>
-            requires requires(CONTAINER c)
+            requires requires(const CONTAINER& c)
             {
                 c.begin();
                 c.end();
                 c.size();
+                c.data();
             }
             && std::unsigned_integral<typename CONTAINER::value_type>
             && std::same_as<typename CONTAINER::value_type, WORD>
@@ -76,6 +118,11 @@ namespace mylib
             zeroOutReminder();
         }
 
+        /**
+         * @brief Returns the number of valid bits in the last word.
+         * @return Number of bits in the last word (1..numberOfDigits).
+         * @pre m_bitSize > 0.
+         */
         size_t lastWordBits() const noexcept
         {
             assert(m_bitSize > 0);
@@ -85,14 +132,38 @@ namespace mylib
             return result == 0 ? numberOfDigits : result;
         }
 
+        /**
+         * @brief Returns the number of garbage (unused) bits in the last word.
+         * @return numberOfDigits - lastWordBits(), or 0 if empty.
+         */
         size_t garbageBits() const noexcept { return m_bitSize > 0 ? numberOfDigits - lastWordBits() : 0; }
 
+        /**
+         * @brief Returns a const reference to the underlying storage container.
+         */
         const Container& get() const noexcept { return m_words; }
+
+        /**
+         * @brief Returns a pointer to the raw word array.
+         */
         const WORD* getData() const noexcept { return m_words.data(); }
 
+        /**
+         * @brief Returns the number of bits in the bitset.
+         */
         size_t size() const noexcept { return m_bitSize; }
+
+        /**
+         * @brief Returns the number of words currently used.
+         */
         size_t wordsSize() const noexcept { return m_words.size(); }
 
+        /**
+         * @brief Mutable access to a bit via proxy reference.
+         * @param i Bit index (0-based).
+         * @return BitReference allowing assignment and conversion to bool.
+         * @throw std::out_of_range if i >= size().
+         */
         BitReference operator[](size_t i)
         {
             if(i >= m_bitSize)
@@ -103,6 +174,12 @@ namespace mylib
             return BitReference(&m_words[index(i)], offset(i));
         }
 
+        /**
+         * @brief Const access to a bit.
+         * @param i Bit index.
+         * @return true if the bit is set, false otherwise.
+         * @throw std::out_of_range if i >= size().
+         */
         bool operator[](size_t i) const
         {
             if (i >= m_bitSize)
@@ -112,6 +189,12 @@ namespace mylib
             return getBit(i);
         }
 
+        /**
+         * @brief Sets a specific bit to a given value.
+         * @param i Bit index.
+         * @param value Value to set (true=1, false=0). Default true.
+         * @throw std::out_of_range if i >= size().
+         */
         void set(size_t i, bool value = true)
         {
             if (i >= m_bitSize)
@@ -122,6 +205,11 @@ namespace mylib
             bit::set(m_words[index(i)], offset(i), value);
         }
 
+        /**
+         * @brief Appends a single bit to the end.
+         * @param value Value of the new bit.
+         * @exception Strong exception guarantee – on failure the bitset remains unchanged.
+         */
         void append(bool value)
         {
             ++m_bitSize;
@@ -141,6 +229,13 @@ namespace mylib
             set(m_bitSize - 1, value);
         }
 
+        /**
+         * @brief Appends a block of bits from a WORD value.
+         * @param value The word containing the bits to append.
+         * @param size Number of low-order bits to take from value (1..numberOfDigits).
+         * @throw std::out_of_range if size == 0 or size > numberOfDigits.
+         * @exception Strong guarantee – no change on failure.
+         */
         void push_back(WORD value, size_t size)
         {
             if(0 == size)
@@ -163,6 +258,12 @@ namespace mylib
             setValue(value, start, size);
         }
 
+        /**
+         * @brief Appends another bitset to the end.
+         * @param other Bitset to append.
+         * @note Handles self-append by making a temporary copy.
+         * @exception Strong guarantee – no change on failure.
+         */
         void push_back(const Bitset& other)
         {
             if (this == &other)
@@ -218,6 +319,10 @@ namespace mylib
             zeroOutReminder();
         }
 
+        /**
+         * @brief Removes the last bit.
+         * @pre m_bitSize > 0 (asserted in debug build).
+         */
         void removeLast()
         {
             assert(m_bitSize > 0);
@@ -230,16 +335,28 @@ namespace mylib
             zeroOutReminder();
         }
 
+        /**
+         * @brief Removes the last bit (same as removeLast).
+         */
         void pop_back()
         {
             removeLast();
         }
 
+        /**
+         * @brief Equality comparison.
+         * @return true if both bitsets have the same size and identical bits.
+         */
         bool operator==(const Bitset& other) const noexcept
         {
             return m_words == other.m_words;
         }
 
+        /**
+         * @brief Three-way comparison (lexicographic order).
+         * @return std::strong_ordering::less/equal/greater.
+         * @note Compares by size first, then by words.
+         */
         auto operator<=>(const Bitset& other) const noexcept
         {
             if(m_bitSize != other.m_bitSize)
@@ -258,6 +375,12 @@ namespace mylib
             return std::strong_ordering::equal;
         }
 
+        /**
+         * @brief Bitwise AND assignment.
+         * @param other Bitset of the same size.
+         * @return *this.
+         * @throw std::length_error if sizes differ.
+         */
         Bitset& operator &=(const Bitset& other)
         {
             if(m_bitSize != other.m_bitSize)
@@ -274,6 +397,12 @@ namespace mylib
             return *this;
         }
 
+        /**
+         * @brief Bitwise OR assignment.
+         * @param other Bitset of the same size.
+         * @return *this.
+         * @throw std::length_error if sizes differ.
+         */
         Bitset& operator |=(const Bitset& other)
         {
             if(m_bitSize != other.m_bitSize)
@@ -290,6 +419,12 @@ namespace mylib
             return *this;
         }
 
+        /**
+         * @brief Bitwise XOR assignment.
+         * @param other Bitset of the same size.
+         * @return *this.
+         * @throw std::length_error if sizes differ.
+         */
         Bitset& operator ^=(const Bitset& other)
         {
             if(m_bitSize != other.m_bitSize)
@@ -306,6 +441,9 @@ namespace mylib
             return *this;
         }
 
+        /**
+         * @brief Flips (inverts) all bits in the bitset.
+         */
         void flip()
         {
             for(size_t i{}; i < wordsSize(); ++i)
@@ -316,6 +454,12 @@ namespace mylib
             zeroOutReminder();
         }
 
+        /**
+         * @brief Right shift assignment.
+         * @param shift Number of bits to shift (positive moves right, negative left).
+         * @return *this.
+         * @note Shift amount is reduced modulo m_bitSize.
+         */
         Bitset& operator >>=(int shift)
         {
             if(m_bitSize == 0)
@@ -357,7 +501,12 @@ namespace mylib
             return *this;
         }
 
-
+        /**
+         * @brief Left shift assignment.
+         * @param shift Number of bits to shift (positive moves left, negative right).
+         * @return *this.
+         * @note Shift amount is reduced modulo m_bitSize.
+         */
         Bitset& operator <<=(int shift)
         {
             if(m_bitSize == 0)
@@ -399,6 +548,10 @@ namespace mylib
             return *this;
         }
 
+        /**
+         * @brief Sets all bits to a given value.
+         * @param value Value to set (true=1, false=0). Default true.
+         */
         void setAll(bool value = true)
         {
             for(size_t i{}; i < wordsSize(); ++i)
@@ -409,11 +562,18 @@ namespace mylib
             zeroOutReminder();
         }
 
+        /**
+         * @brief Clears all bits to zero.
+         */
         void clear() noexcept
         {
             setAll(false);
         }
 
+        /**
+         * @brief Checks if all bits are zero.
+         * @return true if no bit is set.
+         */
         bool isZero() const noexcept
         {
             for(size_t i{}; i < wordsSize(); ++i)
@@ -427,8 +587,19 @@ namespace mylib
             return true;
         }
 
+        /**
+         * @brief Checks if the bitset is non‑zero.
+         * @return true if at least one bit is set.
+         */
         explicit operator bool() const noexcept { return !isZero(); }
 
+        /**
+         * @brief Extracts a field of bits starting at position i, length n.
+         * @param i Starting bit index.
+         * @param n Number of bits to extract (must be <= numberOfDigits).
+         * @return The extracted value in the low-order bits of the result.
+         * @throw std::out_of_range if n > numberOfDigits or i+n > size().
+         */
         WORD getValue(size_t i, size_t n) const
         {
             if(n > std::numeric_limits<WORD>::digits ||
@@ -461,6 +632,13 @@ namespace mylib
             return result;
         }
 
+        /**
+         * @brief Writes a value into a field of bits at position i, length n.
+         * @param value The value to write (only low-order n bits are used).
+         * @param i Starting bit index.
+         * @param n Number of bits to overwrite (must be <= numberOfDigits).
+         * @throw std::out_of_range if n > numberOfDigits or i+n > size().
+         */
         void setValue(WORD value, size_t i, size_t n)
         {
             if(n > std::numeric_limits<WORD>::digits ||
@@ -490,6 +668,11 @@ namespace mylib
             }
         }
 
+        /**
+         * @brief Reverses the order of all bits in the bitset.
+         * @note Performs a bit‑reversal of the entire sequence.
+         * @exception noexcept – does not throw.
+         */
         void reverse() noexcept
         {
             size_t nFill{ garbageBits() };
@@ -515,6 +698,10 @@ namespace mylib
             zeroOutReminder();
         }
 
+        /**
+         * @brief Counts the number of set bits in the bitset.
+         * @return Total popcount.
+         */
         int popcount() const noexcept
         {
             int sum{};
@@ -528,6 +715,10 @@ namespace mylib
 
 
     public:
+        /**
+         * @brief Proxy class allowing direct bit assignment and conversion.
+         * @details Used by operator[] to provide lvalue access.
+         */
         class BitReference final
         {
         private:
@@ -535,6 +726,12 @@ namespace mylib
             int m_index{};
 
         public:
+            /**
+             * @brief Constructs a reference to a bit.
+             * @param ptr Pointer to the WORD containing the bit.
+             * @param offset Bit offset within the WORD (0..numberOfDigits-1).
+             * @throw std::out_of_range if offset >= numberOfDigits.
+             */
             BitReference(WORD* ptr, size_t offset)
                 : m_blockPtr{ ptr }
             {
@@ -547,8 +744,16 @@ namespace mylib
                 m_index = static_cast<int>(offset);
             }
 
+            /**
+             * @brief Converts the referenced bit to bool.
+             */
             explicit operator bool() const { return (bit::get(*m_blockPtr, m_index)); }
 
+            /**
+             * @brief Assigns a bool value to the referenced bit.
+             * @param value Value to set.
+             * @return *this.
+             */
             BitReference& operator=(bool value)
             {
                 bit::set(*m_blockPtr, m_index, value);
@@ -556,6 +761,9 @@ namespace mylib
                 return *this;
             }
 
+            /**
+             * @brief Assigns from another BitReference.
+             */
             BitReference& operator=(const BitReference& other)
             {
                 *this = static_cast<bool>(other);
@@ -564,6 +772,9 @@ namespace mylib
         };
     };
 
+    /**
+     * @brief Deduction guide for constructing Bitset from a container.
+     */
     template<typename CONTAINER>
     Bitset(const CONTAINER&) -> Bitset<typename CONTAINER::value_type>;
 
