@@ -80,7 +80,7 @@ namespace mylib
         /**
          * @brief Computes the number of words needed to store m_bitSize bits.
          */
-        size_t wordsNeeded() const { return static_cast<size_t>(math::ceiling(m_bitSize, numberOfDigits)); }
+        size_t wordsNeeded() const noexcept { return static_cast<size_t>(math::ceiling(m_bitSize, numberOfDigits)); }
 
     public:
         /**
@@ -444,7 +444,7 @@ namespace mylib
         /**
          * @brief Flips (inverts) all bits in the bitset.
          */
-        void flip()
+        void flip() noexcept
         {
             for(size_t i{}; i < wordsSize(); ++i)
             {
@@ -460,7 +460,7 @@ namespace mylib
          * @return *this.
          * @note Shift amount is reduced modulo m_bitSize.
          */
-        Bitset& operator >>=(int shift)
+        Bitset& operator>>=(int shift) noexcept
         {
             if(m_bitSize == 0)
             {
@@ -507,7 +507,7 @@ namespace mylib
          * @return *this.
          * @note Shift amount is reduced modulo m_bitSize.
          */
-        Bitset& operator <<=(int shift)
+        Bitset& operator<<=(int shift) noexcept
         {
             if(m_bitSize == 0)
             {
@@ -552,7 +552,7 @@ namespace mylib
          * @brief Sets all bits to a given value.
          * @param value Value to set (true=1, false=0). Default true.
          */
-        void setAll(bool value = true)
+        void setAll(bool value = true) noexcept
         {
             for(size_t i{}; i < wordsSize(); ++i)
             {
