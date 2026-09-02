@@ -2,8 +2,9 @@
 #define MYLIB_H_INCLUDED
 
 #include "mylib/bit_operations.h"
+#include "mylib/bitset.h"
 #include "mylib/chunked_array.h"
-#include "flag_set.h"
+#include "mylib/flag_set.h"
 #include "mylib/list.h"
 #include "mylib/math.h"
 #include "mylib/memory.h"
