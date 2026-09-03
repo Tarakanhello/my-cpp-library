@@ -12,7 +12,11 @@
 namespace
 {
 
-    // Утилита для проверки, что все биты битсета равны заданному значению
+    using Word = uint64_t;
+    using Bitset = mylib::Bitset<Word>;
+    [[maybe_unused]] constexpr size_t WORD_BITS{ std::numeric_limits<Word>::digits };
+
+        // Утилита для проверки, что все биты битсета равны заданному значению
     template<typename Bitset>
     void checkBitsViaIndex(const Bitset& bs, const std::initializer_list<bool>& expected)
     {
@@ -24,6 +28,20 @@ namespace
         }
     }
 
+    // Вспомогательная функция для создания Bitset из строки битов (только для небольших размеров)
+    [[maybe_unused]] Bitset bitsFromString(const std::string& bits)
+    {
+        Bitset bs(bits.size());
+        for (size_t i = 0; i < bits.size(); ++i)
+        {
+            if (bits[i] == '1')
+                bs.set(i, true);
+            else
+                bs.set(i, false);
+        }
+        return bs;
+    }
+
 } // end namespace
 
 // ============================================================================
@@ -32,10 +50,6 @@ namespace
 
 TEST_CASE("Bitset construction and basic properties", "[bitset][construction]")
 {
-    using Word = uint64_t;
-    using Bitset = mylib::Bitset<Word>;
-    [[maybe_unused]] constexpr size_t WORD_BITS{ std::numeric_limits<Word>::digits };
-
     // ------------------------------------------------------------------------
     // 1. Конструктор по умолчанию
     // ------------------------------------------------------------------------
@@ -281,5 +295,180 @@ TEST_CASE("Bitset construction and basic properties", "[bitset][construction]")
 
         Bitset b2{ 10 };
         REQUIRE(b2.getData() != nullptr);
+    }
+}
+
+
+
+
+TEST_CASE("Bitset bit access and BitReference", "[bitset][access]")
+{
+    // ------------------------------------------------------------------------
+    // 1. operator[] (non-const) – возвращает BitReference
+    // ------------------------------------------------------------------------
+    SECTION("operator[] non-const allows read and write")
+    {
+        Bitset b{ 10 };
+        // Изначально все нули
+        for (size_t i{ 0 }; i < 10; ++i)
+        {
+            REQUIRE(b[i] == false);   // operator[] const
+        }
+
+        // Запись через BitReference
+        b[0] = true;
+        b[3] = true;
+        b[9] = true;
+        REQUIRE(b[0] == true);
+        REQUIRE(b[3] == true);
+        REQUIRE(b[9] == true);
+        REQUIRE(b[1] == false);
+        REQUIRE(b[2] == false);
+
+        // Изменение через ссылку
+        auto ref{ b[0] };
+        ref = false;
+        REQUIRE(b[0] == false);
+        ref = true;
+        REQUIRE(b[0] == true);
+
+        // Присваивание BitReference от другого BitReference
+        auto ref2{ b[9] };
+        ref2 = b[1];   // копирование значения бита 1 (false)
+        REQUIRE(b[9] == false);
+        ref2 = true;  // меняем обратно
+
+        // Проверка, что изменения отражаются в getData
+        const Word* data{ b.getData() };
+        REQUIRE(data != nullptr);
+        // Первое слово должно иметь биты 0 и 3 установлены
+        // Ожидаем: бит 0=1, бит 3=1, бит 9=1
+        Word expected{ (1ULL << 0) | (1ULL << 3) | (1ULL << 9) };
+        REQUIRE(data[0] == expected);
+
+        // isZero должно быть false
+        REQUIRE(!b.isZero());
+
+        // Выход за границы
+        REQUIRE_THROWS_AS(b[10], std::out_of_range);
+        REQUIRE_THROWS_AS(b[100], std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. operator[] (const) – возвращает bool
+    // ------------------------------------------------------------------------
+    SECTION("operator[] const returns bool")
+    {
+        Bitset b{ 5 };
+        b.set(2, true);
+        b.set(4, true);
+
+        const Bitset& cb{ b };
+        REQUIRE(cb[0] == false);
+        REQUIRE(cb[2] == true);
+        REQUIRE(cb[4] == true);
+
+        // Выход за границы
+        REQUIRE_THROWS_AS(cb[5], std::out_of_range);
+        REQUIRE_THROWS_AS(cb[10], std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. set(size_t i, bool value) – установка бита
+    // ------------------------------------------------------------------------
+    SECTION("set() sets bit to given value")
+    {
+        Bitset b{ 8 };
+        // Установка по умолчанию (true)
+        b.set(1);
+        b.set(5);
+        REQUIRE(b[1] == true);
+        REQUIRE(b[5] == true);
+        REQUIRE(b[0] == false);
+
+        // Установка false
+        b.set(1, false);
+        REQUIRE(b[1] == false);
+        b.set(5, true);
+        REQUIRE(b[5] == true);
+
+        // Граничные индексы
+        b.set(0, true);
+        b.set(7, true);
+        REQUIRE(b[0] == true);
+        REQUIRE(b[7] == true);
+
+        // Выход за границы
+        REQUIRE_THROWS_AS(b.set(8, true), std::out_of_range);
+        REQUIRE_THROWS_AS(b.set(100), std::out_of_range);
+
+        // Проверка на большом битсете (несколько слов)
+        Bitset big{ 100 };
+        big.set(63, true);   // последний бит первого слова
+        big.set(64, true);   // первый бит второго слова
+        REQUIRE(big[63] == true);
+        REQUIRE(big[64] == true);
+        REQUIRE(big[62] == false);
+        REQUIRE(big[65] == false);
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. BitReference – детальное тестирование публичного прокси-класса
+    // ------------------------------------------------------------------------
+    SECTION("BitReference construction and operations")
+    {
+        // Создаём Bitset с одним словом, чтобы получить указатель на слово
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) }; // неконстантный указатель (мы можем изменять)
+
+        // 4.1 Создание BitReference с корректным offset
+        {
+            mylib::Bitset<Word>::BitReference ref{ ptr, 0 };
+            REQUIRE(ref == false); // бит изначально 0
+            ref = true;
+            REQUIRE(ref == true);
+            REQUIRE(b[0] == true);
+
+            // Другой offset
+            mylib::Bitset<Word>::BitReference ref2{ ptr, 63 };
+            REQUIRE(ref2 == false);
+            ref2 = true;
+            REQUIRE(ref2 == true);
+            REQUIRE(b[63] == true);
+        }
+
+        // 4.2 Присваивание от другого BitReference
+        {
+            mylib::Bitset<Word>::BitReference refA{ ptr, 5 };
+            mylib::Bitset<Word>::BitReference refB{ ptr, 10 };
+            refA = true;
+            refB = false;
+            // Копируем refA в refB
+            refB = refA;
+            REQUIRE(refB == true);
+            REQUIRE(b[10] == true);
+            // Проверяем, что refA не изменился
+            REQUIRE(refA == true);
+        }
+
+        // 4.3 Исключение при offset >= WORD_BITS
+        {
+            // offset = WORD_BITS (равен numberOfDigits) -> должно выбросить
+            REQUIRE_THROWS_AS((mylib::Bitset<Word>::BitReference(ptr, WORD_BITS)), std::out_of_range);
+            // offset = WORD_BITS+1
+            REQUIRE_THROWS_AS((mylib::Bitset<Word>::BitReference(ptr, WORD_BITS + 1)), std::out_of_range);
+        }
+
+        // 4.4 Проверка, что BitReference работает даже при изменении слова через другие операции
+        {
+            mylib::Bitset<Word>::BitReference ref{ ptr, 20 };
+            ref = true;
+            REQUIRE(b[20] == true);
+            // Очищаем всё через clear()
+            b.clear();
+            REQUIRE(ref == false); // бит стал нулевым
+            // ref всё ещё указывает на то же место, но теперь бит сброшен
+            REQUIRE(b[20] == false);
+        }
     }
 }
