@@ -725,6 +725,11 @@ namespace mylib
             WORD* m_blockPtr{ nullptr };
             int m_index{};
 
+            bool get() const noexcept
+            {
+                return bit::get(*m_blockPtr, m_index);
+            }
+
         public:
             /**
              * @brief Constructs a reference to a bit.
@@ -747,7 +752,7 @@ namespace mylib
             /**
              * @brief Converts the referenced bit to bool.
              */
-            explicit operator bool() const { return (bit::get(*m_blockPtr, m_index)); }
+            explicit operator bool() const { return get(); }
 
             /**
              * @brief Assigns a bool value to the referenced bit.
@@ -768,6 +773,41 @@ namespace mylib
             {
                 *this = static_cast<bool>(other);
                 return *this;
+            }
+
+            bool operator==(bool b) const noexcept
+            {
+                return get() == b;
+            }
+
+            bool operator!=(bool b) const noexcept
+            {
+                return !(get() == b);
+            }
+
+            friend bool operator==(bool b, const BitReference& ref) noexcept
+            {
+                return ref == b;
+            }
+
+            friend bool operator!=(bool b, const BitReference& ref) noexcept
+            {
+                return ref != b;
+            }
+
+            bool operator!() const noexcept
+            {
+                return !get();
+            }
+
+            bool operator==(const BitReference& other) const noexcept
+            {
+                return get() == other.get();
+            }
+
+            bool operator!=(const BitReference& other) const noexcept
+            {
+                return !(*this == other);
             }
         };
     };
