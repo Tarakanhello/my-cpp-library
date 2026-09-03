@@ -42,7 +42,7 @@ namespace mylib
         class BitReference;
 
     private:
-        enum{ numberOfDigits = std::numeric_limits<WORD>::digits };
+        static constexpr size_t numberOfDigits{ std::numeric_limits<WORD>::digits };
         size_t m_bitSize{};     ///< Number of bits in the bitset.
         Container m_words{};    ///< Storage for words.
 
@@ -114,7 +114,7 @@ namespace mylib
             : m_bitSize{ numberOfDigits * container.size() }
             , m_words(container.size())
         {
-            std::ranges::copy(container, m_words);
+            std::ranges::copy(container, m_words.begin());
             zeroOutReminder();
         }
 
@@ -651,7 +651,7 @@ namespace mylib
             size_t bit{ offset(i) };    // позиция бита внутри этого слова
             size_t shift{};             // сдвиг в value, откуда брать биты
 
-            int numbers{ static_cast<int>(n) };
+            size_t numbers{ n };
             while(numbers > 0)
             {
                 // сколько бит можно записать в текущее слово (либо до конца слова,
@@ -662,7 +662,7 @@ namespace mylib
                 // в текущее слово, начиная с позиции bit
                 bit::setValue(m_words[word++], value >> shift, static_cast<int>(bit), static_cast<int>(m));
                 shift += m;
-                numbers -= static_cast<int>(m);
+                numbers -= m;
 
                 bit = 0; // после первого слова все последующие пишем с нулевого бита
             }
