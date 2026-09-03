@@ -714,6 +714,118 @@ namespace mylib
         }
 
 
+        /**
+         * @brief Writes bits from a string representation into the bitset.
+         *
+         * The string must contain only characters '0' and '1'. The first character of
+         * the string is treated as the most significant bit (MSB) of the block being
+         * written. It will be stored at the highest bit index within the written range:
+         * position + str.size() - 1. The last character corresponds to the lowest bit
+         * (position). If the bitset is smaller than needed, it is automatically
+         * resized.
+         *
+         * @param str      String of '0' and '1' characters (MSB first).
+         * @param position Starting bit index (LSB of the written block). Default 0.
+         *
+         * @throw std::invalid_argument if the string contains any character other
+         *        than '0' or '1'.
+         * @throw std::length_error if the resulting size exceeds the maximum allowed.
+         * @exception Strong guarantee – on failure the bitset remains unchanged.
+         *
+         * @note If `position + str.size()` exceeds the current size, the bitset is
+         *       extended (new bits are zero-initialised). If the string is empty,
+         *       the function does nothing.
+         *
+         * @see appendFromString
+         * @see toString
+         */
+        void setFromString(const std::string& str, size_t position = 0)
+        {
+            if (str.empty())
+            {
+                return;
+            }
+            // Проверка на валидные символы
+            for (char ch : str)
+            {
+                if (ch != '0' && ch != '1')
+                {
+                    throw std::invalid_argument("Bitset::setFromString: string must contain only '0' and '1'");
+                }
+            }
+            size_t len{ str.length() };
+            size_t newBitSize{ position + len };
+            if (newBitSize > m_bitSize)
+            {
+                size_t neededWords{ (newBitSize + numberOfDigits - 1) / numberOfDigits };
+                if (neededWords > m_words.size())
+                {
+                    m_words.resize(neededWords);
+                }
+
+                m_bitSize = newBitSize;
+                zeroOutReminder();
+            }
+            // Записываем биты: первый символ -> старший бит (position+len-1)
+            for (size_t j{ 0 }; j < len; ++j)
+            {
+                bool val{ (str[j] == '1') };
+                size_t bitPos{ position + (len - 1 - j) };
+                set(bitPos, val); // set уже проверяет границы, но мы расширили
+            }
+        }
+
+
+        /**
+         * @brief Appends bits from a string representation to the end of the bitset.
+         *
+         * Equivalent to `setFromString(str, size())`. The string is interpreted in
+         * the same way: MSB first, so the first character becomes the most significant
+         * bit of the appended block (highest index).
+         *
+         * @param str String of '0' and '1' characters (MSB first).
+         *
+         * @throw std::invalid_argument if the string contains invalid characters.
+         * @throw std::length_error if size overflow occurs.
+         * @exception Strong guarantee.
+         *
+         * @see setFromString
+         * @see toString
+         */
+        void appendFromString(const std::string& str)
+        {
+            setFromString(str, m_bitSize);
+        }
+
+
+        /**
+         * @brief Converts the entire bitset to a string of '0' and '1' characters.
+         *
+         * The string is built from the most significant bit to the least significant
+         * bit (MSB first). That is, the first character corresponds to the bit with
+         * index `size() - 1`, the last character corresponds to bit 0.
+         *
+         * @return std::string containing '0' and '1' characters, length equals size().
+         *         Returns an empty string if the bitset is empty.
+         *
+         * @note The method is `const` and does not modify the bitset.
+         *
+         * @see setFromString
+         * @see appendFromString
+         */
+        std::string toString() const
+        {
+            std::string result;
+            result.reserve(m_bitSize);
+            for (size_t i{ m_bitSize }; i > 0; --i)
+            {
+                bool bit{ getBit(i - 1) }; // getBit без проверки границ, но i-1 корректно
+                result.push_back(bit ? '1' : '0');
+            }
+
+            return result;
+        }
+
     public:
         /**
          * @brief Proxy class allowing direct bit assignment and conversion.
