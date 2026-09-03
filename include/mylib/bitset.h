@@ -72,7 +72,7 @@ namespace mylib
          */
         bool getBit(size_t i) const
         {
-            assert(i >= 0 && i < m_bitSize);
+            assert(i < m_bitSize);
 
             return bit::get(m_words[index(i)], offset(i));
         }
