@@ -93,6 +93,33 @@ namespace mylib
         {}
 
         /**
+         * @brief Constructs a bitset from a string of '0' and '1' characters.
+         *
+         * The string is interpreted as a binary representation with the first character
+         * being the most significant bit (MSB). The resulting bitset will have a size
+         * equal to the length of the string. The last character of the string becomes
+         * bit 0 (LSB).
+         *
+         * @param str String of '0' and '1' characters (MSB first).
+         *
+         * @throw std::invalid_argument if the string contains any character other
+         *        than '0' or '1'.
+         * @throw std::length_error if the string length exceeds the maximum allowed
+         *        size.
+         *
+         * @note The constructor is `explicit` to prevent accidental implicit
+         *       conversions from strings.
+         *
+         * @see appendFromString
+         * @see setFromString
+         * @see toString
+         */
+        explicit Bitset(const std::string& str)
+        {
+            appendFromString(str);
+        }
+
+        /**
          * @brief Constructs a bitset from a container of WORDs.
          * @tparam CONTAINER Type of the container. Must provide begin(), end(), size(), data().
          *                   value_type must be WORD.
