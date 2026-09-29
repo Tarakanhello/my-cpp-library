@@ -110,13 +110,13 @@ namespace mylib
          * @note The constructor is `explicit` to prevent accidental implicit
          *       conversions from strings.
          *
-         * @see appendFromString
+         * @see prependFromString
          * @see setFromString
          * @see toString
          */
         explicit Bitset(const std::string& str)
         {
-            appendFromString(str);
+            prependFromString(str);
         }
 
         /**
@@ -157,6 +157,51 @@ namespace mylib
             size_t result{ offset(m_bitSize) };
 
             return result == 0 ? numberOfDigits : result;
+        }
+
+        /**
+         * @brief Checks whether the bitset is equal to a binary string representation.
+         *
+         * The string must consist only of '0' and '1' characters and must have the same
+         * length as the bitset. The first character corresponds to the most significant
+         * bit (MSB), the last character to the least significant bit (LSB).
+         *
+         * @param str Binary string to compare with (MSB first).
+         * @return true if the bitset has the same size and all bits match the string;
+         *         false otherwise, including when the string contains invalid characters
+         *         or has a different length.
+         *
+         * @note This method does not throw exceptions; it returns false for any
+         *       mismatch, including invalid input.
+         * @see toString
+         * @see setFromString
+         */
+        bool equals(std::string_view str) const noexcept
+        {
+            if(str.size() != m_bitSize)
+            {
+                return false;
+            }
+
+            for(size_t i{}; i < m_bitSize; ++i)
+            {
+                char c{ str[i] };
+                if(c != '0' && c != '1')
+                {
+                    return false;
+                }
+
+                // str[0] — MSB (индекс m_bitSize - 1), str[m_bitSize - 1] — LSB (индекс 0)
+                size_t bitIndex{ m_bitSize - 1 - i};
+
+                bool bitValue{ c == '1' };
+                if(getBit(bitIndex) != bitValue)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         /**
@@ -233,11 +278,15 @@ namespace mylib
         }
 
         /**
-         * @brief Appends a single bit to the end.
+         * @brief Prepends a single bit to the front of the bitset.
+         *
+         * In the string representation (MSB first), the new bit becomes the first
+         * character of toString(). Internally the bit is added at index size().
+         *
          * @param value Value of the new bit.
          * @exception Strong exception guarantee – on failure the bitset remains unchanged.
          */
-        void append(bool value)
+        void prepend(bool value)
         {
             ++m_bitSize;
             if(wordsSize() < wordsNeeded())
@@ -257,13 +306,17 @@ namespace mylib
         }
 
         /**
-         * @brief Appends a block of bits from a WORD value.
-         * @param value The word containing the bits to append.
+         * @brief Prepends a block of bits from a WORD value.
+         *
+         * The low-order `size` bits of `value` are placed at the highest indices,
+         * so they appear at the front of the string representation.
+         *
+         * @param value The word containing the bits to prepend.
          * @param size Number of low-order bits to take from value (1..numberOfDigits).
          * @throw std::out_of_range if size == 0 or size > numberOfDigits.
          * @exception Strong guarantee – no change on failure.
          */
-        void push_back(WORD value, size_t size)
+        void prepend(WORD value, size_t size)
         {
             if(0 == size)
             {
@@ -271,7 +324,7 @@ namespace mylib
             }
             if (size > std::numeric_limits<WORD>::digits)
             {
-                throw std::out_of_range("mylib::Bitset::push_back: size exceeds WORD bits");
+                throw std::out_of_range("mylib::Bitset::prepend: size exceeds WORD bits");
             }
 
             size_t start{ m_bitSize };
@@ -286,22 +339,28 @@ namespace mylib
         }
 
         /**
-         * @brief Appends another bitset to the end.
-         * @param other Bitset to append.
-         * @note Handles self-append by making a temporary copy.
+         * @brief Prepends another bitset to the front.
+         *
+         * After the operation, the string representation is
+         * `other.toString() + this->toString()`.
+         *
+         * @param other Bitset to prepend.
+         * @note Handles self-prepend by making a temporary copy.
          * @exception Strong guarantee – no change on failure.
          */
-        void push_back(const Bitset& other)
+        void prepend(const Bitset& other)
         {
             if (this == &other)
             {
                 Bitset temp{ other };
-                push_back(temp);
+                prepend(temp);
                 return;
             }
 
             if (other.size() == 0)
+            {
                 return;
+            }
 
             // Вычисляем новый размер и выделяем память
             size_t newBitSize{ m_bitSize + other.size() };
@@ -347,10 +406,13 @@ namespace mylib
         }
 
         /**
-         * @brief Removes the last bit.
+         * @brief Removes the first bit (the leading character of toString()).
+         *
+         * Internally removes the bit with index size() - 1.
+         *
          * @pre m_bitSize > 0 (asserted in debug build).
          */
-        void removeLast()
+        void removeFirst()
         {
             assert(m_bitSize > 0);
             if(lastWordBits() == 1)
@@ -363,11 +425,11 @@ namespace mylib
         }
 
         /**
-         * @brief Removes the last bit (same as removeLast).
+         * @brief Removes the first bit (same as removeFirst).
          */
-        void pop_back()
+        void pop_front()
         {
-            removeLast();
+            removeFirst();
         }
 
         /**
@@ -763,7 +825,7 @@ namespace mylib
          *       extended (new bits are zero-initialised). If the string is empty,
          *       the function does nothing.
          *
-         * @see appendFromString
+         * @see prependFromString
          * @see toString
          */
         void setFromString(const std::string& str, size_t position = 0)
@@ -804,11 +866,12 @@ namespace mylib
 
 
         /**
-         * @brief Appends bits from a string representation to the end of the bitset.
+         * @brief Prepends bits from a string representation to the front of the bitset.
          *
          * Equivalent to `setFromString(str, size())`. The string is interpreted in
          * the same way: MSB first, so the first character becomes the most significant
-         * bit of the appended block (highest index).
+         * bit of the prepended block (highest index). After the call the string
+         * representation is `str + this->toString()`.
          *
          * @param str String of '0' and '1' characters (MSB first).
          *
@@ -819,7 +882,7 @@ namespace mylib
          * @see setFromString
          * @see toString
          */
-        void appendFromString(const std::string& str)
+        void prependFromString(const std::string& str)
         {
             setFromString(str, m_bitSize);
         }
@@ -838,7 +901,7 @@ namespace mylib
          * @note The method is `const` and does not modify the bitset.
          *
          * @see setFromString
-         * @see appendFromString
+         * @see prependFromString
          */
         std::string toString() const
         {

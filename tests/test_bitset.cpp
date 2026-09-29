@@ -461,23 +461,23 @@ TEST_CASE("Bitset bit access and BitReference", "[bitset][access]")
 
 
 
-TEST_CASE("Bitset size modification (append, push_back, removeLast)", "[bitset][modifiers]")
+TEST_CASE("Bitset size modification (prepend, prepend, removeLast)", "[bitset][modifiers]")
 {
     // ------------------------------------------------------------------------
-    // 1. append(bool value)
+    // 1. prepend(bool value)
     // ------------------------------------------------------------------------
-    SECTION("append single bit")
+    SECTION("prepend single bit")
     {
         // Пустой
         Bitset b;
-        b.append(true);
+        b.prepend(true);
         REQUIRE(b.size() == 1);
         REQUIRE(b.wordsSize() == 1);
         REQUIRE(b[0] == true);
         REQUIRE(b.popcount() == 1);
         REQUIRE(!b.isZero());
 
-        b.append(false);
+        b.prepend(false);
         REQUIRE(b.size() == 2);
         REQUIRE(b.wordsSize() == 1);
         REQUIRE(b[0] == true);
@@ -489,7 +489,7 @@ TEST_CASE("Bitset size modification (append, push_back, removeLast)", "[bitset][
         Bitset b2;
         for(size_t i{ 0 }; i < WORD_BITS; ++i)
         {
-            b2.append(i % 2 == 0); // чередуем
+            b2.prepend(i % 2 == 0); // чередуем
         }
         REQUIRE(b2.size() == WORD_BITS);
         REQUIRE(b2.wordsSize() == 1);
@@ -503,7 +503,7 @@ TEST_CASE("Bitset size modification (append, push_back, removeLast)", "[bitset][
         REQUIRE(b2.popcount() == WORD_BITS / 2);
 
         // Добавляем ещё один бит – создаётся новое слово
-        b2.append(true);
+        b2.prepend(true);
         REQUIRE(b2.size() == WORD_BITS + 1);
         REQUIRE(b2.wordsSize() == 2);
         REQUIRE(b2.lastWordBits() == 1);
@@ -513,42 +513,42 @@ TEST_CASE("Bitset size modification (append, push_back, removeLast)", "[bitset][
     }
 
     // ------------------------------------------------------------------------
-    // 2. push_back(WORD value, size_t size)
+    // 2. prepend(WORD value, size_t size)
     // ------------------------------------------------------------------------
-    SECTION("push_back WORD value with specified number of bits")
+    SECTION("prepend WORD value with specified number of bits")
     {
         Bitset b;
 
         // Добавляем 1 бит из значения
-        b.push_back(0x1, 1);
+        b.prepend(0x1, 1);
         REQUIRE(b.size() == 1);
         REQUIRE(b[0] == true);
         REQUIRE(b.popcount() == 1);
 
-        // Добавляем 3 бита из значения 0b101 (5) – берём младшие 3 бита: 101
-        b.push_back(0b101, 3);
+        // Добавляем 3 бита из значения 0b100 (5) – берём младшие 3 бита: 100
+        b.prepend(0b100, 3);
         REQUIRE(b.size() == 4);
 
         REQUIRE(b[0] == true);
-        REQUIRE(b[1] == true);
+        REQUIRE(b[1] == false);
         REQUIRE(b[2] == false);
         REQUIRE(b[3] == true);
-        REQUIRE(b.popcount() == 3);;
+        REQUIRE(b.popcount() == 2);;
 
         // Добавляем 0 бит
-        b.push_back(0, 0);
+        b.prepend(0, 0);
         REQUIRE(b[0] == true);
-        REQUIRE(b[1] == true);
+        REQUIRE(b[1] == false);
         REQUIRE(b[2] == false);
         REQUIRE(b[3] == true);
-        REQUIRE(b.popcount() == 3);;
+        REQUIRE(b.popcount() == 2);;
 
         // Добавляем больше чем WORD_BITS – исключение
-        REQUIRE_THROWS_AS(b.push_back(0, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.prepend(0, WORD_BITS + 1), std::out_of_range);
 
         // Добавляем максимальное количество бит (WORD_BITS) – должны быть взяты все биты значения
         Word val{ 0xFFFFFFFFFFFFFFFF };
-        b.push_back(val, WORD_BITS);
+        b.prepend(val, WORD_BITS);
         REQUIRE(b.size() == WORD_BITS + 4);
         REQUIRE(b.wordsSize() == 2);
         for(size_t i{ 4 }; i < WORD_BITS; ++i)
@@ -556,11 +556,11 @@ TEST_CASE("Bitset size modification (append, push_back, removeLast)", "[bitset][
             REQUIRE(b[i] == true);
         }
 
-        REQUIRE(b.popcount() == WORD_BITS + 3);
+        REQUIRE(b.popcount() == WORD_BITS + 2);
 
         // Добавляем значение, у которого старшие биты за пределами size игнорируются
         Bitset b3;
-        b3.push_back(0b1111, 2); // берём только младшие 2 бита (оба 1)
+        b3.prepend(0b1111, 2); // берём только младшие 2 бита (оба 1)
         REQUIRE(b3.size() == 2);
         REQUIRE(b3[0] == true);
         REQUIRE(b3[1] == true);
@@ -568,17 +568,19 @@ TEST_CASE("Bitset size modification (append, push_back, removeLast)", "[bitset][
     }
 
     // ------------------------------------------------------------------------
-    // 3. push_back(const Bitset& other)
+    // 3. prepend(const Bitset& other)
     // ------------------------------------------------------------------------
-    SECTION("push_back another Bitset")
+    SECTION("prepend another Bitset")
     {
         // Простое добавление
-        Bitset a{ "101" };
+        Bitset a{ "100" };
         Bitset b{ "01" };
-        a.push_back(b);
+
+        REQUIRE(a.equals("100"));
+        a.prepend(b);
         REQUIRE(a.size() == 5);
-        checkBits(a, {true, false, true, false, true}); // 101 + 01 = 10101
+        REQUIRE(a.equals("01100")); // 100 + 01 = 01100
         REQUIRE(b.size() == 2); // исходный не изменился
-        checkBits(b, {false, true});
+        checkBitsViaIndex(b, {true, false});
     }
 }
