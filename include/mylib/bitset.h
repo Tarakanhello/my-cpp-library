@@ -313,12 +313,12 @@ public:
          * @note Implemented as: prepend a dummy 0-bit, shift left by 1, then set bit 0.
          *       The dummy bit absorbs the shift, so no real bit is lost.
          */
-    void append(bool value);
+    void appendLSB(bool value);
 
     /**
          * @brief Removes the first bit (same as removeFirst).
          */
-    void pop_front();
+    void popMSB();
 
     /**
          * @brief Prepends a single bit to the front of the bitset.
@@ -329,7 +329,7 @@ public:
          * @param value Value of the new bit.
          * @exception Strong exception guarantee – on failure the bitset remains unchanged.
          */
-    void prepend(bool value);
+    void appendMSB(bool value);
 
     /**
          * @brief Prepends a block of bits from a WORD value.
@@ -342,7 +342,7 @@ public:
          * @throw std::out_of_range if size == 0 or size > numberOfDigits.
          * @exception Strong guarantee – no change on failure.
          */
-    void prepend(WORD value, size_t size);
+    void appendMSB(WORD value, size_t size);
 
     /**
          * @brief Prepends another bitset to the front.
@@ -354,7 +354,7 @@ public:
          * @note Handles self-prepend by making a temporary copy.
          * @exception Strong guarantee – no change on failure.
          */
-    void prepend(const Bitset& other);
+    void appendMSB(const Bitset& other);
 
     /**
          * @brief Appends bits from a string representation to the end of the bitset.
@@ -373,7 +373,7 @@ public:
          * @see setFromString
          * @see toString
          */
-    void push_back(std::string_view str);
+    void appendLSB(std::string_view str);
 
     /**
          * @brief Appends a block of `size` low-order bits from `word` to the end of
@@ -390,15 +390,26 @@ public:
          * @throw std::out_of_range if size > numberOfDigits.
          * @exception Strong guarantee – on failure the bitset remains unchanged.
          *
-         * @note Implemented via prepend(0, size), then <<= size, then setValue at 0.
+         * @note Implemented via appendMSB(0, size), then <<= size, then setValue at 0.
          */
-    void push_back(WORD word, size_t size);
+    void appendLSB(WORD word, size_t size);
 
     /**
          * @brief Appends another bitset to the end of this one.
          * @param bitset Bitset to append.
          */
-    void push_back(const Bitset& other);
+    void appendLSB(const Bitset& other);
+
+    /**
+    * @brief Removes the least significant bit (the rightmost character of toString()).
+    *
+    * All remaining bits are shifted toward lower indices (to the right in the
+    * string representation).
+    *
+    * @pre m_bitSize > 0 (asserted in debug build).
+    * @note Cost: O(size() / numberOfDigits) — shifts all words.
+    */
+    void removeLSB();
 
     /**
          * @brief Removes the first bit (the leading character of toString()).
@@ -407,7 +418,7 @@ public:
          *
          * @pre m_bitSize > 0 (asserted in debug build).
          */
-    void removeFirst();
+    void removeMSB();
 
     // ================================================================
     //  String conversion
@@ -671,9 +682,9 @@ public:
 // ---- append ---------------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::append(bool value)
+void Bitset<WORD>::appendLSB(bool value)
 {
-    prepend(false);
+    appendMSB(false);
     *this <<= 1;
     set(0, value);
 }
@@ -1080,9 +1091,9 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
 // ---- pop_front ------------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::pop_front()
+void Bitset<WORD>::popMSB()
 {
-    removeFirst();
+    removeMSB();
 }
 
 // ---- popcount -------------------------------------------------------
@@ -1099,10 +1110,10 @@ int Bitset<WORD>::popcount() const noexcept
     return sum;
 }
 
-// ---- prepend(bool) --------------------------------------------------
+// ---- appendMSB(bool) --------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::prepend(bool value)
+void Bitset<WORD>::appendMSB(bool value)
 {
     ++m_bitSize;
     if(wordsSize() < wordsNeeded())
@@ -1120,10 +1131,10 @@ void Bitset<WORD>::prepend(bool value)
     set(m_bitSize - 1, value);
 }
 
-// ---- prepend(WORD, size_t) ------------------------------------------
+// ---- appendMSB(WORD, size_t) ------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::prepend(WORD value, size_t size)
+void Bitset<WORD>::appendMSB(WORD value, size_t size)
 {
     if(0 == size)
     {
@@ -1137,21 +1148,21 @@ void Bitset<WORD>::prepend(WORD value, size_t size)
 
     size_t start{ m_bitSize };
 
-    overflowCheck(m_bitSize, size, "prepend(WORD, size_t)");
+    overflowCheck(m_bitSize, size, "appendMSB(WORD, size_t)");
     resize(m_bitSize + size);
 
     setValue(value, start, size);
 }
 
-// ---- prepend(const Bitset&) -----------------------------------------
+// ---- appendMSB(const Bitset&) -----------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::prepend(const Bitset& other)
+void Bitset<WORD>::appendMSB(const Bitset& other)
 {
     if(this == &other)
     {
         Bitset temp{ other };
-        prepend(temp);
+        appendMSB(temp);
         return;
     }
 
@@ -1168,7 +1179,7 @@ void Bitset<WORD>::prepend(const Bitset& other)
     size_t srcBits{ other.size() };
 
     // Вычисляем новый размер и выделяем память
-    overflowCheck(m_bitSize, other.size(), "prepend(const Bitset&)");
+    overflowCheck(m_bitSize, other.size(), "appendMSB(const Bitset&)");
     resize(m_bitSize + other.size());
 
     while(srcPos < srcBits)
@@ -1204,10 +1215,10 @@ void Bitset<WORD>::prependFromString(std::string_view str)
     setFromString(str, m_bitSize);
 }
 
-// ---- push_back(std::string_view) ------------------------------------
+// ---- appendLSB(std::string_view) ------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::push_back(std::string_view str)
+void Bitset<WORD>::appendLSB(std::string_view str)
 {
     if (str.empty())
     {
@@ -1215,38 +1226,38 @@ void Bitset<WORD>::push_back(std::string_view str)
     }
     validateBinaryString(str);
 
-    overflowCheck(m_bitSize, str.size(), "push_back(std::string_view)");
+    overflowCheck(m_bitSize, str.size(), "appendLSB(std::string_view)");
     resize(m_bitSize + str.size());
     *this <<= str.size();
     setFromStringUnchecked(str, 0);
 }
 
-// ---- push_back(WORD, size_t) ----------------------------------------
+// ---- appendLSB(WORD, size_t) ----------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::push_back(WORD word, size_t size)
+void Bitset<WORD>::appendLSB(WORD word, size_t size)
 {
     if(0 == size)
     {
         return;
     }
 
-    prepend(static_cast<WORD>(0), size);
+    appendMSB(static_cast<WORD>(0), size);
 
     *this <<= static_cast<int>(size);
 
     setValue(word, 0, size);
 }
 
-// ---- push_back(const Bitset&) ---------------------------------------
+// ---- appendLSB(const Bitset&) ---------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::push_back(const Bitset& other)
+void Bitset<WORD>::appendLSB(const Bitset& other)
 {
     if(this == &other)
     {
         Bitset temp{ other };
-        push_back(temp);
+        appendLSB(temp);
         return;
     }
     if(other.size() == 0)
@@ -1254,7 +1265,7 @@ void Bitset<WORD>::push_back(const Bitset& other)
         return;
     }
 
-    overflowCheck(m_bitSize, other.size(), "push_back(const Bitset&)");
+    overflowCheck(m_bitSize, other.size(), "appendLSB(const Bitset&)");
     resize(m_bitSize + other.size());
     *this <<= other.size();
 
@@ -1264,10 +1275,26 @@ void Bitset<WORD>::push_back(const Bitset& other)
     }
 }
 
+// ---- removeLast ----------------------------------------------------
+     template<typename WORD>
+         requires std::unsigned_integral<WORD>
+     void Bitset<WORD>::removeLSB()
+{
+    assert(m_bitSize > 0);
+    if(m_bitSize == 1)
+    {
+        m_words.clear();
+        m_bitSize = 0;
+        return;
+    }
+
+    *this >>= 1;
+}
+
 // ---- removeFirst ----------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::removeFirst()
+void Bitset<WORD>::removeMSB()
 {
     assert(m_bitSize > 0);
     if(lastWordBits() == 1)
