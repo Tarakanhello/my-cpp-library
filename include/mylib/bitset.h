@@ -188,6 +188,45 @@ public:
     Bitset(const CONTAINER& container);
 
     // ================================================================
+    //  Rule of Five (explicitly defaulted)
+    // ================================================================
+
+    /**
+     * @brief Copy constructor.
+     * @param other Bitset to copy.
+     */
+    Bitset(const Bitset& other) = default;
+
+    /**
+     * @brief Move constructor.
+     * @param other Bitset to move from. Left in a valid but unspecified state.
+     * @note Marked noexcept: the underlying Vector move is noexcept, so
+     *       `std::vector<Bitset>` will use move during reallocation.
+     */
+    Bitset(Bitset&& other) noexcept = default;
+
+    /**
+     * @brief Copy assignment.
+     * @param other Bitset to copy.
+     * @return *this.
+     * @exception Strong guarantee inherited from Vector.
+     */
+    Bitset& operator=(const Bitset& other) = default;
+
+    /**
+     * @brief Move assignment.
+     * @param other Bitset to move from.
+     * @return *this.
+     * @note Marked noexcept.
+     */
+    Bitset& operator=(Bitset&& other) noexcept = default;
+
+    /**
+     * @brief Destructor.
+     */
+    ~Bitset() = default;
+
+    // ================================================================
     //  Size and capacity
     // ================================================================
 
