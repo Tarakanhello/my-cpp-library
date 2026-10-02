@@ -229,25 +229,36 @@ public:
     const WORD* getData() const noexcept;
 
     /**
-         * @brief Extracts a field of bits starting at position i, length n.
-         * @param i Starting bit index.
-         * @param n Number of bits to extract (must be <= numberOfDigits).
-         * @return The extracted value in the low-order bits of the result.
-         * @throw std::out_of_range if n > numberOfDigits or i+n > size().
-         */
+     * @brief Extracts a field of bits starting at position i, length n.
+     * @param i Starting bit index (0-based, LSB side).
+     * @param n Number of bits to extract (must be <= numberOfDigits).
+     * @return The extracted value packed into the low-order bits of the
+     *         result: bit `i` of the bitset becomes bit 0 of the return
+     *         value, bit `i + 1` becomes bit 1, ..., bit `i + n - 1`
+     *         becomes bit `n - 1`. Higher bits of the result are zero.
+     * @throw std::out_of_range if n > numberOfDigits or i + n > size().
+     * @note Field order inside the field is LSB-first: the field's
+     *       least significant bit corresponds to the smallest bitset
+     *       index. The MSB-first rule used by operator<=> applies only
+     *       to whole-bitset comparison, not to field extraction.
+     */
     WORD getValue(size_t i, size_t n) const;
 
     /**
-         * @brief Mutable access to a bit via proxy reference.
-         * @param i Bit index (0-based).
-         * @return BitReference allowing assignment and conversion to bool.
-         * @throw std::out_of_range if i >= size().
-         */
+     * @brief Mutable access to a bit via proxy reference.
+     * @param i Bit index (0-based). Bit 0 is the least significant bit
+     *          bit of word 0; bit `numberOfDigits` is the least significant
+     *          bit of word 1, and so on.
+     * @return BitReference allowing assignment and conversion to bool.
+     * @throw std::out_of_range if i >= size().
+     */
     BitReference operator[](size_t i);
 
     /**
          * @brief Const access to a bit.
-         * @param i Bit index.
+         * @param i Bit index (0-based). Bit 0 is the least significant bit
+         *          bit of word 0; bit `numberOfDigits` is the least significant
+         *          bit of word 1, and so on.
          * @return true if the bit is set, false otherwise.
          * @throw std::out_of_range if i >= size().
          */
@@ -276,7 +287,10 @@ public:
 
     /**
          * @brief Sets a specific bit to a given value.
-         * @param i Bit index.
+         * @param i Bit index (0-based). Bit 0 is the least significant bit
+         *          of word 0; bit `numberOfDigits - 1` is the most significant
+         *          bit of word 0; bit `numberOfDigits` is the least significant
+         *          bit of word 1, and so on
          * @param value Value to set (true=1, false=0). Default true.
          * @throw std::out_of_range if i >= size().
          */
@@ -291,7 +305,7 @@ public:
     /**
          * @brief Writes a value into a field of bits at position i, length n.
          * @param value The value to write (only low-order n bits are used).
-         * @param i Starting bit index.
+         * @param i Starting bit index (0-based, LSB side).
          * @param n Number of bits to overwrite (must be <= numberOfDigits).
          * @throw std::out_of_range if n > numberOfDigits or i+n > size().
          */
@@ -511,16 +525,29 @@ public:
     // ================================================================
 
     /**
-         * @brief Three-way comparison (lexicographic order).
-         * @return std::strong_ordering::less/equal/greater.
-         * @note Compares by size first, then by words.
-         */
+     * @brief Three-way comparison.
+     * @return std::strong_ordering::less/equal/greater.
+     * @note Ordering rules:
+     *       1. Bitsets of different sizes are compared by size:
+     *          the smaller size is considered less.
+     *       2. Bitsets of equal size are compared lexicographically
+     *          from the most significant bit (highest index) down to
+     *          bit 0, i.e. words are compared from the highest word
+     *          index (wordsSize() - 1) down to word 0.
+     *       This matches numeric comparison of the underlying bit value
+     *       for equal-size bitsets.
+     */
     auto operator<=>(const Bitset& other) const noexcept;
 
     /**
-         * @brief Equality comparison.
-         * @return true if both bitsets have the same size and identical bits.
-         */
+     * @brief Equality comparison.
+     * @return true if both bitsets have the same size and identical bits
+     *         in positions [0, size()).
+     * @note Garbage (unused) bits in the last word are always zeroed by
+     *       the class invariants and therefore never affect equality.
+     *       Sizes must match: a shorter bitset is never equal to a longer
+     *       one, even if the shorter one is a prefix of the longer one.
+     */
     bool operator==(const Bitset& other) const noexcept;
 
     // ================================================================
