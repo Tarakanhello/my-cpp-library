@@ -683,3 +683,212 @@ TEST_CASE("Bitset size modification (prepend, prepend, removeLast)", "[bitset][m
         REQUIRE(data[0] == 0);
     }
 }
+
+TEST_CASE("Bitset comparison operators", "[bitset][comparison]")
+{
+    // ------------------------------------------------------------------------
+    // 1. operator== and operator!=
+    // ------------------------------------------------------------------------
+    SECTION("Equality and inequality")
+    {
+        // Одинаковые размеры и биты
+        Bitset a{ "1010" };
+        Bitset b{ "1010" };
+        REQUIRE(a == b);
+        REQUIRE_FALSE(a != b);
+
+        // Одинаковые размеры, разные биты
+        Bitset c{ "1011" };
+        REQUIRE_FALSE(a == c);
+        REQUIRE(a != c);
+
+        // Разные размеры, но биты совпадают до меньшего размера
+        Bitset d{ "10" };
+        REQUIRE_FALSE(a == d);
+        REQUIRE(a != d);
+
+        // Пустые
+        Bitset e1, e2;
+        REQUIRE(e1 == e2);
+        REQUIRE_FALSE(e1 != e2);
+
+        // Пустой и непустой
+        REQUIRE_FALSE(e1 == a);
+        REQUIRE(e1 != a);
+
+        // Самосравнение
+        REQUIRE(a == a);
+        REQUIRE_FALSE(a != a);
+
+        // Все нули vs все единицы (одинаковый размер)
+        Bitset zeros(10);
+        Bitset ones(10);
+        ones.setAll(true);
+        REQUIRE_FALSE(zeros == ones);
+        REQUIRE(zeros != ones);
+
+        // Более сложный случай: разные слова, но одинаковый размер
+        Bitset big1(std::vector<Word>{0x1234567890ABCDEFull, 0xFEDCBA9876543210ull});
+        Bitset big2(std::vector<Word>{0x1234567890ABCDEFull, 0xFEDCBA9876543210ull});
+        REQUIRE(big1 == big2);
+
+        Bitset big3(std::vector<Word>{0x1234567890ABCDEFull, 0xFEDCBA9876543211ull});
+        REQUIRE(big1 != big3);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Three-way comparison (operator<=>) and generated relational operators
+    // ------------------------------------------------------------------------
+    SECTION("Three-way comparison and relational operators")
+    {
+        // 2.1 Сравнение по размеру: меньший размер всегда меньше
+        Bitset small{ "111" };   // size 3
+        Bitset large{ "0000" };  // size 4
+        REQUIRE(small < large);
+        REQUIRE(small <= large);
+        REQUIRE(large > small);
+        REQUIRE(large >= small);
+        REQUIRE_FALSE(small > large);
+        REQUIRE_FALSE(small >= large);
+        REQUIRE_FALSE(large < small);
+        REQUIRE_FALSE(large <= small);
+
+        // 2.2 Одинаковый размер, лексикографическое сравнение по словам (от младшего слова к старшему)
+        // Сравнение происходит сначала по первому слову (младшие биты), затем по второму и т.д.
+        // Пример: size 2, a = 01 (bit0=1, bit1=0) => значение 1
+        //          b = 10 (bit0=0, bit1=1) => значение 2
+        Bitset a{ "01" }; // bit0=1, bit1=0
+        Bitset b{ "10" }; // bit0=0, bit1=1
+        REQUIRE(a < b);
+        REQUIRE(a <= b);
+        REQUIRE(b > a);
+        REQUIRE(b >= a);
+
+        // Пример: a = 11 (3), b = 10 (2)
+        Bitset c{ "11" };
+        Bitset d{ "10" };
+        REQUIRE(c > d);
+        REQUIRE(c >= d);
+        REQUIRE(d < c);
+        REQUIRE(d <= c);
+
+        // Равенство
+        REQUIRE(a == a);
+        REQUIRE(a <= a);
+        REQUIRE(a >= a);
+        REQUIRE_FALSE(a < a);
+        REQUIRE_FALSE(a > a);
+
+        // 2.3 Сравнение на границе слов
+        // Создадим два битсета размера WORD_BITS + 1
+        Bitset big1(WORD_BITS + 1);
+        Bitset big2(WORD_BITS + 1);
+        // Установим бит в первом слове (младшее слово) у big1, а у big2 - во втором слове
+        big1.set(0, true);               // первое слово = 1
+        big2.set(WORD_BITS, true);       // второе слово = 1
+        // Сравниваем: сначала первое слово: big1=1, big2=0 => big1 > big2
+        REQUIRE(big1 < big2);
+        REQUIRE(big1 <= big2);
+        REQUIRE(big2 > big1);
+        REQUIRE(big2 >= big1);
+
+        // Теперь сделаем big2 с тем же первым словом, но большим вторым
+        Bitset big3(WORD_BITS + 1);
+        big3.set(0, true);               // первое слово = 1
+        big3.set(WORD_BITS, true);       // второе слово = 1
+        // Сравнение big1 (0,1) и big3 (1,1): первое слово 0 < 1 => big1 < big3
+        REQUIRE(big1 < big3);
+        REQUIRE(big3 > big1);
+
+        // 2.4 Пустые битсеты
+        Bitset empty1, empty2;
+        REQUIRE(empty1 == empty2);
+        REQUIRE(empty1 <= empty2);
+        REQUIRE(empty1 >= empty2);
+        REQUIRE_FALSE(empty1 < empty2);
+        REQUIRE_FALSE(empty1 > empty2);
+
+        // Пустой и непустой
+        REQUIRE(empty1 < a);   // a имеет размер 2 > 0
+        REQUIRE(a > empty1);
+        REQUIRE(empty1 <= a);
+        REQUIRE(a >= empty1);
+
+        // 2.5 Большие битсеты, сравнение по словам
+        // Создадим три битсета размера 2 * WORD_BITS
+        Bitset x(2 * WORD_BITS);
+        Bitset y(2 * WORD_BITS);
+        Bitset z(2 * WORD_BITS);
+
+        // x: первое слово = 5, второе = 10
+        x.setValue(5, 0, WORD_BITS);
+        x.setValue(10, WORD_BITS, WORD_BITS);
+
+        // y: первое слово = 5, второе = 20
+        y.setValue(5, 0, WORD_BITS);
+        y.setValue(20, WORD_BITS, WORD_BITS);
+
+        // z: первое слово = 6, второе = 0
+        z.setValue(6, 0, WORD_BITS);
+        z.setValue(0, WORD_BITS, WORD_BITS);
+
+        // Сравнение: x и y: первые слова равны (5), вторые: 10 < 20 => x < y
+        REQUIRE(x < y);
+        REQUIRE(x <= y);
+        REQUIRE(y > x);
+        REQUIRE(y >= x);
+
+        // Сравнение x и z:  старшие слова 10 > 0 ⇒ x > z (несмотря на младшие)
+        REQUIRE(x > z);
+        REQUIRE(z < x);
+
+        // Сравнение y и z: старшие слова 20 > 0 ⇒ y > z
+        REQUIRE(y > z);
+        REQUIRE(z < y);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Дополнительные проверки для оператора <=>
+    // ------------------------------------------------------------------------
+    SECTION("Direct use of spaceship operator")
+    {
+        Bitset a{ "101" };
+        Bitset b{ "110" };
+        Bitset c{ "1010" };
+
+        // Прямое использование <=>
+        REQUIRE((a <=> b) < 0);
+        REQUIRE((a <=> b) <= 0);
+        REQUIRE_FALSE((a <=> b) > 0);
+        REQUIRE_FALSE((a <=> b) >= 0);
+        REQUIRE((a <=> a) == 0);
+        REQUIRE((a <=> c) < 0);   // размер 3 < 4
+        REQUIRE((c <=> a) > 0);
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Сравнение с мусорными битами (убедиться, что они не влияют)
+    // ------------------------------------------------------------------------
+    SECTION("Garbage bits do not affect comparison")
+    {
+        // Создаём битсет с размером, не кратным слову
+        Bitset a(WORD_BITS + 5);
+        Bitset b(WORD_BITS + 5);
+
+        // Устанавливаем одинаковые значимые биты
+        a.set(0, true);
+        a.set(WORD_BITS + 3, true);
+        b.set(0, true);
+        b.set(WORD_BITS + 3, true);
+
+        REQUIRE(a == b);
+
+
+        b.set(WORD_BITS + 4, true);
+
+        REQUIRE(a != b);
+        REQUIRE(a < b);
+
+        REQUIRE(b > a);
+    }
+}
