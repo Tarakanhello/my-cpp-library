@@ -1010,7 +1010,7 @@ template<typename WORD>
     requires std::unsigned_integral<WORD>
 bool Bitset<WORD>::operator==(const Bitset& other) const noexcept
 {
-    return m_words == other.m_words;
+    return m_bitSize == other.m_bitSize && m_words == other.m_words;
 }
 
 // ---- operator|= -----------------------------------------------------
