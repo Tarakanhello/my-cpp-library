@@ -2,10 +2,15 @@
 #define BITSET_H
 
 #include <algorithm>
+#include <cassert>
+#include <compare>
+#include <concepts>
 #include <cstdint>
 #include <format>
 #include <limits>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 
 #include "mylib/bit_operations.h"
 #include "mylib/math.h"
@@ -38,6 +43,8 @@ class Bitset final
 {
 private:
     using Container = Vector<WORD>;
+
+    enum class Op{ Add, Mul };
 
 public:
     class BitReference;
@@ -81,7 +88,6 @@ private:
          *
          * @param newSize New number of bits.
          *
-         * @throw std::length_error if `newSize` exceeds the maximum representable size.
          * @throw std::bad_alloc    if memory allocation fails (only when growing).
          *
          * @note On failure the bitset remains unchanged (strong guarantee).
@@ -99,11 +105,22 @@ private:
          */
     size_t wordsNeeded() const noexcept;
 
-    static void overflowCheck(size_t current, size_t checkedSize, std::string_view source = "")
+    template<Op op>
+    static void overflowCheck(size_t a, size_t b, std::string_view source = "")
     {
-        if (current > std::numeric_limits<size_t>::max() - checkedSize)
+        if constexpr(op == Op::Add)
         {
-            throw std::length_error(std::format("Bitset::{}: size overflow", source));
+            if (a > std::numeric_limits<size_t>::max() - b)
+            {
+                throw std::length_error(std::format("Bitset::{}: size overflow", source));
+            }
+        }
+        else if constexpr(op == Op::Mul)
+        {
+            if(b != 0 && a > std::numeric_limits<size_t>::max() / b)
+            {
+                throw std::length_error(std::format("Bitset::{}: size overflow", source));
+            }
         }
     }
 
@@ -369,8 +386,8 @@ public:
     void appendLSB(bool value);
 
     /**
-         * @brief Removes the first bit (same as removeFirst).
-         */
+     * @brief Removes the most significant bit. Alias for removeMSB().
+     */
     void popMSB();
 
     /**
@@ -657,7 +674,7 @@ public:
          * @brief Counts the number of set bits in the bitset.
          * @return Total popcount.
          */
-    int popcount() const noexcept;
+    size_t popcount() const noexcept;
 
     // ================================================================
     //  Nested types
@@ -705,8 +722,9 @@ public:
         BitReference& operator=(bool value);
 
         /**
-             * @brief Assigns from another BitReference.
-             */
+         * @brief Assigns the referenced bit value from another BitReference.
+         * @note This does NOT rebind the reference; it copies the bit value.
+         */
         BitReference& operator=(const BitReference& other);
 
         /**
@@ -769,7 +787,10 @@ template<typename CONTAINER>
                  && std::unsigned_integral<typename CONTAINER::value_type>
                  && std::same_as<typename CONTAINER::value_type, WORD>
 Bitset<WORD>::Bitset(const CONTAINER& container)
-    : m_bitSize{ numberOfDigits * container.size() }
+    : m_bitSize{ (overflowCheck<Op::Mul>(container.size(), // throws on overflow
+                                         numberOfDigits,
+                                         "Bitset(const CONTAINER&)"),
+                 container.size() * numberOfDigits) }   // computed only if safe
     , m_words(container.size())
 {
     std::ranges::copy(container, m_words.begin());
@@ -884,7 +905,7 @@ template<typename WORD>
 WORD Bitset<WORD>::getValue(size_t i, size_t n) const
 {
     if(n > std::numeric_limits<WORD>::digits ||
-        i + n > m_bitSize)
+        i > m_bitSize || n > m_bitSize - i)
     {
         throw std::out_of_range("mylib::Bitset::getValue: invalid range");
     }
@@ -1095,8 +1116,8 @@ Bitset<WORD>& Bitset<WORD>::operator<<=(size_t shift) noexcept
         for(size_t i{ wordsSize() }; i-- > wordShift; )
         {
             m_words[i] = m_words[i - wordShift];
-            m_words[i - wordShift] = 0;
         }
+        std::fill(m_words.begin(), m_words.begin() + wordShift, 0);
     }
     if(bitShift > 0) // сдвиг по битам
     {
@@ -1134,8 +1155,9 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
         for(size_t i{}; i + wordShift < wordsSize(); ++i)
         {
             m_words[i] = m_words[i + wordShift];
-            m_words[i + wordShift] = 0;
         }
+
+        std::fill(m_words.end() - wordShift, m_words.end(), 0);
     }
     if(bitShift > 0)
     {
@@ -1165,12 +1187,12 @@ void Bitset<WORD>::popMSB()
 // ---- popcount -------------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-int Bitset<WORD>::popcount() const noexcept
+size_t Bitset<WORD>::popcount() const noexcept
 {
-    int sum{};
+    size_t sum{};
     for(size_t i{}; i < wordsSize(); ++i)
     {
-        sum += bit::popcount<WORD>(m_words[i]);
+        sum += static_cast<size_t>(bit::popcount<WORD>(m_words[i]));
     }
 
     return sum;
@@ -1181,6 +1203,7 @@ template<typename WORD>
     requires std::unsigned_integral<WORD>
 void Bitset<WORD>::appendMSB(bool value)
 {
+    overflowCheck<Op::Add>(m_bitSize, 1, "appendMSB(bool)");
     ++m_bitSize;
     if(wordsSize() < wordsNeeded())
     {
@@ -1209,12 +1232,12 @@ void Bitset<WORD>::appendMSB(WORD value, size_t size)
 
     if (size > std::numeric_limits<WORD>::digits)
     {
-        throw std::out_of_range("mylib::Bitset::prepend: size exceeds WORD bits");
+        throw std::out_of_range("mylib::Bitset::appendMSB(WORD, size_t): size exceeds WORD bits");
     }
 
     size_t start{ m_bitSize };
 
-    overflowCheck(m_bitSize, size, "appendMSB(WORD, size_t)");
+    overflowCheck<Op::Add>(m_bitSize, size, "appendMSB(WORD, size_t)");
     resize(m_bitSize + size);
 
     setValue(value, start, size);
@@ -1245,7 +1268,7 @@ void Bitset<WORD>::appendMSB(const Bitset& other)
     size_t srcBits{ other.size() };
 
     // Вычисляем новый размер и выделяем память
-    overflowCheck(m_bitSize, other.size(), "appendMSB(const Bitset&)");
+    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendMSB(const Bitset&)");
     resize(m_bitSize + other.size());
 
     while(srcPos < srcBits)
@@ -1292,7 +1315,7 @@ void Bitset<WORD>::appendLSB(std::string_view str)
     }
     validateBinaryString(str);
 
-    overflowCheck(m_bitSize, str.size(), "appendLSB(std::string_view)");
+    overflowCheck<Op::Add>(m_bitSize, str.size(), "appendLSB(std::string_view)");
     resize(m_bitSize + str.size());
     *this <<= str.size();
     setFromStringUnchecked(str, 0);
@@ -1331,7 +1354,7 @@ void Bitset<WORD>::appendLSB(const Bitset& other)
         return;
     }
 
-    overflowCheck(m_bitSize, other.size(), "appendLSB(const Bitset&)");
+    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendLSB(const Bitset&)");
     resize(m_bitSize + other.size());
     *this <<= other.size();
 
@@ -1355,6 +1378,8 @@ void Bitset<WORD>::appendLSB(const Bitset& other)
     }
 
     *this >>= 1;
+    --m_bitSize;
+    zeroOutReminder();
 }
 
 // ---- removeFirst ----------------------------------------------------
@@ -1394,6 +1419,7 @@ template<typename WORD>
 void Bitset<WORD>::reverse() noexcept
 {
     size_t nFill{ garbageBits() };
+
     m_bitSize += nFill;
     (*this) <<= static_cast<int>(nFill);
     // инвертирование слов на хранении
@@ -1453,7 +1479,7 @@ void Bitset<WORD>::setFromString(std::string_view str, size_t position)
     }
     // Проверка на валидные символы
     validateBinaryString(str);
-    overflowCheck(position, str.length(), "setFromString");
+    overflowCheck<Op::Add>(position, str.length(), "setFromString");
 
     if(position + str.length() > m_bitSize)
     {
@@ -1482,7 +1508,7 @@ template<typename WORD>
 void Bitset<WORD>::setValue(WORD value, size_t i, size_t n)
 {
     if(n > std::numeric_limits<WORD>::digits ||
-        i + n > m_bitSize)
+        i > m_bitSize || n > m_bitSize - i)
     {
         throw std::out_of_range("mylib::Bitset::setValue: invalid range");
     }
