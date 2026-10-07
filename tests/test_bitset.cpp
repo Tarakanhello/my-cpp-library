@@ -123,7 +123,7 @@ TEST_CASE("Bitset construction and basic properties", "[bitset][construction]")
         REQUIRE(b.operator bool() == true);
 
         // popcount
-        int expectedPop = 0;
+        size_t expectedPop = 0;
         for(Word w : vec)
         {
             expectedPop += std::popcount(w);    // C++20
@@ -214,7 +214,7 @@ TEST_CASE("Bitset construction and basic properties", "[bitset][construction]")
         // создаём с известными словами
         std::vector<Word> vec{ 0b1010, 0b11110000 };
         Bitset b3(vec);
-        int expected{ std::popcount(0b1010U) + std::popcount(0b11110000U) };
+        size_t expected{ std::popcount(0b1010U) + std::popcount(0b11110000U) };
         REQUIRE(b3.popcount() == expected);
 
         // после установки битов
@@ -734,6 +734,22 @@ TEST_CASE("Bitset comparison operators", "[bitset][comparison]")
 
         Bitset big3(std::vector<Word>{0x1234567890ABCDEFull, 0xFEDCBA9876543211ull});
         REQUIRE(big1 != big3);
+
+        Bitset bs1(1);
+        Bitset bs2(2);
+        bs1.set(0);
+        bs2.set(0);
+
+        REQUIRE_FALSE(bs1 == bs2);
+        REQUIRE_FALSE(bs1 == bs2);
+
+        mylib::Bitset<std::uint8_t> bs{ std::vector<std::uint8_t>{ 0xFF, 0xFF, 0xFF } };
+        REQUIRE(bs.size() == 24);
+        REQUIRE(bs.toString() == "111111111111111111111111");
+
+        bs <<= 16;
+        REQUIRE(bs.toString() == "111111110000000000000000");
+
     }
 
     // ------------------------------------------------------------------------
