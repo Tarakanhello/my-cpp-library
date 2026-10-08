@@ -2342,3 +2342,342 @@ TEST_CASE("Bitset bit modification (clear, flip, reverse, setAll)",
         requireInvariants(a, "reverse vs manual");
     }
 }
+
+// ============================================================================
+//  ЭТАП 5. Строковые преобразования
+// ============================================================================
+TEST_CASE("Bitset string conversions (toString, equals, setFromString, prependFromString)",
+          "[bitset][string]")
+{
+    // ------------------------------------------------------------------------
+    // 1. toString()
+    // ------------------------------------------------------------------------
+    SECTION("toString MSB-first")
+    {
+        REQUIRE(Bitset{}.toString() == "");
+        REQUIRE(Bitset{ std::string("0") }.toString() == "0");
+        REQUIRE(Bitset{ std::string("1") }.toString() == "1");
+        REQUIRE(Bitset{ std::string("1010") }.toString() == "1010");
+        REQUIRE(Bitset{ std::string("00000001") }.toString() == "00000001");
+    }
+
+    SECTION("toString is const and does not modify bitset")
+    {
+        Bitset b{ "101101" };
+        const Bitset& cb{ b };
+        const std::string s1{ cb.toString() };
+        const std::string s2{ cb.toString() };
+        REQUIRE(s1 == s2);
+        REQUIRE(b.equals("101101"));
+        requireInvariants(b, "toString const");
+    }
+
+    SECTION("toString length == size()")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 0u, 1u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         2 * WORD_BITS + 7, 200u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            REQUIRE(b.toString().size() == n);
+            b.setAll(true);
+            REQUIRE(b.toString().size() == n);
+            REQUIRE(b.toString() == std::string(n, '1'));
+            requireInvariants(b, "toString length");
+        }
+    }
+
+    SECTION("toString across word boundary")
+    {
+        Bitset b(WORD_BITS + 4);
+        b.set(0, true);
+        b.set(WORD_BITS, true);
+
+        const std::string s{ b.toString() };
+        REQUIRE(s.size() == WORD_BITS + 4);
+
+        const std::string expectedStr =
+            std::string("0001") + std::string(WORD_BITS - 1, '0') + "1";
+        REQUIRE(s == expectedStr);
+
+        // Дополнительные точечные проверки
+        REQUIRE(s.front() == '0');    // bit size-1
+        REQUIRE(s.back()  == '1');    // bit 0
+        REQUIRE(s[WORD_BITS + 3] == '1'); // bit WORD_BITS
+
+        requireInvariants(b, "toString cross word");
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. equals()
+    // ------------------------------------------------------------------------
+    SECTION("equals returns true for identical string")
+    {
+        for (auto s : { "", "0", "1", "1010", "11110000", "00000001" })
+        {
+            INFO("s = " << s);
+            Bitset b{ std::string(s) };
+            REQUIRE(b.equals(s));
+            REQUIRE(b.equals(std::string_view(s)));
+        }
+    }
+
+    SECTION("equals returns false on size mismatch")
+    {
+        Bitset b{ "1010" };
+        REQUIRE_FALSE(b.equals("101"));
+        REQUIRE_FALSE(b.equals("10101"));
+        REQUIRE_FALSE(b.equals(""));
+    }
+
+    SECTION("equals returns false on bit mismatch")
+    {
+        Bitset b{ "1010" };
+        REQUIRE_FALSE(b.equals("1011"));
+        REQUIRE_FALSE(b.equals("0010"));
+        REQUIRE_FALSE(b.equals("1111"));
+    }
+
+    SECTION("equals does not throw on invalid chars, returns false")
+    {
+        Bitset b{ "1010" };
+        REQUIRE_FALSE(b.equals("10a0"));
+        REQUIRE_FALSE(b.equals("1020"));
+        REQUIRE_FALSE(b.equals("abcd"));
+        REQUIRE_FALSE(b.equals("    "));
+        REQUIRE_FALSE(b.equals("10 0"));
+    }
+
+    SECTION("equals on empty")
+    {
+        Bitset e;
+        REQUIRE(e.equals(""));
+        REQUIRE_FALSE(e.equals("0"));
+        REQUIRE_FALSE(e.equals("1"));
+    }
+
+    SECTION("equals is noexcept")
+    {
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().equals(std::declval<std::string_view>())));
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. setFromString(str)
+    // ------------------------------------------------------------------------
+    SECTION("setFromString at position 0 on empty bitset")
+    {
+        Bitset b;
+        b.setFromString("1010");
+        REQUIRE(b.size() == 4);
+        REQUIRE(b.equals("1010"));
+        requireInvariants(b, "setFromString(0) on empty");
+    }
+
+    SECTION("setFromString overwrites existing bits in range, keeps neighbors")
+    {
+        Bitset b{ "11111111" };
+        b.setFromString("00", 2);      // биты 2,3 := 0,0
+        // MSB-first: строка "00", позиция 2 (LSB), значит bit3=0, bit2=0
+        REQUIRE(b[2] == false);
+        REQUIRE(b[3] == false);
+        REQUIRE(b[0] == true);
+        REQUIRE(b[1] == true);
+        REQUIRE(b[4] == true);
+        REQUIRE(b[7] == true);
+        requireInvariants(b, "setFromString overwrite");
+    }
+
+    SECTION("setFromString MSB-first mapping")
+    {
+        Bitset b{ 8 };
+        // строка "10" -> bit(position+1)=1, bit(position)=0
+        b.setFromString("10", 3);
+        REQUIRE(b[3] == false);   // младший символ '0'
+        REQUIRE(b[4] == true);    // старший символ '1'
+        REQUIRE(b.popcount() == 1);
+        requireInvariants(b, "setFromString MSB-first");
+    }
+
+    SECTION("setFromString extends bitset when needed")
+    {
+        Bitset b{ 3 };                 // size == 3
+        b.setFromString("1111", 0);    // нужно 4 бита
+        REQUIRE(b.size() == 4);
+        REQUIRE(b.equals("1111"));
+        requireInvariants(b, "setFromString extends");
+
+        Bitset c{ 3 };
+        c.setFromString("10", 5);      // нужно 7 бит
+        REQUIRE(c.size() == 7);
+        REQUIRE(c[5] == false);
+        REQUIRE(c[6] == true);
+        REQUIRE(c.popcount() == 1);
+        requireInvariants(c, "setFromString extends at offset");
+    }
+
+    SECTION("setFromString on empty string is a no-op")
+    {
+        Bitset b{ "1011" };
+        const std::string before{ b.toString() };
+        REQUIRE_NOTHROW(b.setFromString(""));
+        REQUIRE(b.toString() == before);
+        requireInvariants(b, "setFromString empty str");
+    }
+
+    SECTION("setFromString default position is 0")
+    {
+        Bitset b{ 4 };
+        b.setFromString("1010");       // position == 0 по умолчанию
+        REQUIRE(b.equals("1010"));
+    }
+
+    SECTION("setFromString throws invalid_argument on invalid chars")
+    {
+        Bitset b{ 8 };
+        REQUIRE_THROWS_AS(b.setFromString("10a0"), std::invalid_argument);
+        REQUIRE_THROWS_AS(b.setFromString("2"), std::invalid_argument);
+        REQUIRE_THROWS_AS(b.setFromString(" "), std::invalid_argument);
+        // Биты не изменились (strong guarantee)
+        requireInvariants(b, "setFromString invalid");
+    }
+
+    SECTION("setFromString strong guarantee on invalid input")
+    {
+        Bitset b{ "101101" };
+        const Bitset copy{ b };
+        REQUIRE_THROWS_AS(b.setFromString("10x"), std::invalid_argument);
+        REQUIRE(b == copy);
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. prependFromString(str)
+    // ------------------------------------------------------------------------
+    SECTION("prependFromString prepends to string representation")
+    {
+        Bitset b{ "101" };
+        b.prependFromString("11");
+        // toString == "11" + "101" == "11101"
+        REQUIRE(b.size() == 5);
+        REQUIRE(b.equals("11101"));
+        requireInvariants(b, "prependFromString");
+    }
+
+    SECTION("prependFromString on empty")
+    {
+        Bitset b;
+        b.prependFromString("1001");
+        REQUIRE(b.size() == 4);
+        REQUIRE(b.equals("1001"));
+        requireInvariants(b, "prependFromString empty");
+    }
+
+    SECTION("prependFromString with empty string is a no-op")
+    {
+        Bitset b{ "1011" };
+        const std::string before{ b.toString() };
+        REQUIRE_NOTHROW(b.prependFromString(""));
+        REQUIRE(b.toString() == before);
+        requireInvariants(b, "prependFromString empty str");
+    }
+
+    SECTION("prependFromString throws on invalid chars")
+    {
+        Bitset b{ "101" };
+        const Bitset copy{ b };
+        REQUIRE_THROWS_AS(b.prependFromString("1x1"), std::invalid_argument);
+        REQUIRE(b == copy);
+        requireInvariants(b, "prependFromString invalid");
+    }
+
+    SECTION("prependFromString equivalence with setFromString(str, size())")
+    {
+        for (auto s : { "1", "10", "111", "1010", "0001" })
+        {
+            INFO("s = " << s);
+            Bitset a{ "110" };
+            Bitset b{ "110" };
+
+            a.prependFromString(s);
+            b.setFromString(s, b.size());
+
+            REQUIRE(a == b);
+            REQUIRE(a.toString() == std::string(s) + "110");
+            requireInvariants(a, "prepend vs setFromString equivalence");
+        }
+    }
+
+    SECTION("prependFromString with long string crossing word boundaries")
+    {
+        const size_t m{ WORD_BITS * 2 + 5 };
+        std::string s(m, '1');
+        for (size_t i = 0; i < m; i += 3) s[i] = '0';
+
+        Bitset b{ "101" };
+        b.prependFromString(s);
+
+        REQUIRE(b.size() == m + 3);
+        REQUIRE(b.toString() == s + "101");
+        requireInvariants(b, "prependFromString long");
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Round-trip и согласованность
+    // ------------------------------------------------------------------------
+    SECTION("Round-trip toString -> setFromString")
+    {
+        for (auto s : { "1", "10", "111", "1010", "101101",
+                       "1111000011110000", "00000001" })
+        {
+            INFO("s = " << s);
+            Bitset src{ std::string(s) };
+            Bitset dst{ src.size() };
+            dst.setFromString(src.toString());
+            REQUIRE(dst == src);
+            requireInvariants(dst, "round-trip");
+        }
+    }
+
+    SECTION("setFromString and operator[] agree on bit values")
+    {
+        Bitset b{ 8 };
+        b.setFromString("10110010", 0);
+        REQUIRE(b[0] == false);
+        REQUIRE(b[1] == true);
+        REQUIRE(b[2] == false);
+        REQUIRE(b[3] == false);
+        REQUIRE(b[4] == true);
+        REQUIRE(b[5] == true);
+        REQUIRE(b[6] == false);
+        REQUIRE(b[7] == true);
+        requireInvariants(b, "setFromString vs operator[]");
+    }
+
+    SECTION("setFromString with all zeros")
+    {
+        Bitset b{ 8 };
+        b.setAll(true);
+        b.setFromString("00000000");
+        REQUIRE(b.isZero());
+        REQUIRE(b.popcount() == 0);
+        requireInvariants(b, "setFromString all zeros");
+    }
+
+    SECTION("setFromString with all ones")
+    {
+        Bitset b{ 8 };
+        b.setFromString("11111111");
+        REQUIRE(b.popcount() == 8);
+        REQUIRE(b.toString() == "11111111");
+        requireInvariants(b, "setFromString all ones");
+    }
+
+    SECTION("setFromString does not touch garbage bits beyond size")
+    {
+        Bitset b{ 5 };                // 5 бит, 59 бит мусора
+        b.setFromString("11111", 0);
+        REQUIRE(b.popcount() == 5);
+        const Word lastWord{ b.getData()[0] };
+        REQUIRE(lastWord == 0b11111);
+        requireInvariants(b, "setFromString garbage");
+    }
+}
