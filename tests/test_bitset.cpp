@@ -1374,3 +1374,262 @@ TEST_CASE("Bitset Rule of Five", "[bitset][rule_of_five]")
         STATIC_REQUIRE(std::is_nothrow_destructible_v<Bitset>);
     }
 }
+
+// ============================================================================
+//  ЭТАП 2. Размеры, capacity и инварианты
+// ============================================================================
+TEST_CASE("Bitset sizes, capacity and invariants", "[bitset][sizes]")
+{
+    // ------------------------------------------------------------------------
+    // 1. Формула wordsSize = ceil(size / WORD_BITS) на всём диапазоне
+    // ------------------------------------------------------------------------
+    SECTION("wordsSize formula across sizes")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 0u, 1u, 2u, WORD_BITS - 1, WORD_BITS,
+                         WORD_BITS + 1, WORD_BITS + 2,
+                         2 * WORD_BITS - 1, 2 * WORD_BITS, 2 * WORD_BITS + 1,
+                         3 * WORD_BITS, 3 * WORD_BITS + 5, 100u, 1000u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            const size_t expectedWords{ (n + WORD_BITS - 1) / WORD_BITS };
+            REQUIRE(b.size() == n);
+            REQUIRE(b.wordsSize() == expectedWords);
+            requireInvariants(b, "wordsSize formula");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. lastWordBits + garbageBits == WORD_BITS всегда (кроме пустого)
+    // ------------------------------------------------------------------------
+    SECTION("lastWordBits + garbageBits == WORD_BITS")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         WORD_BITS + 7, 2 * WORD_BITS, 2 * WORD_BITS + 3 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            REQUIRE(b.lastWordBits() + b.garbageBits() == WORD_BITS);
+
+            const size_t expectedLast{ (n % WORD_BITS == 0) ? WORD_BITS : (n % WORD_BITS) };
+            REQUIRE(b.lastWordBits() == expectedLast);
+            REQUIRE(b.garbageBits() == WORD_BITS - expectedLast);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. lastWordBits для кратных WORD_BITS == WORD_BITS, garbage == 0
+    // ------------------------------------------------------------------------
+    SECTION("Multiples of WORD_BITS have zero garbage")
+    {
+        for (size_t mult : { 1u, 2u, 3u, 5u, 10u })
+        {
+            const size_t n{ mult * WORD_BITS };
+            INFO("n = " << n);
+            Bitset b{ n };
+            REQUIRE(b.lastWordBits() == WORD_BITS);
+            REQUIRE(b.garbageBits() == 0);
+            requireInvariants(b, "multiple of WORD_BITS");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Пустой bitset: специальные значения
+    // ------------------------------------------------------------------------
+    SECTION("Empty bitset special values")
+    {
+        Bitset b;
+        REQUIRE(b.size() == 0);
+        REQUIRE(b.wordsSize() == 0);
+        REQUIRE(b.getData() == nullptr);
+        REQUIRE(b.garbageBits() == 0);
+        REQUIRE(b.popcount() == 0);
+        REQUIRE(b.isZero());
+        REQUIRE(b.toString().empty());
+        requireInvariants(b, "empty special values");
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. get() и getData() возвращают согласованные данные
+    // ------------------------------------------------------------------------
+    SECTION("get() and getData() are consistent")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS, WORD_BITS + 1, 3 * WORD_BITS + 7 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.setAll(true);
+
+            const auto& c{ b.get() };
+            REQUIRE(c.size() == b.wordsSize());
+            REQUIRE(c.data() == b.getData());
+
+            // Данные через get() и getData() идентичны
+            for (size_t i = 0; i < c.size(); ++i)
+            {
+                REQUIRE(c[i] == b.getData()[i]);
+            }
+            requireInvariants(b, "get/getData consistency");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Изменение битов не меняет size/wordsSize/lastWordBits/garbageBits
+    // ------------------------------------------------------------------------
+    SECTION("Setting bits does not change size metadata")
+    {
+        Bitset b{ 100 };
+        const size_t n0{ b.size() };
+        const size_t w0{ b.wordsSize() };
+        const size_t lw0{ b.lastWordBits() };
+        const size_t gb0{ b.garbageBits() };
+
+        b.set(0, true);
+        b.set(99, true);
+        b.setAll(true);
+        b.flip();
+        b.reverse();
+
+        REQUIRE(b.size() == n0);
+        REQUIRE(b.wordsSize() == w0);
+        REQUIRE(b.lastWordBits() == lw0);
+        REQUIRE(b.garbageBits() == gb0);
+        requireInvariants(b, "metadata invariant under bit ops");
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. clear() не меняет размер, только обнуляет биты
+    // ------------------------------------------------------------------------
+    SECTION("clear() preserves size metadata")
+    {
+        Bitset b{ WORD_BITS + 5 };
+        b.setAll(true);
+        const size_t n0{ b.size() };
+        const size_t w0{ b.wordsSize() };
+        const size_t lw0{ b.lastWordBits() };
+        const size_t gb0{ b.garbageBits() };
+
+        b.clear();
+
+        REQUIRE(b.size() == n0);
+        REQUIRE(b.wordsSize() == w0);
+        REQUIRE(b.lastWordBits() == lw0);
+        REQUIRE(b.garbageBits() == gb0);
+        REQUIRE(b.isZero());
+        REQUIRE(b.popcount() == 0);
+        requireInvariants(b, "clear preserves metadata");
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Мусорные биты последнего слова всегда нулевые после setAll
+    // ------------------------------------------------------------------------
+    SECTION("Garbage bits stay zero after setAll")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS + 3, 2 * WORD_BITS + 7 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.setAll(true);
+
+            const size_t w{ b.wordsSize() };
+            const size_t lastBits{ b.lastWordBits() };
+            const Word lastWord{ b.getData()[w - 1] };
+
+            // Верхние (garbageBits) биты последнего слова должны быть 0
+            if (lastBits < WORD_BITS)
+            {
+                const Word mask{ static_cast<Word>((Word{ 1 } << lastBits) - Word{ 1 }) };
+                REQUIRE((lastWord & static_cast<Word>(~mask)) == 0);
+            }
+            // popcount == size, т.к. все валидные биты == 1
+            REQUIRE(b.popcount() == n);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Заполнение нулями через setAll(false) не портит валидные биты
+    // ------------------------------------------------------------------------
+    SECTION("setAll(false) zeros all valid bits")
+    {
+        Bitset b{ 130 };
+        b.setAll(true);
+        REQUIRE(b.popcount() == 130);
+        b.setAll(false);
+        REQUIRE(b.isZero());
+        REQUIRE(b.popcount() == 0);
+        requireInvariants(b, "setAll(false)");
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. Порядок бит MSB-first сохраняется при разных размерах
+    //     (последний символ toString == младший индекс)
+    // ------------------------------------------------------------------------
+    SECTION("Bit-index mapping is stable across word boundaries")
+    {
+        {
+            const size_t n{ 1 };
+            Bitset b{ n };
+            b.set(0, true);
+            REQUIRE(b[0] == true);
+            REQUIRE(b.popcount() == 1);
+            REQUIRE(b.toString() == "1");
+            requireInvariants(b, "bit index mapping n=1");
+        }
+
+        for (size_t n : std::initializer_list<size_t>{ 2u, WORD_BITS, WORD_BITS + 1, 2 * WORD_BITS + 3 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.set(0, true);
+            b.set(n - 1, true);
+            REQUIRE(b[0] == true);
+            REQUIRE(b[n - 1] == true);
+            REQUIRE(b.popcount() == 2);
+            REQUIRE(b.toString().front() == '1');
+            REQUIRE(b.toString().back() == '1');
+            requireInvariants(b, "bit index mapping");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. Согласованность popcount / isZero / operator bool / getData
+    // ------------------------------------------------------------------------
+    SECTION("popcount, isZero, operator bool consistency")
+    {
+        Bitset b{ 200 };
+        REQUIRE(b.popcount() == 0);
+        REQUIRE(b.isZero());
+        REQUIRE_FALSE(static_cast<bool>(b));
+
+        b.set(0, true);
+        REQUIRE(b.popcount() == 1);
+        REQUIRE_FALSE(b.isZero());
+        REQUIRE(static_cast<bool>(b));
+
+        b.set(199, true);
+        REQUIRE(b.popcount() == 2);
+
+        b.clear();
+        REQUIRE(b.popcount() == 0);
+        REQUIRE(b.isZero());
+        requireInvariants(b, "query consistency");
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. size() и wordsSize() — noexcept
+    // ------------------------------------------------------------------------
+    SECTION("Query methods are noexcept")
+    {
+        Bitset b{ 37 };
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().size()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().wordsSize()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().lastWordBits()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().garbageBits()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().get()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().getData()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().popcount()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().isZero()));
+        STATIC_REQUIRE(noexcept(static_cast<bool>(std::declval<const Bitset&>())));
+        REQUIRE(b.size() == 37);
+    }
+}
