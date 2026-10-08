@@ -2681,3 +2681,500 @@ TEST_CASE("Bitset string conversions (toString, equals, setFromString, prependFr
         requireInvariants(b, "setFromString garbage");
     }
 }
+
+// ============================================================================
+//  ЭТАП 6. Вставка и удаление
+// ============================================================================
+TEST_CASE("Bitset insertion and removal", "[bitset][insert-remove]")
+{
+    // ------------------------------------------------------------------------
+    // 1. appendMSB(bool)
+    // ------------------------------------------------------------------------
+    SECTION("appendMSB(bool) on empty and single calls")
+    {
+        Bitset b;
+        b.appendMSB(true);
+        REQUIRE(b.size() == 1);
+        REQUIRE(b.equals("1"));
+        requireInvariants(b, "appendMSB(true) empty");
+
+        b.appendMSB(false);
+        REQUIRE(b.size() == 2);
+        REQUIRE(b.equals("01"));   // новый бит MSB
+        requireInvariants(b, "appendMSB(false)");
+
+        b.appendMSB(true);
+        REQUIRE(b.size() == 3);
+        REQUIRE(b.equals("101"));
+        requireInvariants(b, "appendMSB(true) again");
+    }
+
+    SECTION("appendMSB(bool) crosses word boundary")
+    {
+        Bitset b;
+        for (size_t i = 0; i < WORD_BITS; ++i)
+            b.appendMSB(true);
+        REQUIRE(b.size() == WORD_BITS);
+        REQUIRE(b.wordsSize() == 1);
+        REQUIRE(b.equals(std::string(WORD_BITS, '1')));
+        requireInvariants(b, "appendMSB fill word");
+
+        b.appendMSB(true);
+        REQUIRE(b.size() == WORD_BITS + 1);
+        REQUIRE(b.wordsSize() == 2);
+        REQUIRE(b.lastWordBits() == 1);
+        REQUIRE(b.equals(std::string(WORD_BITS + 1, '1')));
+        requireInvariants(b, "appendMSB cross word");
+    }
+
+    SECTION("appendMSB(bool) preserves existing string")
+    {
+        Bitset b{ "101" };
+        b.appendMSB(true);
+        REQUIRE(b.equals("1101"));   // '1' + "101"
+        b.appendMSB(false);
+        REQUIRE(b.equals("01101"));  // '0' + "1101"
+        requireInvariants(b, "appendMSB preserves");
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. appendMSB(WORD, size_t)
+    // ------------------------------------------------------------------------
+    SECTION("appendMSB(WORD, size) basic")
+    {
+        Bitset b;
+        b.appendMSB(0b1, 1);
+        REQUIRE(b.equals("1"));
+
+        // Добавляем 3 младших бита 0b100 = "100"
+        b.appendMSB(0b100, 3);
+        // Результат: "100" + "1" = "1001"
+        REQUIRE(b.size() == 4);
+        REQUIRE(b.equals("1001"));
+        requireInvariants(b, "appendMSB(WORD,3)");
+
+        b.appendMSB(0xFFFF, WORD_BITS);
+        REQUIRE(b.size() == WORD_BITS + 4);
+        REQUIRE(b.wordsSize() == 2);
+        requireInvariants(b, "appendMSB full word");
+    }
+
+    SECTION("appendMSB(WORD, size) masks high bits")
+    {
+        Bitset b;
+        b.appendMSB(0b1111, 2);   // младшие 2 бита = 0b11 = "11"
+        REQUIRE(b.size() == 2);
+        REQUIRE(b.equals("11"));
+        REQUIRE(b.popcount() == 2);
+
+        Bitset c;
+        c.appendMSB(0b1000, 3);   // младшие 3 бита 0b000 = "000"
+        REQUIRE(c.size() == 3);
+        REQUIRE(c.equals("000"));
+        requireInvariants(c, "appendMSB mask");
+    }
+
+    SECTION("appendMSB(WORD, size) throws on size > WORD_BITS")
+    {
+        Bitset b{ "101" };
+        const Bitset copy{ b };
+        REQUIRE_THROWS_AS(b.appendMSB(Word{ 0 }, WORD_BITS + 1), std::out_of_range);
+        REQUIRE(b == copy);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. appendMSB(const Bitset&)
+    // ------------------------------------------------------------------------
+    SECTION("appendMSB(Bitset) basic")
+    {
+        Bitset a{ "101" };
+        Bitset b{ "11" };
+        a.appendMSB(b);
+        REQUIRE(a.equals("11101"));   // "11" + "101"
+        REQUIRE(b.equals("11"));      // b не изменился
+        requireInvariants(a, "appendMSB(Bitset)");
+    }
+
+    SECTION("appendMSB(empty Bitset) is a no-op")
+    {
+        Bitset a{ "1011" };
+        Bitset e;
+        a.appendMSB(e);
+        REQUIRE(a.equals("1011"));
+        requireInvariants(a, "appendMSB(empty)");
+    }
+
+    SECTION("appendMSB self-append works via copy")
+    {
+        Bitset d{ "10" };
+        d.appendMSB(d);
+        REQUIRE(d.size() == 4);
+        REQUIRE(d.equals("1010"));
+        requireInvariants(d, "self appendMSB");
+    }
+
+    SECTION("appendMSB onto empty equals copy")
+    {
+        Bitset src{ "101101" };
+        Bitset dst;
+        dst.appendMSB(src);
+        REQUIRE(dst == src);
+        requireInvariants(dst, "appendMSB onto empty");
+    }
+
+    SECTION("appendMSB(WORD) large with multi-word other")
+    {
+        Bitset src(2 * WORD_BITS + 3);
+        src.setAll(true);
+        Bitset dst{ "101" };
+        dst.appendMSB(src);
+        REQUIRE(dst.size() == src.size() + 3);
+        REQUIRE(dst.toString() == src.toString() + "101");
+        requireInvariants(dst, "appendMSB big");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. appendLSB(bool)
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB(bool) appends at LSB side")
+    {
+        Bitset b;
+        b.appendLSB(true);
+        REQUIRE(b.equals("1"));
+
+        b.appendLSB(false);
+        REQUIRE(b.equals("10"));
+
+        b.appendLSB(true);
+        REQUIRE(b.equals("101"));
+        requireInvariants(b, "appendLSB(bool)");
+    }
+
+    SECTION("appendLSB(bool) preserves existing string")
+    {
+        Bitset b{ "101" };
+        b.appendLSB(true);
+        REQUIRE(b.equals("1011"));   // "101" + '1'
+        b.appendLSB(false);
+        REQUIRE(b.equals("10110"));  // "1011" + '0'
+        requireInvariants(b, "appendLSB preserves");
+    }
+
+    SECTION("appendLSB(bool) crosses word boundary")
+    {
+        Bitset b;
+        for (size_t i = 0; i < WORD_BITS; ++i)
+            b.appendLSB(true);
+        REQUIRE(b.size() == WORD_BITS);
+        REQUIRE(b.wordsSize() == 1);
+
+        b.appendLSB(true);
+        REQUIRE(b.size() == WORD_BITS + 1);
+        REQUIRE(b.wordsSize() == 2);
+        REQUIRE(b.lastWordBits() == 1);
+        REQUIRE(b.equals(std::string(WORD_BITS + 1, '1')));
+        requireInvariants(b, "appendLSB cross word");
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. appendLSB(std::string_view)
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB(string) appends to right")
+    {
+        Bitset b{ "101" };
+        b.appendLSB("11");
+
+        REQUIRE(b.equals("10111"));   // "101" + "11"
+        requireInvariants(b, "appendLSB(string)");
+
+        Bitset e;
+        e.appendLSB("1001");
+        REQUIRE(e.equals("1001"));
+        requireInvariants(e, "appendLSB(string) empty");
+    }
+
+    SECTION("appendLSB(string) invalid chars throws invalid_argument")
+    {
+        Bitset b{ "101" };
+        const Bitset copy{ b };
+        REQUIRE_THROWS_AS(b.appendLSB("10x1"), std::invalid_argument);
+        REQUIRE(b == copy);
+    }
+
+    SECTION("appendLSB(string) empty is a no-op")
+    {
+        Bitset b{ "101" };
+        const std::string before{ b.toString() };
+        REQUIRE_NOTHROW(b.appendLSB(std::string_view{ }));
+        REQUIRE(b.toString() == before);
+        requireInvariants(b, "appendLSB(empty string)");
+    }
+
+    SECTION("appendLSB(string) across word boundary")
+    {
+        Bitset b(WORD_BITS);
+        b.setAll(true);
+        b.appendLSB("0000");
+        REQUIRE(b.size() == WORD_BITS + 4);
+        REQUIRE(b.toString() == std::string(WORD_BITS, '1') + "0000");
+        requireInvariants(b, "appendLSB(string) cross word");
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. appendLSB(WORD, size_t)
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB(WORD, size) appends low bits")
+    {
+        Bitset b;
+        b.appendLSB(Word{ 0b101 }, 3);
+        REQUIRE(b.equals("101"));
+
+        Bitset c{ "11" };
+        c.appendLSB(Word{ 0b01 }, 2);
+        // toString == "11" + "01" == "1101"
+        REQUIRE(c.equals("1101"));
+        requireInvariants(c, "appendLSB(WORD,2)");
+    }
+
+    SECTION("appendLSB(WORD, 0) is a no-op")
+    {
+        Bitset b{ "101" };
+        const std::string before{ b.toString() };
+        REQUIRE_NOTHROW(b.appendLSB(Word{ 0xFF }, 0));
+        REQUIRE(b.toString() == before);
+        requireInvariants(b, "appendLSB(_,0)");
+    }
+
+    SECTION("appendLSB(WORD, size) throws on size > WORD_BITS")
+    {
+        Bitset b{ "101" };
+        const Bitset copy{ b };
+        REQUIRE_THROWS_AS(b.appendLSB(Word{ 0 }, WORD_BITS + 1), std::out_of_range);
+        REQUIRE(b == copy);
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. appendLSB(const Bitset&)
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB(Bitset) basic")
+    {
+        Bitset a{ "100" };
+        Bitset b{ "01" };
+        a.appendLSB(b);
+        REQUIRE(a.equals("10001"));
+        REQUIRE(b.equals("01"));
+        requireInvariants(a, "appendLSB(Bitset)");
+    }
+
+    SECTION("appendLSB(empty Bitset) is a no-op")
+    {
+        Bitset a{ "1011" };
+        Bitset e;
+        a.appendLSB(e);
+        REQUIRE(a.equals("1011"));
+        requireInvariants(a, "appendLSB(empty)");
+    }
+
+    SECTION("appendLSB self-append works via copy")
+    {
+        Bitset d{ "10" };
+        d.appendLSB(d);
+        REQUIRE(d.size() == 4);
+        REQUIRE(d.equals("1010"));
+        requireInvariants(d, "self appendLSB");
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. removeMSB / popMSB
+    // ------------------------------------------------------------------------
+    SECTION("removeMSB removes leading character")
+    {
+        Bitset b{ "1101" };
+        b.removeMSB();
+        REQUIRE(b.equals("101"));
+        b.removeMSB();
+        REQUIRE(b.equals("01"));
+        b.removeMSB();
+        REQUIRE(b.equals("1"));
+        b.removeMSB();
+        REQUIRE(b.size() == 0);
+        REQUIRE(b.wordsSize() == 0);
+        REQUIRE(b.isZero());
+        requireInvariants(b, "removeMSB to empty");
+    }
+
+    SECTION("popMSB is equivalent to removeMSB")
+    {
+        Bitset a{ "1011" };
+        Bitset b{ a };
+        a.removeMSB();
+        b.popMSB();
+        REQUIRE(a == b);
+    }
+
+    SECTION("removeMSB crosses word boundary")
+    {
+        Bitset b(WORD_BITS + 3);
+        b.setAll(true);
+        REQUIRE(b.equals(std::string(WORD_BITS + 3, '1')));
+
+        b.removeMSB();
+        REQUIRE(b.size() == WORD_BITS + 2);
+        REQUIRE(b.equals(std::string(WORD_BITS + 2, '1')));
+        requireInvariants(b, "removeMSB cross word");
+
+        // Удалим до границы слова
+        for (size_t i = 0; i < 2; ++i)
+            b.removeMSB();
+        REQUIRE(b.size() == WORD_BITS);
+        REQUIRE(b.wordsSize() == 1);
+        REQUIRE(b.equals(std::string(WORD_BITS, '1')));
+        requireInvariants(b, "removeMSB shrink to one word");
+    }
+
+    SECTION("removeMSB keeps specific bits")
+    {
+        Bitset b(WORD_BITS + 2);
+        b.set(WORD_BITS, true);   // будет удалено, если снять MSB
+        b.set(0, true);           // должно остаться
+
+        b.removeMSB();            // удаляем bit WORD_BITS+1 (был 0)
+        REQUIRE(b.size() == WORD_BITS + 1);
+        REQUIRE(b[WORD_BITS] == true);
+        REQUIRE(b[0] == true);
+        requireInvariants(b, "removeMSB keep bits");
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. removeLSB
+    // ------------------------------------------------------------------------
+    SECTION("removeLSB removes trailing character")
+    {
+        Bitset b{ "1101" };
+        b.removeLSB();
+        REQUIRE(b.equals("110"));
+        b.removeLSB();
+        REQUIRE(b.equals("11"));
+        b.removeLSB();
+        REQUIRE(b.equals("1"));
+        b.removeLSB();
+        REQUIRE(b.size() == 0);
+        REQUIRE(b.isZero());
+        requireInvariants(b, "removeLSB to empty");
+    }
+
+    SECTION("removeLSB crosses word boundary")
+    {
+        Bitset b(WORD_BITS + 3);
+        b.setAll(true);
+        b.removeLSB();
+        REQUIRE(b.size() == WORD_BITS + 2);
+        REQUIRE(b.equals(std::string(WORD_BITS + 2, '1')));
+        requireInvariants(b, "removeLSB cross word");
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. Согласованность: appendLSB / removeLSB, appendMSB / removeMSB
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB then removeLSB returns to original")
+    {
+        for (auto s : { "1", "10", "101", "101101", "1" })
+        {
+            INFO("s = " << s);
+            Bitset b{ std::string(s) };
+            const Bitset copy{ b };
+
+            b.appendLSB(true);
+            b.removeLSB();
+            REQUIRE(b == copy);
+            requireInvariants(b, "appendLSB/removeLSB round-trip");
+        }
+    }
+
+    SECTION("appendMSB then removeMSB returns to original")
+    {
+        for (auto s : { "1", "10", "101", "101101", "0" })
+        {
+            INFO("s = " << s);
+            Bitset b{ std::string(s) };
+            const Bitset copy{ b };
+
+            b.appendMSB(true);
+            b.removeMSB();
+            REQUIRE(b == copy);
+            requireInvariants(b, "appendMSB/removeMSB round-trip");
+        }
+    }
+
+    SECTION("appendLSB(Bitset) then removeLSB n times returns to original")
+    {
+        Bitset a{ "1011" };
+        Bitset b{ "110" };
+        const Bitset a0{ a };
+
+        a.appendLSB(b);
+        REQUIRE(a.size() == a0.size() + b.size());
+
+        for (size_t i = 0; i < b.size(); ++i)
+            a.removeLSB();
+
+        REQUIRE(a == a0);
+        requireInvariants(a, "appendLSB/removeLSB x N");
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. Интеграция с toString
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB(string) == concat on right")
+    {
+        for (auto s : { "1", "01", "110", "1011" })
+        {
+            Bitset b{ "101" };
+            b.appendLSB(s);
+            REQUIRE(b.toString() == std::string("101") + s);
+        }
+    }
+
+    SECTION("appendMSB(string via Bitset) == concat on left")
+    {
+        for (auto s : { "1", "01", "110", "1011" })
+        {
+            Bitset b{ "101" };
+            Bitset other{ std::string(s) };
+            b.appendMSB(other);
+            REQUIRE(b.toString() == std::string(s) + "101");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. Управление памятью: растущие и убывающие последовательности
+    // ------------------------------------------------------------------------
+    SECTION("grow then shrink keeps invariants")
+    {
+        Bitset b;
+        for (size_t i = 0; i < 200; ++i)
+            b.appendMSB(true);
+        REQUIRE(b.size() == 200);
+        requireInvariants(b, "grow 200");
+
+        for (size_t i = 0; i < 200; ++i)
+            b.removeMSB();
+        REQUIRE(b.size() == 0);
+        REQUIRE(b.wordsSize() == 0);
+        requireInvariants(b, "shrink to 0");
+    }
+
+    SECTION("removeMSB with alternating removal from both ends")
+    {
+        Bitset b{ "101010101010" };
+        while (b.size() > 0)
+        {
+            b.removeMSB();
+            if (b.size() > 0)
+                b.removeLSB();
+        }
+        REQUIRE(b.size() == 0);
+        REQUIRE(b.wordsSize() == 0);
+        requireInvariants(b, "alternating remove");
+    }
+}
