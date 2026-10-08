@@ -3178,3 +3178,420 @@ TEST_CASE("Bitset insertion and removal", "[bitset][insert-remove]")
         requireInvariants(b, "alternating remove");
     }
 }
+
+// ============================================================================
+//  ЭТАП 7. Операторы сравнения
+// ============================================================================
+TEST_CASE("Bitset comparison operators (full)", "[bitset][comparison]")
+{
+    // ------------------------------------------------------------------------
+    // 1. operator== / operator!= — базовые случаи
+    // ------------------------------------------------------------------------
+    SECTION("== and != on same size")
+    {
+        for (auto s : { "", "0", "1", "10", "1010", "11110000",
+                       "00000001", "11111111" })
+        {
+            INFO("s = " << s);
+            Bitset a{ std::string(s) };
+            Bitset b{ std::string(s) };
+            REQUIRE(a == b);
+            REQUIRE_FALSE(a != b);
+            REQUIRE(b == a);
+            REQUIRE_FALSE(b != a);
+        }
+    }
+
+    SECTION("== and != on same size, different bits")
+    {
+        for (auto pair : std::initializer_list<std::pair<const char*, const char*>>{
+                                                                                      { "0", "1" },
+                                                                                      { "10", "11" },
+                                                                                      { "1010", "1011" },
+                                                                                      { "0000", "1000" },
+                                                                                      { "11110000", "11110001" } })
+        {
+            INFO("a = " << pair.first << ", b = " << pair.second);
+            Bitset a{ std::string(pair.first) };
+            Bitset b{ std::string(pair.second) };
+            REQUIRE_FALSE(a == b);
+            REQUIRE(a != b);
+            REQUIRE_FALSE(b == a);
+            REQUIRE(b != a);
+        }
+    }
+
+    SECTION("== on different sizes is always false")
+    {
+        Bitset a{ "1010" };
+        for (auto s : std::initializer_list<std::string>{ "", "0", "1", "10", "101", "10101", "1010" + std::string(1, '0') })
+        {
+            INFO("s = " << s);
+            Bitset b{ s };
+            if (a.size() != b.size())
+            {
+                REQUIRE_FALSE(a == b);
+                REQUIRE(a != b);
+            }
+        }
+    }
+
+    SECTION("empty bitsets are equal")
+    {
+        Bitset a, b;
+        REQUIRE(a == b);
+        REQUIRE_FALSE(a != b);
+    }
+
+    SECTION("empty vs non-empty is not equal")
+    {
+        Bitset e;
+        for (auto s : { "0", "1", "10", "111" })
+        {
+            Bitset b{ std::string(s) };
+            REQUIRE_FALSE(e == b);
+            REQUIRE_FALSE(b == e);
+            REQUIRE(e != b);
+            REQUIRE(b != e);
+        }
+    }
+
+    SECTION("self comparison")
+    {
+        Bitset a{ "101101" };
+        REQUIRE(a == a);
+        REQUIRE_FALSE(a != a);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. == / != на границе слов и при разном мусоре
+    // ------------------------------------------------------------------------
+    SECTION("== across word boundaries")
+    {
+        Bitset a(WORD_BITS + 5);
+        Bitset b(WORD_BITS + 5);
+        a.set(0, true);
+        a.set(WORD_BITS + 3, true);
+        b.set(0, true);
+        b.set(WORD_BITS + 3, true);
+        REQUIRE(a == b);
+
+        b.set(WORD_BITS + 4, true);
+        REQUIRE_FALSE(a == b);
+        REQUIRE(a != b);
+    }
+
+    SECTION("== ignores garbage bits (invariant guarantees zero garbage)")
+    {
+        // После любых операций мусорные биты == 0; равенство зависит только
+        // от валидных битов [0, size)
+        Bitset a(WORD_BITS + 3);
+        Bitset b(WORD_BITS + 3);
+        a.setAll(true);
+        b.setAll(true);
+        REQUIRE(a == b);
+        REQUIRE(a.toString() == b.toString());
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. operator<=> — базовые свойства
+    // ------------------------------------------------------------------------
+    SECTION("<=> returns strong_ordering")
+    {
+        STATIC_REQUIRE(
+            std::is_same_v<decltype(std::declval<const Bitset&>() <=> std::declval<const Bitset&>()),
+                           std::strong_ordering>);
+    }
+
+    SECTION("<=> on equal bitsets")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "1010" };
+        REQUIRE((a <=> b) == std::strong_ordering::equal);
+        REQUIRE_FALSE((a <=> b) < 0);
+        REQUIRE_FALSE((a <=> b) > 0);
+    }
+
+    SECTION("<=> compares sizes first")
+    {
+        Bitset a{ "111" };         // size 3
+        Bitset b{ "0000" };        // size 4
+        REQUIRE((a <=> b) == std::strong_ordering::less);
+        REQUIRE((b <=> a) == std::strong_ordering::greater);
+
+        Bitset e;
+        REQUIRE((e <=> a) == std::strong_ordering::less);
+        REQUIRE((a <=> e) == std::strong_ordering::greater);
+    }
+
+    SECTION("<=> on same size compares MSB-first (numeric order)")
+    {
+        // "01" == value 1 (bit0=1, bit1=0)
+        // "10" == value 2 (bit0=0, bit1=1)
+        Bitset a{ "01" };
+        Bitset b{ "10" };
+        REQUIRE((a <=> b) < 0);
+        REQUIRE((b <=> a) > 0);
+        REQUIRE((a <=> a) == 0);
+
+        // "10" (2) < "11" (3)
+        Bitset c{ "10" };
+        Bitset d{ "11" };
+        REQUIRE(c < d);
+        REQUIRE(d > c);
+    }
+
+    SECTION("<=> multi-word: high word decides")
+    {
+        Bitset x(2 * WORD_BITS);
+        Bitset y(2 * WORD_BITS);
+
+        x.setValue(0, 0, WORD_BITS);            // low  = 0
+        x.setValue(1, WORD_BITS, WORD_BITS);    // high = 1
+
+        y.setValue(~Word{ 0 }, 0, WORD_BITS);   // low  = all ones
+        y.setValue(0, WORD_BITS, WORD_BITS);    // high = 0
+
+        // Старшее слово у x > y, значит x > y, несмотря на low
+        REQUIRE((x <=> y) > 0);
+        REQUIRE((y <=> x) < 0);
+        REQUIRE(x > y);
+        REQUIRE(y < x);
+    }
+
+    SECTION("<=> is consistent with == on equal sizes")
+    {
+        for (auto s : { "1", "10", "1011", "10000001", "11111111" })
+        {
+            Bitset a{ std::string(s) };
+            Bitset b{ std::string(s) };
+            REQUIRE((a <=> b) == std::strong_ordering::equal);
+            REQUIRE(a == b);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Сгенерированные операторы <, <=, >, >=
+    // ------------------------------------------------------------------------
+    SECTION("relational operators on same size")
+    {
+        Bitset a{ "0100" }; // value 4? посмотрим: MSB->LSB = 0,1,0,0 -> bit2=1 -> value 4
+        Bitset b{ "1000" }; // bit3=1 -> value 8
+        Bitset c{ a };
+
+        REQUIRE(a < b);
+        REQUIRE(a <= b);
+        REQUIRE(b > a);
+        REQUIRE(b >= a);
+        REQUIRE_FALSE(a > b);
+        REQUIRE_FALSE(a >= b);
+        REQUIRE_FALSE(b < a);
+        REQUIRE_FALSE(b <= a);
+
+        REQUIRE(a <= c);
+        REQUIRE(a >= c);
+        REQUIRE_FALSE(a < c);
+        REQUIRE_FALSE(a > c);
+    }
+
+    SECTION("relational operators on different sizes")
+    {
+        Bitset s{ "111" };     // size 3
+        Bitset l{ "0000" };    // size 4
+
+        REQUIRE(s < l);
+        REQUIRE(s <= l);
+        REQUIRE(l > s);
+        REQUIRE(l >= s);
+        REQUIRE_FALSE(s > l);
+        REQUIRE_FALSE(s >= l);
+        REQUIRE_FALSE(l < s);
+        REQUIRE_FALSE(l <= s);
+    }
+
+    SECTION("all relational operators agree with <=>")
+    {
+        std::vector<std::string> strings{
+            "", "0", "1", "10", "11", "100", "101",
+            "1000", "1010", "1111", "0000", "00000001"
+        };
+
+        for (const auto& sa : strings)
+        {
+            for (const auto& sb : strings)
+            {
+                Bitset a{ sa };
+                Bitset b{ sb };
+                const auto cmp{ a <=> b };
+
+                INFO("a = " << sa << ", b = " << sb);
+                REQUIRE((a == b) == (cmp == 0));
+                REQUIRE((a != b) == (cmp != 0));
+                REQUIRE((a <  b) == (cmp <  0));
+                REQUIRE((a <= b) == (cmp <= 0));
+                REQUIRE((a >  b) == (cmp >  0));
+                REQUIRE((a >= b) == (cmp >= 0));
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Транзитивность и антисимметричность
+    // ------------------------------------------------------------------------
+    SECTION("transitivity of <=")
+    {
+        std::vector<std::string> strings{
+            "", "0", "1", "10", "11", "100", "1000", "10000"
+        };
+        for (const auto& sa : strings)
+            for (const auto& sb : strings)
+                for (const auto& sc : strings)
+                {
+                    Bitset a{ sa }, b{ sb }, c{ sc };
+                    if (a <= b && b <= c)
+                    {
+                        INFO(sa << " <= " << sb << " <= " << sc);
+                        REQUIRE(a <= c);
+                    }
+                }
+    }
+
+    SECTION("antisymmetry: a <= b && b <= a implies a == b")
+    {
+        std::vector<std::string> strings{
+            "", "0", "1", "10", "11", "101", "1010"
+        };
+        for (const auto& sa : strings)
+            for (const auto& sb : strings)
+            {
+                Bitset a{ sa }, b{ sb };
+                if (a <= b && b <= a)
+                {
+                    INFO(sa << " <=> " << sb);
+                    REQUIRE(a == b);
+                }
+                if (a < b)
+                {
+                    REQUIRE_FALSE(b < a);
+                }
+            }
+    }
+
+
+    // ------------------------------------------------------------------------
+    // 6. noexcept
+    // ------------------------------------------------------------------------
+    SECTION("comparison operators are noexcept")
+    {
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() == std::declval<const Bitset&>()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() != std::declval<const Bitset&>()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() <=> std::declval<const Bitset&>()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() < std::declval<const Bitset&>()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() <= std::declval<const Bitset&>()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() > std::declval<const Bitset&>()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() >= std::declval<const Bitset&>()));
+    }
+
+
+    // ------------------------------------------------------------------------
+    // 7. Согласованность с числовым значением (для size <= 64)
+    // ------------------------------------------------------------------------
+    SECTION("ordering matches numeric value for small sizes (exhaustive)")
+    {
+        // Полный перебор разумен только для маленьких n.
+        for (size_t n : { 1u, 2u, 3u, 4u, 5u, 8u })
+        {
+            INFO("n = " << n);
+            const size_t limit{ size_t{ 1 } << n };   // 2^n, n <= 8
+            for (size_t x = 0; x < limit; ++x)
+            {
+                for (size_t y = 0; y < limit; ++y)
+                {
+                    Bitset bx{ n };
+                    Bitset by{ n };
+                    bx.setValue(static_cast<Word>(x), 0, n);
+                    by.setValue(static_cast<Word>(y), 0, n);
+
+                    INFO("n = " << n << ", x = " << x << ", y = " << y);
+                    REQUIRE((bx == by) == (x == y));
+                    REQUIRE((bx != by) == (x != y));
+                    REQUIRE((bx <  by) == (x <  y));
+                    REQUIRE((bx <= by) == (x <= y));
+                    REQUIRE((bx >  by) == (x >  y));
+                    REQUIRE((bx >= by) == (x >= y));
+                }
+            }
+        }
+    }
+
+    SECTION("ordering matches numeric value for medium sizes (sampled)")
+    {
+        // Для больших n — детерминированная выборка значений вокруг
+        // границ и «интересных» точек.
+        for (size_t n : { 16u, 32u, 63u })
+        {
+            INFO("n = " << n);
+            const Word maxBit{ static_cast<Word>(Word{ 1 } << (n - 1)) };
+            std::vector<Word> samples{
+                Word{ 0 },
+                Word{ 1 },
+                Word{ 2 },
+                Word{ 3 },
+                maxBit,
+                maxBit - 1,
+                maxBit + 1,
+                static_cast<Word>(maxBit | Word{ 1 }),
+                static_cast<Word>(maxBit - 2),
+                static_cast<Word>(~Word{ 0 } >> (64 - n)),  // все валидные биты = 1
+            };
+            // Уберём дубликаты и всё, что не влезает в n бит
+            std::sort(samples.begin(), samples.end());
+            samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
+            samples.erase(std::remove_if(samples.begin(), samples.end(),
+                                         [n](Word v)
+                                         {
+                                             if (n == 64) return false;
+                                             return v >= (Word{ 1 } << n);
+                                         }),
+                          samples.end());
+
+            for (Word x : samples)
+            {
+                for (Word y : samples)
+                {
+                    Bitset bx{ n };
+                    Bitset by{ n };
+                    bx.setValue(x, 0, n);
+                    by.setValue(y, 0, n);
+
+                    INFO("n = " << n << ", x = " << x << ", y = " << y);
+                    REQUIRE((bx == by) == (x == y));
+                    REQUIRE((bx <  by) == (x <  y));
+                    REQUIRE((bx <= by) == (x <= y));
+                    REQUIRE((bx >  by) == (x >  y));
+                    REQUIRE((bx >= by) == (x >= y));
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Согласованность == с toString
+    // ------------------------------------------------------------------------
+    SECTION("== agrees with toString equality")
+    {
+        std::vector<std::string> strings{
+            "", "0", "1", "10", "11", "100", "101", "1010",
+            "11110000", "00000001", "10000000"
+        };
+        for (const auto& sa : strings)
+            for (const auto& sb : strings)
+            {
+                Bitset a{ sa };
+                Bitset b{ sb };
+                INFO("a = " << sa << ", b = " << sb);
+                REQUIRE((a == b) == (a.toString() == b.toString()));
+            }
+    }
+}
+
