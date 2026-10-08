@@ -199,8 +199,7 @@ namespace mylib
 
         void clear() noexcept
         {
-            destroyElements(0, m_size);
-            m_size = 0;
+            deallocate();
         }
 
         /**

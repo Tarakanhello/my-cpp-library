@@ -322,8 +322,7 @@ TEST_CASE("Stage 3: clear and shrink_to_fit", "[stack][clear][shrink]")
         st.clear();
         REQUIRE(st.empty());
         REQUIRE(st.size() == 0);
-        REQUIRE(st.capacity() == 16);      // ёмкость не уменьшается
-        // можно снова добавлять
+        REQUIRE(st.capacity() == 0);
         st.push(100);
         REQUIRE(st.size() == 1);
         REQUIRE(st.top() == 100);

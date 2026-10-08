@@ -1227,7 +1227,7 @@ void Bitset<WORD>::appendMSB(WORD value, size_t size)
 {
     if(0 == size)
     {
-        return;
+        throw std::out_of_range("mylib::Bitset::appendMSB(WORD, size_t): size == 0");;
     }
 
     if (size > std::numeric_limits<WORD>::digits)
