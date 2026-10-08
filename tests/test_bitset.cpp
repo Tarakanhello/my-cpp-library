@@ -1952,3 +1952,393 @@ TEST_CASE("Bitset bit access and BitReference (full)", "[bitset][access]")
         }
     }
 }
+
+// ============================================================================
+//  ЭТАП 4. Модификация битов
+// ============================================================================
+TEST_CASE("Bitset bit modification (clear, flip, reverse, setAll)",
+          "[bitset][modifiers][bits]")
+{
+    // ------------------------------------------------------------------------
+    // 1. clear()
+    // ------------------------------------------------------------------------
+    SECTION("clear() zeros all bits, preserves size")
+    {
+        Bitset b{ 100 };
+        b.setAll(true);
+        REQUIRE(b.popcount() == 100);
+
+        const size_t n0{ b.size() };
+        const size_t w0{ b.wordsSize() };
+
+        b.clear();
+
+        REQUIRE(b.size() == n0);
+        REQUIRE(b.wordsSize() == w0);
+        REQUIRE(b.popcount() == 0);
+        REQUIRE(b.isZero());
+        REQUIRE_FALSE(static_cast<bool>(b));
+        REQUIRE(b.toString() == std::string(100, '0'));
+        requireInvariants(b, "clear");
+
+        // повторный вызов — идемпотентно
+        REQUIRE_NOTHROW(b.clear());
+        REQUIRE(b.popcount() == 0);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. flip() — инверсия всех битов
+    // ------------------------------------------------------------------------
+    SECTION("flip() inverts all valid bits")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, 2u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         2 * WORD_BITS + 5, 100u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            REQUIRE(b.popcount() == 0);
+
+            b.flip();
+            REQUIRE(b.popcount() == n);      // все валидные биты == 1
+            requireInvariants(b, "flip once");
+
+            b.flip();
+            REQUIRE(b.popcount() == 0);      // вернулись к нулю
+            requireInvariants(b, "flip twice");
+        }
+    }
+
+    SECTION("flip() leaves garbage bits zero")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS + 3, 2 * WORD_BITS + 7 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.flip();
+
+            const size_t w{ b.wordsSize() };
+            const size_t lastBits{ b.lastWordBits() };
+            const Word lastWord{ b.getData()[w - 1] };
+
+            if (lastBits < WORD_BITS)
+            {
+                const Word mask{ static_cast<Word>((Word{ 1 } << lastBits) - Word{ 1 }) };
+                REQUIRE((lastWord & static_cast<Word>(~mask)) == 0);
+            }
+            requireInvariants(b, "flip garbage");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. reverse()
+    // ------------------------------------------------------------------------
+    SECTION("reverse() reverses bit order (string view)")
+    {
+        // "1101" -> "1011"
+        Bitset b{ "1101" };
+        b.reverse();
+        REQUIRE(b.equals("1011"));
+        REQUIRE(b.size() == 4);
+        requireInvariants(b, "reverse 1101");
+
+        // "1001" -> "1001" (палиндром)
+        Bitset p{ "1001" };
+        p.reverse();
+        REQUIRE(p.equals("1001"));
+
+        // "1" -> "1"
+        Bitset one{ "1" };
+        one.reverse();
+        REQUIRE(one.equals("1"));
+
+        // "0" -> "0"
+        Bitset zero{ "0" };
+        zero.reverse();
+        REQUIRE(zero.equals("0"));
+
+        // пустой — no-op
+        Bitset e;
+        REQUIRE_NOTHROW(e.reverse());
+        REQUIRE(e.size() == 0);
+        requireInvariants(e, "reverse empty");
+
+        // двойной reverse — исходное
+        Bitset orig{ "1011010" };
+        Bitset copy{ orig };
+        copy.reverse();
+        copy.reverse();
+        REQUIRE(copy == orig);
+    }
+
+    SECTION("reverse() across word boundary")
+    {
+        const size_t n{ 2 * WORD_BITS + 5 };
+        Bitset b{ n };
+        b.set(0, true);
+        b.set(n - 1, true);
+        b.set(WORD_BITS, true);
+        b.set(WORD_BITS + 3, true);
+
+        Bitset copy{ b };
+        copy.reverse();
+        // После reverse: биты 0 и n-1 меняются местами, WORD_BITS <-> n-1-WORD_BITS и т.д.
+        REQUIRE(copy[0] == b[n - 1]);
+        REQUIRE(copy[n - 1] == b[0]);
+        REQUIRE(copy[WORD_BITS] == b[n - 1 - WORD_BITS]);
+        REQUIRE(copy[n - 1 - WORD_BITS] == b[WORD_BITS]);
+        REQUIRE(copy.popcount() == b.popcount());
+        requireInvariants(copy, "reverse cross word");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. setAll()
+    // ------------------------------------------------------------------------
+    SECTION("setAll(true) sets every valid bit, garbage stays zero")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         2 * WORD_BITS + 5, 130u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.setAll(true);
+
+            REQUIRE(b.popcount() == n);
+            REQUIRE(b.toString() == std::string(n, '1'));
+            REQUIRE_FALSE(b.isZero());
+            requireInvariants(b, "setAll(true)");
+        }
+    }
+
+    SECTION("setAll(false) zeroes everything")
+    {
+        Bitset b{ 137 };
+        b.setAll(true);
+        REQUIRE(b.popcount() == 137);
+
+        b.setAll(false);
+        REQUIRE(b.popcount() == 0);
+        REQUIRE(b.isZero());
+        REQUIRE(b.toString() == std::string(137, '0'));
+        requireInvariants(b, "setAll(false)");
+    }
+
+    SECTION("setAll() default argument is true")
+    {
+        Bitset b{ 20 };
+        b.setAll();
+        REQUIRE(b.popcount() == 20);
+    }
+
+    SECTION("setAll on empty is safe no-op")
+    {
+        Bitset e;
+        REQUIRE_NOTHROW(e.setAll(true));
+        REQUIRE_NOTHROW(e.setAll(false));
+        REQUIRE(e.size() == 0);
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. getValue()
+    // ------------------------------------------------------------------------
+    SECTION("getValue basic single-word cases")
+    {
+        Bitset b{ "101101" };        // MSB->LSB: 1 0 1 1 0 1
+        // bit0=1, bit1=0, bit2=1, bit3=1, bit4=0, bit5=1
+
+        REQUIRE(b.getValue(0, 1) == 1);      // bit0
+        REQUIRE(b.getValue(1, 1) == 0);      // bit1
+        REQUIRE(b.getValue(2, 1) == 1);
+        REQUIRE(b.getValue(5, 1) == 1);
+
+        // Поле из 3 бит: bit0=1,bit1=0,bit2=1 -> LSB-first = 0b101 = 5
+        REQUIRE(b.getValue(0, 3) == 0b101);
+        // bit2=1,bit3=1,bit4=0 -> 0b011 = 3
+        REQUIRE(b.getValue(2, 3) == 0b011);
+        // bit1=0,bit2=1,bit3=1 -> 0b110 = 6
+        REQUIRE(b.getValue(1, 3) == 0b110);
+
+        // Всё поле
+        REQUIRE(b.getValue(0, 6) == 0b101101);
+    }
+
+    SECTION("getValue at size boundary")
+    {
+        Bitset b{ 8 };
+        b.setAll(true);
+        // i + n == size
+        REQUIRE(b.getValue(0, 8) == 0xFF);
+        REQUIRE(b.getValue(4, 4) == 0xF);
+        REQUIRE(b.getValue(7, 1) == 0x1);
+
+        // i + n > size -> out_of_range
+        REQUIRE_THROWS_AS(b.getValue(4, 5), std::out_of_range);
+        REQUIRE_THROWS_AS(b.getValue(8, 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.getValue(0, WORD_BITS + 1), std::out_of_range);
+    }
+
+    SECTION("getValue across word boundary")
+    {
+        Bitset b{ 2 * WORD_BITS };
+        // Установим известные биты
+        b.set(WORD_BITS - 2, true);
+        b.set(WORD_BITS - 1, true);
+        b.set(WORD_BITS, true);
+        b.set(WORD_BITS + 1, true);
+
+        // Поле из 4 бит начиная с WORD_BITS-2: LSB-first = bit[WB-2, WB-1, WB, WB+1] = 1,1,1,1 -> 0b1111
+        REQUIRE(b.getValue(WORD_BITS - 2, 4) == 0b1111);
+
+        // Поле из 2 бит начиная с WORD_BITS-1 = 1,1 -> 0b11
+        REQUIRE(b.getValue(WORD_BITS - 1, 2) == 0b11);
+
+        // Поле из 2 бит начиная с WORD_BITS = 1,1 -> 0b11
+        REQUIRE(b.getValue(WORD_BITS, 2) == 0b11);
+
+        requireInvariants(b, "getValue cross word");
+    }
+
+    SECTION("getValue n == 0 returns 0 (audit)")
+    {
+        Bitset b{ "1010" };
+        REQUIRE(b.getValue(0, 0) == 0);
+        REQUIRE(b.getValue(b.size(), 0) == 0);
+        REQUIRE_THROWS_AS(b.getValue(0, WORD_BITS + 1), std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. setValue()
+    // ------------------------------------------------------------------------
+    SECTION("setValue basic write and read back")
+    {
+        Bitset b{ 16 };
+        b.setValue(0b1010, 0, 4);        // bits 0..3 = 0b1010
+        REQUIRE(b.getValue(0, 4) == 0b1010);
+        REQUIRE(b[0] == false);
+        REQUIRE(b[1] == true);
+        REQUIRE(b[2] == false);
+        REQUIRE(b[3] == true);
+
+        b.setValue(0b11, 4, 2);          // bits 4..5 = 0b11
+        REQUIRE(b.getValue(4, 2) == 0b11);
+
+        REQUIRE(b.popcount() == 4);
+        requireInvariants(b, "setValue basic");
+    }
+
+    SECTION("setValue masks high bits of value")
+    {
+        Bitset b{ 8 };
+        // value имеет больше бит, чем n -> берутся младшие n бит
+        b.setValue(0xFFFF, 0, 4);
+        REQUIRE(b.getValue(0, 4) == 0xF);
+        REQUIRE(b.popcount() == 4);
+        requireInvariants(b, "setValue masking");
+    }
+
+    SECTION("setValue across word boundary")
+    {
+        Bitset b{ 2 * WORD_BITS };
+        const Word v{ 0b1111 };
+        b.setValue(v, WORD_BITS - 2, 4);
+
+        REQUIRE(b[WORD_BITS - 2] == true);
+        REQUIRE(b[WORD_BITS - 1] == true);
+        REQUIRE(b[WORD_BITS] == true);
+        REQUIRE(b[WORD_BITS + 1] == true);
+        REQUIRE(b.popcount() == 4);
+        REQUIRE(b.getValue(WORD_BITS - 2, 4) == 0b1111);
+        requireInvariants(b, "setValue cross word");
+    }
+
+    SECTION("setValue overwrites previous bits, keeps neighbors intact")
+    {
+        Bitset b{ 16 };
+        b.setAll(true);
+        // Перезапишем поле [4,8) значением 0
+        b.setValue(0, 4, 4);
+
+        REQUIRE(b.getValue(0, 4) == 0xF);       // соседи слева целы
+        REQUIRE(b.getValue(4, 4) == 0x0);       // поле обнулено
+        REQUIRE(b.getValue(8, 8) == 0xFF);      // соседи справа целы
+        REQUIRE(b.popcount() == 12);
+        requireInvariants(b, "setValue overwrite");
+    }
+
+    SECTION("setValue n == 0 is a no-op (audit)")
+    {
+        Bitset b{ "1010" };
+        const std::string before{ b.toString() };
+        REQUIRE_NOTHROW(b.setValue(Word{ 0xFF }, 0, 0));
+        REQUIRE(b.toString() == before);
+        requireInvariants(b, "setValue n=0");
+    }
+
+    SECTION("setValue bounds")
+    {
+        Bitset b{ 8 };
+        REQUIRE_THROWS_AS(b.setValue(0, 0, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setValue(0, 4, 5), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setValue(0, 8, 1), std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. getValue / setValue — round-trip
+    // ------------------------------------------------------------------------
+    SECTION("setValue + getValue round-trip")
+    {
+        Bitset b{ 2 * WORD_BITS };
+        for (size_t n : std::initializer_list<size_t>{ 1u, 2u, 4u, 8u, WORD_BITS })
+        {
+            for (size_t i : std::initializer_list<size_t>{ 0u, 3u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 5 })
+            {
+                if (i + n > b.size()) continue;
+
+                const Word v{ static_cast<Word>((Word{ 1 } << (n - 1)) | Word{ 1 }) };
+                b.setAll(false);
+                b.setValue(v, i, n);
+
+                INFO("i = " << i << ", n = " << n);
+                REQUIRE(b.getValue(i, n) == v);
+                REQUIRE(b.popcount() == static_cast<size_t>(std::popcount(v)));
+                requireInvariants(b, "round-trip");
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Согласованность с operator[] и toString
+    // ------------------------------------------------------------------------
+    SECTION("flip equals manual inversion via operator[]")
+    {
+        Bitset a{ "1010011" };
+        Bitset b{ a };
+
+        a.flip();
+        for (size_t i = 0; i < b.size(); ++i)
+        {
+            b[i] = !b[i];
+        }
+        REQUIRE(a == b);
+        requireInvariants(a, "flip vs manual");
+    }
+
+    SECTION("reverse equals manual swap")
+    {
+        Bitset a{ "10011" };
+        Bitset b{ a };
+
+        REQUIRE(a == b);
+
+        const size_t n{ b.size() };
+
+        for (size_t i = 0; i < n; ++i)
+        {
+            b[i] = a[n - 1 - i];
+        }
+
+        a.reverse();
+
+        REQUIRE(a == b);   // a уже reversed, b собран вручную
+        requireInvariants(a, "reverse vs manual");
+    }
+}
