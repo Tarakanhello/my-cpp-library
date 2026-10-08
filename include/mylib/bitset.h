@@ -220,7 +220,10 @@ public:
      * @note Marked noexcept: the underlying Vector move is noexcept, so
      *       `std::vector<Bitset>` will use move during reallocation.
      */
-    Bitset(Bitset&& other) noexcept = default;
+    Bitset(Bitset&& other) noexcept
+        : m_bitSize{ std::exchange(other.m_bitSize, 0) }
+        , m_words{ std::move(other.m_words) }
+    {}
 
     /**
      * @brief Copy assignment.
@@ -236,7 +239,16 @@ public:
      * @return *this.
      * @note Marked noexcept.
      */
-    Bitset& operator=(Bitset&& other) noexcept = default;
+    Bitset& operator=(Bitset&& other) noexcept
+    {
+        if(this != &other)
+        {
+            m_bitSize = std::exchange(other.m_bitSize, 0);
+            m_words = std::move(other.m_words);
+        }
+
+        return *this;
+    }
 
     /**
      * @brief Destructor.
