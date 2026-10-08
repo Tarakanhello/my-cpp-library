@@ -1633,3 +1633,322 @@ TEST_CASE("Bitset sizes, capacity and invariants", "[bitset][sizes]")
         REQUIRE(b.size() == 37);
     }
 }
+
+// ============================================================================
+//  ЭТАП 3. Доступ к битам и BitReference
+// ============================================================================
+TEST_CASE("Bitset bit access and BitReference (full)", "[bitset][access]")
+{
+    using Ref = Bitset::BitReference;
+
+    // ------------------------------------------------------------------------
+    // 1. operator[] const: возвращает bool, границы
+    // ------------------------------------------------------------------------
+    SECTION("operator[] const returns bool, checks bounds")
+    {
+        Bitset b{ 5 };
+        b.set(2, true);
+        b.set(4, true);
+
+        const Bitset& cb{ b };
+        REQUIRE(cb[0] == false);
+        REQUIRE(cb[1] == false);
+        REQUIRE(cb[2] == true);
+        REQUIRE(cb[3] == false);
+        REQUIRE(cb[4] == true);
+
+        REQUIRE_THROWS_AS(cb[5], std::out_of_range);
+        REQUIRE_THROWS_AS(cb[100], std::out_of_range);
+
+        // Пустой bitset — любое обращение бросает
+        const Bitset e;
+        REQUIRE_THROWS_AS(e[0], std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. operator[] non-const: чтение и запись через BitReference
+    // ------------------------------------------------------------------------
+    SECTION("operator[] non-const allows write and read")
+    {
+        Bitset b{ 10 };
+
+        // Чтение по умолчанию
+        for (size_t i = 0; i < 10; ++i)
+        {
+            REQUIRE(b[i] == false);
+        }
+
+        // Запись
+        b[0] = true;
+        b[3] = true;
+        b[9] = true;
+        REQUIRE(b[0] == true);
+        REQUIRE(b[1] == false);
+        REQUIRE(b[2] == false);
+        REQUIRE(b[3] == true);
+        REQUIRE(b[9] == true);
+        REQUIRE(b.popcount() == 3);
+
+        // Через ref
+        auto ref{ b[0] };
+        ref = false;
+        REQUIRE(b[0] == false);
+        ref = true;
+        REQUIRE(b[0] == true);
+
+        // Границы
+        REQUIRE_THROWS_AS(b[10], std::out_of_range);
+        REQUIRE_THROWS_AS(b[1000], std::out_of_range);
+
+        requireInvariants(b, "operator[] non-const");
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Многозначный bitset: корректный индекс слова и offset
+    // ------------------------------------------------------------------------
+    SECTION("operator[] across word boundary")
+    {
+        Bitset b{ 3 * WORD_BITS };
+
+        for (size_t i : std::initializer_list<size_t>{ 0u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         2 * WORD_BITS - 1, 2 * WORD_BITS, 3 * WORD_BITS - 1 })
+        {
+            INFO("i = " << i);
+            b.set(i, true);
+            REQUIRE(b[i] == true);
+            REQUIRE(b.popcount() == 1);
+
+            b.set(i, false);
+            REQUIRE(b[i] == false);
+            REQUIRE(b.popcount() == 0);
+        }
+        requireInvariants(b, "operator[] cross word");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. set(i, value): значения и границы
+    // ------------------------------------------------------------------------
+    SECTION("set(i, value) sets to given value")
+    {
+        Bitset b{ 8 };
+
+        b.set(1);            // по умолчанию true
+        b.set(5);
+        REQUIRE(b[1] == true);
+        REQUIRE(b[5] == true);
+        REQUIRE(b.popcount() == 2);
+
+        b.set(1, false);
+        REQUIRE(b[1] == false);
+        REQUIRE(b.popcount() == 1);
+
+        b.set(0, true);
+        b.set(7, true);
+        REQUIRE(b[0] == true);
+        REQUIRE(b[7] == true);
+        REQUIRE(b.popcount() == 3);
+
+        // Идемпотентность
+        b.set(0, true);
+        REQUIRE(b.popcount() == 3);
+        b.set(0, false);
+        b.set(0, false);
+        REQUIRE(b.popcount() == 2);
+
+        // Границы
+        REQUIRE_THROWS_AS(b.set(8, true), std::out_of_range);
+        REQUIRE_THROWS_AS(b.set(8, false), std::out_of_range);
+        REQUIRE_THROWS_AS(b.set(100), std::out_of_range);
+
+        requireInvariants(b, "set(i,value)");
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. BitReference: конструктор и границы offset
+    // ------------------------------------------------------------------------
+    SECTION("BitReference ctor validates offset")
+    {
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) };
+
+        // Корректные offset
+        REQUIRE_NOTHROW(Ref(ptr, 0));
+        REQUIRE_NOTHROW(Ref(ptr, WORD_BITS - 1));
+
+        // Некорректные offset
+        REQUIRE_THROWS_AS(Ref(ptr, WORD_BITS), std::out_of_range);
+        REQUIRE_THROWS_AS(Ref(ptr, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(Ref(ptr, 1000), std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. BitReference: operator bool / operator!
+    // ------------------------------------------------------------------------
+    SECTION("BitReference bool conversion and negation")
+    {
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) };
+
+        Ref ref0{ ptr, 0 };
+        Ref ref7{ ptr, 7 };
+
+        REQUIRE(static_cast<bool>(ref0) == false);
+        REQUIRE(!ref0 == true);
+
+        ref0 = true;
+        REQUIRE(static_cast<bool>(ref0) == true);
+        REQUIRE(!ref0 == false);
+
+        ref7 = true;
+        REQUIRE(static_cast<bool>(ref7) == true);
+        REQUIRE(b[7] == true);
+        REQUIRE(b[0] == true);
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. BitReference: присваивание от bool и от другого BitReference
+    // ------------------------------------------------------------------------
+    SECTION("BitReference assignment copies value, does not rebind")
+    {
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) };
+
+        Ref a{ ptr, 3 };
+        Ref c{ ptr, 10 };
+
+        a = true;
+        c = false;
+        REQUIRE(b[3] == true);
+        REQUIRE(b[10] == false);
+
+        // c = a: копирует значение, не перепривязывает
+        c = a;
+        REQUIRE(b[10] == true);
+        REQUIRE(b[3] == true);
+
+        // Изменение a не должно менять c
+        a = false;
+        REQUIRE(b[3] == false);
+        REQUIRE(b[10] == true);   // c всё ещё указывает на бит 10
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. BitReference: сравнения с bool (с обеих сторон)
+    // ------------------------------------------------------------------------
+    SECTION("BitReference equality with bool")
+    {
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) };
+
+        Ref ref{ ptr, 5 };
+
+        REQUIRE(ref == false);
+        REQUIRE(ref != true);
+        REQUIRE(false == ref);
+        REQUIRE(true != ref);
+
+        ref = true;
+        REQUIRE(ref == true);
+        REQUIRE(ref != false);
+        REQUIRE(true == ref);
+        REQUIRE(false != ref);
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. BitReference: сравнение двух BitReference
+    // ------------------------------------------------------------------------
+    SECTION("BitReference equality with another BitReference")
+    {
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) };
+
+        Ref r0{ ptr, 0 };
+        Ref r1{ ptr, 1 };
+        Ref r0b{ ptr, 0 };
+
+        REQUIRE(r0 == r1);          // оба false
+        REQUIRE(r0 == r0b);
+
+        r0 = true;
+        REQUIRE(r0 != r1);
+        REQUIRE(r0 == r0b);
+        REQUIRE(r0 == r0);
+
+        r1 = true;
+        REQUIRE(r0 == r1);
+        REQUIRE(r0 == r0b);
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. BitReference отражает изменения через другие API
+    // ------------------------------------------------------------------------
+    SECTION("BitReference observes external modifications")
+    {
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) };
+
+        Ref ref{ ptr, 20 };
+        ref = true;
+        REQUIRE(b[20] == true);
+
+        // Изменение через set
+        b.set(20, false);
+        REQUIRE(ref == false);
+
+        // Через flip / clear / setAll
+        b.set(20, true);
+        REQUIRE(ref == true);
+        b.flip();
+        REQUIRE(ref == false);
+        b.clear();
+        REQUIRE(ref == false);
+
+        b.setAll(true);
+        REQUIRE(ref == true);
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. BitReference на границах слова
+    // ------------------------------------------------------------------------
+    SECTION("BitReference at word boundaries")
+    {
+        Bitset b{ 2 * WORD_BITS };
+
+        // Первый бит первого слова и последний бит первого слова
+        b[0] = true;
+        b[WORD_BITS - 1] = true;
+        // Первый бит второго слова и последний
+        b[WORD_BITS] = true;
+        b[2 * WORD_BITS - 1] = true;
+
+        REQUIRE(b.popcount() == 4);
+        REQUIRE(b.getData()[0] == (Word{ 1 } | (Word{ 1 } << (WORD_BITS - 1))));
+        REQUIRE(b.getData()[1] == (Word{ 1 } | (Word{ 1 } << (WORD_BITS - 1))));
+        requireInvariants(b, "BitReference boundaries");
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. Мусорные биты никогда не выставляются через operator[]
+    // ------------------------------------------------------------------------
+    SECTION("operator[] never touches garbage bits")
+    {
+        // size кратен WORD_BITS не всегда — берём с запасом
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1, 100u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.setAll(true);
+
+            const size_t w{ b.wordsSize() };
+            const size_t lastBits{ b.lastWordBits() };
+            const Word lastWord{ b.getData()[w - 1] };
+
+            // Мусорные биты последнего слова == 0
+            if (lastBits < WORD_BITS)
+            {
+                const Word mask{ static_cast<Word>((Word{ 1 } << lastBits) - Word{ 1 }) };
+                REQUIRE((lastWord & static_cast<Word>(~mask)) == 0);
+            }
+        }
+    }
+}
