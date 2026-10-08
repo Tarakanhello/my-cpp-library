@@ -395,7 +395,7 @@ public:
          * @note Implemented as: prepend a dummy 0-bit, shift left by 1, then set bit 0.
          *       The dummy bit absorbs the shift, so no real bit is lost.
          */
-    void appendLSB(bool value);
+     void appendLSB(std::same_as<bool> auto value);
 
     /**
      * @brief Removes the most significant bit. Alias for removeMSB().
@@ -411,7 +411,7 @@ public:
          * @param value Value of the new bit.
          * @exception Strong exception guarantee – on failure the bitset remains unchanged.
          */
-    void appendMSB(bool value);
+    void appendMSB(std::same_as<bool> auto value);
 
     /**
          * @brief Prepends a block of bits from a WORD value.
@@ -778,7 +778,7 @@ public:
 // ---- append ---------------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendLSB(bool value)
+void Bitset<WORD>::appendLSB(std::same_as<bool> auto value)
 {
     appendMSB(false);
     *this <<= 1;
@@ -1210,12 +1210,12 @@ size_t Bitset<WORD>::popcount() const noexcept
     return sum;
 }
 
-// ---- appendMSB(bool) --------------------------------------------------
+// ---- appendMSB(std::same_as<bool> auto) --------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendMSB(bool value)
+void Bitset<WORD>::appendMSB(std::same_as<bool> auto value)
 {
-    overflowCheck<Op::Add>(m_bitSize, 1, "appendMSB(bool)");
+    overflowCheck<Op::Add>(m_bitSize, 1, "appendMSB(std::same_as<bool> auto)");
     ++m_bitSize;
     if(wordsSize() < wordsNeeded())
     {
