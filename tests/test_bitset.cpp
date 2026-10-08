@@ -5,6 +5,10 @@
 #include <bit>
 #include <cstdint>
 #include <numeric>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "mylib/mylib.h"
@@ -1035,5 +1039,338 @@ TEST_CASE("Bitset contract audit", "[bitset][audit]")
         one.reverse();
         REQUIRE(one.equals("1"));
         requireInvariants(one, "reverse single");
+    }
+}
+
+// ============================================================================
+//  ЭТАП 1. Конструктор из строки
+// ============================================================================
+TEST_CASE("Bitset string constructor", "[bitset][construction][string]")
+{
+    // ------------------------------------------------------------------------
+    // 1. Пустая строка -> пустой bitset
+    // ------------------------------------------------------------------------
+    SECTION("Empty string produces empty bitset")
+    {
+        Bitset b{ std::string{} };
+        REQUIRE(b.size() == 0);
+        REQUIRE(b.wordsSize() == 0);
+        REQUIRE(b.getData() == nullptr);
+        REQUIRE(b.isZero());
+        REQUIRE(b.toString() == "");
+        requireInvariants(b, "string ctor empty");
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Один символ
+    // ------------------------------------------------------------------------
+    SECTION("Single character")
+    {
+        Bitset b0{ std::string("0") };
+        REQUIRE(b0.size() == 1);
+        REQUIRE(b0[0] == false);
+        REQUIRE(b0.toString() == "0");
+        requireInvariants(b0, "string ctor '0'");
+
+        Bitset b1{ std::string("1") };
+        REQUIRE(b1.size() == 1);
+        REQUIRE(b1[0] == true);
+        REQUIRE(b1.popcount() == 1);
+        REQUIRE(b1.toString() == "1");
+        requireInvariants(b1, "string ctor '1'");
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Различные валидные строки, MSB-first
+    // ------------------------------------------------------------------------
+    SECTION("Various valid strings (MSB first)")
+    {
+        for (auto s : { "0", "1", "10", "01", "1010", "11110000",
+                       "00000001", "10000000", "11111111" })
+        {
+            const std::string_view sv{ s };
+            Bitset b{ std::string(sv) };
+            INFO("input = " << s);
+            REQUIRE(b.size() == sv.size());
+            REQUIRE(b.toString() == sv);
+            REQUIRE(b.equals(sv));
+            requireInvariants(b, "string ctor various");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Соответствие бит -> индексов: строка MSB-first
+    //    Последний символ строки = бит 0, первый символ = бит size()-1
+    // ------------------------------------------------------------------------
+    SECTION("MSB-first mapping of characters to bit indices")
+    {
+        Bitset b{ std::string("1001") };
+        REQUIRE(b.size() == 4);
+        REQUIRE(b[3] == true);    // '1' первый
+        REQUIRE(b[2] == false);
+        REQUIRE(b[1] == false);
+        REQUIRE(b[0] == true);    // '1' последний
+        requireInvariants(b, "MSB-first mapping");
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Длинная строка, пересекающая границы слов
+    // ------------------------------------------------------------------------
+    SECTION("Long string spanning multiple words")
+    {
+        const size_t len{ WORD_BITS * 3 + 7 };
+        std::string s;
+        s.reserve(len);
+        for (size_t i = 0; i < len; ++i)
+        {
+            s += (i % 3 == 0) ? '1' : '0';
+        }
+        Bitset b{ s };
+        REQUIRE(b.size() == len);
+        REQUIRE(b.toString() == s);
+        requireInvariants(b, "string ctor long");
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Все единицы
+    // ------------------------------------------------------------------------
+    SECTION("All ones string")
+    {
+        std::string s(100, '1');
+        Bitset b{ s };
+        REQUIRE(b.size() == 100);
+        REQUIRE(b.popcount() == 100);
+        REQUIRE(b.toString() == s);
+        requireInvariants(b, "string ctor all ones");
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Невалидные символы -> std::invalid_argument
+    // ------------------------------------------------------------------------
+    SECTION("Invalid characters throw std::invalid_argument")
+    {
+        for (auto s : { "2", "102", "abc", "  ", "10 1", "1.0", "one", "-1" })
+        {
+            INFO("input = " << s);
+            REQUIRE_THROWS_AS(Bitset(std::string(s)), std::invalid_argument);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Round-trip: string -> bitset -> string
+    // ------------------------------------------------------------------------
+    SECTION("Round-trip string -> bitset -> string")
+    {
+        for (auto s : { "0", "1", "10", "111", "1000", "10101",
+                       "1111111111", "0", "0000", "10101010" })
+        {
+            Bitset b{ std::string(s) };
+            REQUIRE(b.toString() == s);
+            REQUIRE(b.equals(s));
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Разные контейнеры-обёртки строки
+    //    (std::string vs std::string_view через явное преобразование)
+    // ------------------------------------------------------------------------
+    SECTION("std::string and std::string_view produce identical bitsets")
+    {
+        const char* raw{ "110100101" };
+        Bitset a{ std::string(raw) };
+        Bitset b{ std::string(std::string_view(raw)) };
+        REQUIRE(a == b);
+        REQUIRE(a.toString() == raw);
+        requireInvariants(a, "string vs string_view");
+    }
+}
+
+// ============================================================================
+//  ЭТАП 1. Rule of Five
+// ============================================================================
+TEST_CASE("Bitset Rule of Five", "[bitset][rule_of_five]")
+{
+    // ------------------------------------------------------------------------
+    // 1. Copy constructor — глубокая копия
+    // ------------------------------------------------------------------------
+    SECTION("Copy constructor performs deep copy")
+    {
+        Bitset original{ "101101" };
+        Bitset copy{ original };
+
+        REQUIRE(copy == original);
+        REQUIRE(copy.size() == original.size());
+        REQUIRE(copy.wordsSize() == original.wordsSize());
+        REQUIRE(copy.getData() != original.getData());    // разные буферы
+        requireInvariants(copy, "copy ctor");
+
+        // Изменяем копию — оригинал не меняется
+        copy.set(0, false);       // LSB
+        copy.set(5, false);      // MSB
+        REQUIRE(original.equals("101101"));
+        REQUIRE(copy.equals("001100"));
+        requireInvariants(original, "original after copy mutation");
+        requireInvariants(copy, "copy after mutation");
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Copy assignment — глубокая копия
+    // ------------------------------------------------------------------------
+    SECTION("Copy assignment performs deep copy")
+    {
+        Bitset src{ "1000" };
+        Bitset dst{ "1111" };
+        REQUIRE(dst.getData() != src.getData());
+
+        dst = src;
+        REQUIRE(dst == src);
+        REQUIRE(dst.equals("1000"));
+        REQUIRE(dst.getData() != src.getData());
+
+        dst.set(0, true);
+        REQUIRE(dst.equals("1001"));
+        REQUIRE(src.equals("1000"));   // src не изменился
+        requireInvariants(src, "src after copy assign");
+        requireInvariants(dst, "dst after copy assign");
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Copy assignment на разные размеры
+    // ------------------------------------------------------------------------
+    SECTION("Copy assignment from different size")
+    {
+        Bitset small{ "10" };
+        Bitset big{ 200 };   // 200 нулей
+        REQUIRE(big.size() == 200);
+
+        big = small;
+        REQUIRE(big.size() == 2);
+        REQUIRE(big.equals("10"));
+        REQUIRE(big.wordsSize() == 1);
+        requireInvariants(big, "assign small to big");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Self copy-assignment
+    // ------------------------------------------------------------------------
+    SECTION("Self copy-assignment is safe")
+    {
+        Bitset a{ "1010" };
+        Bitset& alias = a;
+        a = alias;                 // через reference, чтобы не ловить -Wself-assign
+        REQUIRE(a.equals("1010"));
+        requireInvariants(a, "self copy assign");
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Move constructor
+    // ------------------------------------------------------------------------
+    SECTION("Move constructor transfers data")
+    {
+        Bitset source{ "101101" };
+        [[maybe_unused]] const Word* sourceData{ source.getData() };
+        [[maybe_unused]] const size_t sourceSize{ source.size() };
+        [[maybe_unused]] const size_t sourceWords{ source.wordsSize() };
+
+        Bitset moved{ std::move(source) };
+
+        REQUIRE(moved.size() == sourceSize);
+        REQUIRE(moved.wordsSize() == sourceWords);
+        REQUIRE(moved.equals("101101"));
+        REQUIRE(moved.getData() == sourceData);   // данные переехали без realloc
+        requireInvariants(moved, "move ctor dest");
+
+        // source — валидный, но unspecified. Главное — можно переиспользовать.
+        REQUIRE_NOTHROW(source.clear());
+        source = makeBitset("11");
+        REQUIRE(source.equals("11"));
+        requireInvariants(source, "source reused after move");
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Move assignment
+    // ------------------------------------------------------------------------
+    SECTION("Move assignment transfers data")
+    {
+        Bitset source{ "110010" };
+        Bitset dest{ "1111" };
+        const Word* sourceData{ source.getData() };
+
+        dest = std::move(source);
+        REQUIRE(dest.equals("110010"));
+        REQUIRE(dest.getData() == sourceData);
+        requireInvariants(dest, "move assign dest");
+
+        REQUIRE_NOTHROW(source.clear());
+        source = makeBitset("0");
+        REQUIRE(source.equals("0"));
+        requireInvariants(source, "source reused after move assign");
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Self move-assignment (valid, не падает)
+    // ------------------------------------------------------------------------
+    SECTION("Self move-assignment leaves object valid")
+    {
+        Bitset a{ "1010" };
+        Bitset& alias = a;
+        a = std::move(alias);
+        // valid but unspecified: достаточно, что объект пригоден к использованию
+        REQUIRE_NOTHROW(a.clear());
+        a = makeBitset("01");
+        REQUIRE(a.equals("01"));
+        requireInvariants(a, "after self move assign");
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Цепочка копий: изменения не «протекают»
+    // ------------------------------------------------------------------------
+    SECTION("Chain of copies: no aliasing")
+    {
+        Bitset a{ "1000" };
+        Bitset b{ a };
+        Bitset c{ b };
+
+        c.set(0, true);   // только c
+        b.set(1, true);   // только b
+
+        REQUIRE(a.equals("1000"));
+        REQUIRE(b.equals("1010"));
+        REQUIRE(c.equals("1001"));
+        requireInvariants(a, "chain a");
+        requireInvariants(b, "chain b");
+        requireInvariants(c, "chain c");
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Интеграция с std::vector (move при реаллокации)
+    // ------------------------------------------------------------------------
+    SECTION("Bitset works inside std::vector with reallocation")
+    {
+        std::vector<Bitset> v;
+        v.reserve(1);
+        v.push_back(Bitset{ std::string("1010") });
+        for (int i = 0; i < 20; ++i)
+        {
+            v.push_back(Bitset{ std::string("110") });
+        }
+        REQUIRE(v.front().equals("1010"));
+        for (size_t i = 1; i < v.size(); ++i)
+        {
+            REQUIRE(v[i].equals("110"));
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. Проверка noexcept / type traits
+    // ------------------------------------------------------------------------
+    SECTION("Type traits")
+    {
+        STATIC_REQUIRE(std::is_default_constructible_v<Bitset>);
+        STATIC_REQUIRE(std::is_copy_constructible_v<Bitset>);
+        STATIC_REQUIRE(std::is_copy_assignable_v<Bitset>);
+        STATIC_REQUIRE(std::is_nothrow_move_constructible_v<Bitset>);
+        STATIC_REQUIRE(std::is_nothrow_move_assignable_v<Bitset>);
+        STATIC_REQUIRE(std::is_nothrow_destructible_v<Bitset>);
     }
 }
