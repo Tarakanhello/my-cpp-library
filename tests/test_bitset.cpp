@@ -4,8 +4,9 @@
 
 #include <array>
 #include <bit>
+#include <bitset>
 #include <cstdint>
-#include <numeric>
+#include <random>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -32,53 +33,53 @@ using Bitset = mylib::Bitset<Word>;
 void requireInvariants(const Bitset& b, const char* context = "")
 {
     INFO("Invariant context: " << context);
-    INFO("size()         = " << b.size());
-    INFO("wordsSize()    = " << b.wordsSize());
-    INFO("garbageBits()  = " << b.garbageBits());
+            INFO("size()         = " << b.size());
+            INFO("wordsSize()    = " << b.wordsSize());
+            INFO("garbageBits()  = " << b.garbageBits());
 
-    const size_t n{ b.size() };
-    const size_t w{ b.wordsSize() };
+            const size_t n{ b.size() };
+            const size_t w{ b.wordsSize() };
 
-    // ---- Пустой bitset -------------------------------------------------
-    if (n == 0)
-    {
-        REQUIRE(w == 0);
-        REQUIRE(b.getData() == nullptr);
-        REQUIRE(b.garbageBits() == 0);
-        REQUIRE(b.popcount() == 0);
-        REQUIRE(b.isZero());
-        REQUIRE(b.toString().empty());
-        return;
-    }
+            // ---- Пустой bitset -------------------------------------------------
+            if (n == 0)
+            {
+                REQUIRE(w == 0);
+                REQUIRE(b.getData() == nullptr);
+                REQUIRE(b.garbageBits() == 0);
+                REQUIRE(b.popcount() == 0);
+                REQUIRE(b.isZero());
+                REQUIRE(b.toString().empty());
+                return;
+            }
 
-    // ---- Непустой ------------------------------------------------------
-    const size_t expectedWords{ (n + WORD_BITS - 1) / WORD_BITS };
-    REQUIRE(w == expectedWords);
-    REQUIRE(b.getData() != nullptr);
-    REQUIRE(b.get().size() == w);
-    REQUIRE(b.get().data() == b.getData());
+            // ---- Непустой ------------------------------------------------------
+            const size_t expectedWords{ (n + WORD_BITS - 1) / WORD_BITS };
+            REQUIRE(w == expectedWords);
+            REQUIRE(b.getData() != nullptr);
+            REQUIRE(b.get().size() == w);
+            REQUIRE(b.get().data() == b.getData());
 
-    const size_t lastBits{ (n % WORD_BITS == 0) ? WORD_BITS : (n % WORD_BITS) };
-    REQUIRE(b.lastWordBits() == lastBits);
-    REQUIRE(b.garbageBits() == WORD_BITS - lastBits);
-    REQUIRE(b.lastWordBits() + b.garbageBits() == WORD_BITS);
+            const size_t lastBits{ (n % WORD_BITS == 0) ? WORD_BITS : (n % WORD_BITS) };
+            REQUIRE(b.lastWordBits() == lastBits);
+            REQUIRE(b.garbageBits() == WORD_BITS - lastBits);
+            REQUIRE(b.lastWordBits() + b.garbageBits() == WORD_BITS);
 
-    // Мусорные биты последнего слова обязаны быть нулевыми
-    const Word lastWord{ b.getData()[w - 1] };
-    const Word mask{ (lastBits == WORD_BITS)
-                        ? static_cast<Word>(~Word{ 0 })
-                        : static_cast<Word>((Word{ 1 } << lastBits) - Word{ 1 }) };
-    REQUIRE((lastWord & static_cast<Word>(~mask)) == 0);
+            // Мусорные биты последнего слова обязаны быть нулевыми
+            const Word lastWord{ b.getData()[w - 1] };
+            const Word mask{ (lastBits == WORD_BITS)
+                                ? static_cast<Word>(~Word{ 0 })
+                                : static_cast<Word>((Word{ 1 } << lastBits) - Word{ 1 }) };
+            REQUIRE((lastWord & static_cast<Word>(~mask)) == 0);
 
-    // Согласованность popcount / isZero / operator bool
-    size_t pc{ 0 };
-    for (size_t i{ 0 }; i < w; ++i)
-    {
-        pc += std::popcount(b.getData()[i]);
-    }
-    REQUIRE(b.popcount() == pc);
-    REQUIRE(b.isZero() == (pc == 0));
-    REQUIRE(static_cast<bool>(b) == (pc != 0));
+            // Согласованность popcount / isZero / operator bool
+            size_t pc{ 0 };
+            for (size_t i{ 0 }; i < w; ++i)
+            {
+                pc += std::popcount(b.getData()[i]);
+            }
+            REQUIRE(b.popcount() == pc);
+            REQUIRE(b.isZero() == (pc == 0));
+            REQUIRE(static_cast<bool>(b) == (pc != 0));
 }
 
 /**
@@ -5470,5 +5471,534 @@ TEMPLATE_TEST_CASE("Bitset works for all WORD types", "[bitset][template]",
             REQUIRE(b.getData()[i] == static_cast<W>(~W{ 0 }));
         }
         inv(b, "all ones 3 words");
+    }
+}
+
+// ============================================================================
+//  ЭТАП 13. Property-based и randomized тесты
+// ============================================================================
+namespace
+{
+// Детерминированный PRNG: воспроизводимость важнее «настоящей» случайности.
+std::mt19937_64& rng()
+{
+    static std::mt19937_64 gen{ 0xC0FFEE'BADC0DEULL };
+    return gen;
+}
+
+// Случайный bitset заданного размера
+template<typename WORD = std::uint64_t>
+mylib::Bitset<WORD> randomBitset(size_t n)
+{
+    using B = mylib::Bitset<WORD>;
+    B b{ n };
+    std::uniform_int_distribution<int> bit{ 0, 1 };
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (bit(rng())) b.set(i, true);
+    }
+    return b;
+}
+
+// Случайная строка из '0'/'1' заданной длины
+std::string randomBinaryString(size_t n)
+{
+    std::string s;
+    s.reserve(n);
+    std::uniform_int_distribution<int> bit{ 0, 1 };
+    for (size_t i = 0; i < n; ++i)
+        s += bit(rng()) ? '1' : '0';
+    return s;
+}
+
+// Случайный размер: смесь границ слова и произвольных значений
+size_t randomSize(size_t maxN = 256)
+{
+    std::uniform_int_distribution<size_t> d{ 0, maxN };
+    switch (std::uniform_int_distribution<int>{ 0, 3 }(rng()))
+    {
+    case 0: return 0;
+    case 1: return std::uniform_int_distribution<size_t>{ 1, 8 }(rng());
+    case 2: return d(rng());
+    default: return 64 + std::uniform_int_distribution<size_t>{ 0, 63 }(rng());
+    }
+}
+} // namespace
+
+
+TEST_CASE("Bitset property-based invariants", "[bitset][property]")
+{
+    constexpr size_t iterations{ 200 };
+
+    // ------------------------------------------------------------------------
+    // 1. string -> Bitset -> toString round-trip
+    // ------------------------------------------------------------------------
+    SECTION("string round-trip preserves content")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            const std::string s{ randomBinaryString(n) };
+            INFO("it = " << it << ", n = " << n);
+
+            Bitset b{ s };
+            REQUIRE(b.size() == n);
+            REQUIRE(b.toString() == s);
+            REQUIRE(b.equals(s));
+            requireInvariants(b, "round-trip string");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. toString -> Bitset -> toString
+    // ------------------------------------------------------------------------
+    SECTION("toString round-trip preserves content")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            const Bitset b0{ randomBitset(n) };
+            const std::string s{ b0.toString() };
+
+            INFO("it = " << it << ", n = " << n);
+            const Bitset b1{ s };
+            REQUIRE(b0 == b1);
+            REQUIRE(b0.toString() == b1.toString());
+            requireInvariants(b1, "round-trip toString");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. appendLSB / removeLSB round-trip
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB then removeLSB restores original")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            Bitset b{ randomBitset(n) };
+            const Bitset original{ b };
+
+            const bool bit{ std::uniform_int_distribution<int>{ 0, 1 }(rng()) != 0 };
+            b.appendLSB(bit);
+            REQUIRE(b.size() == n + 1);
+            REQUIRE(b[0] == bit);
+
+            b.removeLSB();
+            REQUIRE(b.size() == n);
+            REQUIRE(b == original);
+            INFO("it = " << it << ", n = " << n);
+            requireInvariants(b, "appendLSB/removeLSB");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. appendMSB / removeMSB round-trip
+    // ------------------------------------------------------------------------
+    SECTION("appendMSB then removeMSB restores original")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            Bitset b{ randomBitset(n) };
+            const Bitset original{ b };
+
+            const bool bit{ std::uniform_int_distribution<int>{ 0, 1 }(rng()) != 0 };
+            b.appendMSB(bit);
+            REQUIRE(b.size() == n + 1);
+            REQUIRE(b[n] == bit);
+
+            b.removeMSB();
+            REQUIRE(b.size() == n);
+            REQUIRE(b == original);
+            INFO("it = " << it << ", n = " << n);
+            requireInvariants(b, "appendMSB/removeMSB");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. flip дважды — identity; reverse дважды — identity
+    // ------------------------------------------------------------------------
+    SECTION("double flip and double reverse are identities")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            const Bitset original{ randomBitset(n) };
+            INFO("it = " << it << ", n = " << n);
+
+            Bitset f{ original };
+            f.flip(); f.flip();
+            REQUIRE(f == original);
+
+            Bitset r{ original };
+            r.reverse(); r.reverse();
+            REQUIRE(r == original);
+
+            requireInvariants(f, "double flip");
+            requireInvariants(r, "double reverse");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. ^= involution: (a ^ b) ^ b == a
+    // ------------------------------------------------------------------------
+    SECTION("XOR with the same value is an involution")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            Bitset a{ randomBitset(n) };
+            const Bitset b{ randomBitset(n) };
+            const Bitset a0{ a };
+
+            a ^= b;
+            a ^= b;
+            REQUIRE(a == a0);
+            INFO("it = " << it << ", n = " << n);
+            requireInvariants(a, "^= involution");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Коммутативность побитовых операций
+    // ------------------------------------------------------------------------
+    SECTION("bitwise ops are commutative")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            const Bitset a{ randomBitset(n) };
+            const Bitset b{ randomBitset(n) };
+            INFO("it = " << it << ", n = " << n);
+
+            Bitset andAB{ a }; andAB &= b;
+            Bitset andBA{ b }; andBA &= a;
+            REQUIRE(andAB == andBA);
+
+            Bitset orAB{ a }; orAB |= b;
+            Bitset orBA{ b }; orBA |= a;
+            REQUIRE(orAB == orBA);
+
+            Bitset xorAB{ a }; xorAB ^= b;
+            Bitset xorBA{ b }; xorBA ^= a;
+            REQUIRE(xorAB == xorBA);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Тождества с popcount
+    // ------------------------------------------------------------------------
+    SECTION("popcount identities hold")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            const Bitset a{ randomBitset(n) };
+            const Bitset b{ randomBitset(n) };
+            INFO("it = " << it << ", n = " << n);
+
+            Bitset andAB{ a }; andAB &= b;
+            Bitset orAB{ a }; orAB |= b;
+            Bitset xorAB{ a }; xorAB ^= b;
+
+            REQUIRE(a.popcount() + b.popcount() ==
+                    andAB.popcount() + orAB.popcount());
+            REQUIRE(xorAB.popcount() == orAB.popcount() - andAB.popcount());
+            REQUIRE(andAB.popcount() + xorAB.popcount() == orAB.popcount());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Законы де Моргана и дистрибутивность
+    // ------------------------------------------------------------------------
+    SECTION("De Morgan and distributivity hold")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(120) };
+            const Bitset a{ randomBitset(n) };
+            const Bitset b{ randomBitset(n) };
+            const Bitset c{ randomBitset(n) };
+            INFO("it = " << it << ", n = " << n);
+
+            // ¬(a & b) == ¬a | ¬b
+            Bitset left{ a }; left &= b; left.flip();
+            Bitset na{ a }; na.flip();
+            Bitset nb{ b }; nb.flip();
+            na |= nb;
+            REQUIRE(left == na);
+
+            // a & (b | c) == (a & b) | (a & c)
+            Bitset r1{ b }; r1 |= c; r1 &= a;
+            Bitset ab{ a }; ab &= b;
+            Bitset ac{ a }; ac &= c;
+            ab |= ac;
+            REQUIRE(r1 == ab);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. <<= k then >>= k == identity, если верхние k бит были нули
+    // ------------------------------------------------------------------------
+    SECTION("shift round-trip when no bits are lost")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            Bitset b{ randomBitset(n) };
+            if (n == 0) continue;
+
+            const size_t k{ std::uniform_int_distribution<size_t>{ 1, n }(rng()) };
+            INFO("it = " << it << ", n = " << n << ", k = " << k);
+
+            // Зафиксируем верхние k бит в 0, чтобы не терять информацию
+            for (size_t i = n - k; i < n; ++i)
+                b.set(i, false);
+
+            const Bitset a0{ b };
+            b <<= k;
+            b >>= k;
+            REQUIRE(b == a0);
+            requireInvariants(b, "shift round-trip");
+        }
+    }
+
+    SECTION(">>= k then <<= k == identity, если нижние k бит были нули")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            Bitset b{ randomBitset(n) };
+            if (n == 0) continue;
+
+            const size_t k{ std::uniform_int_distribution<size_t>{ 1, n }(rng()) };
+            INFO("it = " << it << ", n = " << n << ", k = " << k);
+
+            for (size_t i = 0; i < k; ++i)
+                b.set(i, false);
+
+            const Bitset a0{ b };
+            b >>= k;
+            b <<= k;
+            REQUIRE(b == a0);
+            requireInvariants(b, "shift round-trip reverse");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. Сравнение с эталоном std::bitset<64> (для size <= 64)
+    // ------------------------------------------------------------------------
+    SECTION("matches std::bitset<64> for size <= 64")
+    {
+        std::uniform_int_distribution<size_t> sz{ 1, 64 };
+        std::uniform_int_distribution<std::uint64_t> val{ 0, ~std::uint64_t{ 0 } };
+
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ sz(rng()) };
+            const std::uint64_t x{ val(rng()) };
+            const std::uint64_t y{ val(rng()) };
+
+            // Ограничим значения n битами
+            const std::uint64_t mask{ (n == 64) ? ~std::uint64_t{ 0 }
+                                               : ((std::uint64_t{ 1 } << n) - 1) };
+            const std::uint64_t xm{ x & mask };
+            const std::uint64_t ym{ y & mask };
+
+            Bitset bx{ n };
+            Bitset by{ n };
+            bx.setValue(static_cast<std::uint64_t>(xm), 0, n);
+            by.setValue(static_cast<std::uint64_t>(ym), 0, n);
+
+            std::bitset<64> refx{ xm };
+            std::bitset<64> refy{ ym };
+
+            INFO("it = " << it << ", n = " << n
+                         << ", x = " << xm << ", y = " << ym);
+
+            // popcount
+            REQUIRE(bx.popcount() == refx.count());
+
+            // ==
+            REQUIRE((bx == by) == (refx == refy));
+
+            // Побитовые
+            Bitset andB{ bx }; andB &= by;
+            Bitset orB { bx }; orB  |= by;
+            Bitset xorB{ bx }; xorB ^= by;
+
+            REQUIRE(andB.popcount() == (refx & refy).count());
+            REQUIRE(orB.popcount()  == (refx | refy).count());
+            REQUIRE(xorB.popcount() == (refx ^ refy).count());
+
+            // Сравнение: numeric order для same size
+            if (n <= 63)
+            {
+                REQUIRE((bx <  by) == (xm <  ym));
+                REQUIRE((bx <= by) == (xm <= ym));
+                REQUIRE((bx >  by) == (xm >  ym));
+                REQUIRE((bx >= by) == (xm >= ym));
+            }
+
+            // toString: MSB-first сравнение с бинарным представлением
+            // std::bitset<64>::to_string() — MSB-first, длина 64.
+            // Берём последние n символов.
+            const std::string refStr{ refx.to_string() };
+            const std::string substr{ refStr.substr(64 - n) };
+            REQUIRE(bx.toString() == substr);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. getValue / setValue round-trip
+    // ------------------------------------------------------------------------
+    SECTION("setValue/getValue round-trip")
+    {
+        std::uniform_int_distribution<size_t> sz{ 1, 128 };
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ sz(rng()) };
+            const size_t field{ std::uniform_int_distribution<size_t>{ 1, WORD_BITS }(rng()) };
+            if (field > n) continue;
+            const size_t pos{ std::uniform_int_distribution<size_t>{ 0, n - field }(rng()) };
+            const Word v{ static_cast<Word>(rng()()) };
+
+            Bitset b{ n };
+            b.setValue(v, pos, field);
+
+            const Word expected{ (field == WORD_BITS)
+                                    ? v
+                                    : static_cast<Word>(v & ((Word{ 1 } << field) - Word{ 1 })) };
+            INFO("it = " << it << ", n = " << n
+                         << ", pos = " << pos << ", field = " << field);
+            REQUIRE(b.getValue(pos, field) == expected);
+            REQUIRE(b.popcount() == static_cast<size_t>(std::popcount(expected)));
+            requireInvariants(b, "setValue/getValue");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 13. Согласованность isZero / operator bool / popcount
+    // ------------------------------------------------------------------------
+    SECTION("isZero, operator bool, popcount agree")
+    {
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t n{ randomSize(200) };
+            const Bitset b{ randomBitset(n) };
+            INFO("it = " << it << ", n = " << n);
+
+            const bool bb{ static_cast<bool>(b) };
+            const bool iz{ b.isZero() };
+            const size_t pc{ b.popcount() };
+
+            REQUIRE(bb == !iz);
+            REQUIRE(bb == (pc != 0));
+            REQUIRE(iz == (pc == 0));
+            REQUIRE(pc <= n);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 14. Согласованность == / <=> / toString
+    // ------------------------------------------------------------------------
+    SECTION("==, <=>, toString consistency on random pairs")
+    {
+        std::uniform_int_distribution<size_t> sz{ 0, 64 };
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const size_t na{ sz(rng()) };
+            const size_t nb{ sz(rng()) };
+            const Bitset a{ randomBitset(na) };
+            const Bitset b{ randomBitset(nb) };
+            INFO("it = " << it << ", na = " << na << ", nb = " << nb);
+
+            REQUIRE((a == b) == (a.toString() == b.toString()));
+            REQUIRE((a != b) == !(a == b));
+            REQUIRE((a == b) == ((a <=> b) == 0));
+            REQUIRE((a <  b) == ((a <=> b) <  0));
+            REQUIRE((a >  b) == ((a <=> b) >  0));
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 15. Согласованность appendMSB(Bitset) с конкатенацией строк
+    // ------------------------------------------------------------------------
+    SECTION("appendMSB(Bitset) equals string concat")
+    {
+        std::uniform_int_distribution<size_t> sz{ 0, 64 };
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const Bitset a{ randomBitset(sz(rng())) };
+            const Bitset b{ randomBitset(sz(rng())) };
+            INFO("it = " << it);
+
+            Bitset ab{ a };
+            ab.appendMSB(b);
+            REQUIRE(ab.toString() == b.toString() + a.toString());
+        }
+    }
+
+    SECTION("appendLSB(Bitset) equals string concat")
+    {
+        std::uniform_int_distribution<size_t> sz{ 0, 64 };
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            const Bitset a{ randomBitset(sz(rng())) };
+            const Bitset b{ randomBitset(sz(rng())) };
+            INFO("it = " << it);
+
+            Bitset ab{ a };
+            ab.appendLSB(b);
+            REQUIRE(ab.toString() == a.toString() + b.toString());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 16. Инварианты после случайных мутаций
+    // ------------------------------------------------------------------------
+    SECTION("invariants survive random mutation sequences")
+    {
+        std::uniform_int_distribution<size_t> sz{ 1, 200 };
+        for (size_t it = 0; it < iterations; ++it)
+        {
+            Bitset b{ sz(rng()) };
+
+            // 30 случайных операций подряд
+            for (int op = 0; op < 30; ++op)
+            {
+                switch (std::uniform_int_distribution<int>{ 0, 6 }(rng()))
+                {
+                case 0:
+                {
+                    const size_t i{ std::uniform_int_distribution<size_t>{ 0, b.size() - 1 }(rng()) };
+                    b.set(i, std::uniform_int_distribution<int>{ 0, 1 }(rng()) != 0);
+                    break;
+                }
+                case 1: b.flip(); break;
+                case 2: b.reverse(); break;
+                case 3:
+                {
+                    const bool v{ std::uniform_int_distribution<int>{ 0, 1 }(rng()) != 0 };
+                    b.appendLSB(v);
+                    b.removeLSB();
+                    break;
+                }
+                case 4:
+                {
+                    const bool v{ std::uniform_int_distribution<int>{ 0, 1 }(rng()) != 0 };
+                    b.appendMSB(v);
+                    b.removeMSB();
+                    break;
+                }
+                case 5: b <<= 1; break;
+                case 6: b >>= 1; break;
+                }
+                requireInvariants(b, "random mutation");
+            }
+            INFO("it = " << it << ", final size = " << b.size());
+            requireInvariants(b, "random mutation final");
+        }
     }
 }
