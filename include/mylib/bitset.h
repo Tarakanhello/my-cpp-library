@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "mylib/bit_operations.h"
 #include "mylib/math.h"
@@ -24,7 +25,7 @@ namespace mylib
 template<typename CONTAINER>
 concept HasReverse = requires(CONTAINER& c)
 {
-    c.reverse();
+    { c.reverse() } noexcept;
 };
 
 /**
@@ -147,7 +148,7 @@ private:
     /**
          * @brief Clears the unused bits in the last word.
          */
-    void zeroOutReminder();
+    void zeroOutReminder() noexcept;
 
 public:
     // ================================================================
@@ -223,7 +224,9 @@ public:
     Bitset(Bitset&& other) noexcept
         : m_bitSize{ std::exchange(other.m_bitSize, 0) }
         , m_words{ std::move(other.m_words) }
-    {}
+    {
+        other.m_words.clear();
+    }
 
     /**
      * @brief Copy assignment.
@@ -245,6 +248,7 @@ public:
         {
             m_bitSize = std::exchange(other.m_bitSize, 0);
             m_words = std::move(other.m_words);
+            other.m_words.clear();
         }
 
         return *this;
@@ -430,7 +434,7 @@ public:
          *
          * @param value The word containing the bits to prepend.
          * @param size Number of low-order bits to take from value (1..numberOfDigits).
-         * @throw std::out_of_range if size == 0 or size > numberOfDigits.
+         * @throw std::out_of_range size > numberOfDigits.
          * @exception Strong guarantee – no change on failure.
          */
     void appendMSB(WORD value, size_t size);
@@ -1254,7 +1258,7 @@ void Bitset<WORD>::appendMSB(WORD value, size_t size)
 {
     if(0 == size)
     {
-        throw std::out_of_range("mylib::Bitset::appendMSB(WORD, size_t): size == 0");;
+        return;
     }
 
     if (size > std::numeric_limits<WORD>::digits)
@@ -1397,8 +1401,18 @@ void Bitset<WORD>::appendLSB(const Bitset& other)
      void Bitset<WORD>::removeLSB()
 {
     assert(m_bitSize > 0);
+    bool lastBit{ getBit(0) };
     *this >>= 1;
-    resize(--m_bitSize);
+    try
+    {
+        resize(m_bitSize - 1);
+    }
+    catch(...)
+    {
+        *this <<= 1;
+        set(0, lastBit);
+        throw;
+    }
 }
 
 // ---- removeFirst ----------------------------------------------------
@@ -1407,7 +1421,7 @@ template<typename WORD>
 void Bitset<WORD>::removeMSB()
 {
     assert(m_bitSize > 0);
-    resize(--m_bitSize);
+    resize(m_bitSize - 1);
 }
 
 // ---- resize ---------------------------------------------------------
@@ -1605,7 +1619,7 @@ size_t Bitset<WORD>::wordsSize() const noexcept
 // ---- zeroOutReminder ------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::zeroOutReminder()
+void Bitset<WORD>::zeroOutReminder() noexcept
 {
     if(m_bitSize > 0)
     {

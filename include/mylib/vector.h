@@ -334,7 +334,7 @@ namespace mylib
          */
         void resize(size_t newSize, const T& value = T(), bool srink = true);
 
-        void reverse();
+        void reverse() noexcept;
         void reverse(size_t start, size_t end);
 
         /**
@@ -1159,7 +1159,7 @@ void mylib::Vector<T, ALLOCATOR>::resize(size_t newSize, const T& value, bool sh
 
 
 template<typename T, typename ALLOCATOR>
-void mylib::Vector<T, ALLOCATOR>::reverse()
+void mylib::Vector<T, ALLOCATOR>::reverse() noexcept
 {
     reverse(0, m_size);
 }
