@@ -4038,3 +4038,376 @@ TEST_CASE("Bitset bitwise operations", "[bitset][bitwise]")
         REQUIRE(a == copy);
     }
 }
+
+// ============================================================================
+//  ЭТАП 9. Операторы сдвига
+// ============================================================================
+TEST_CASE("Bitset shift operations", "[bitset][shifts]")
+{
+    // ------------------------------------------------------------------------
+    // 1. Сдвиг на 0 — no-op
+    // ------------------------------------------------------------------------
+    SECTION("shift by 0 is a no-op")
+    {
+        for (auto s : { "", "0", "1", "10", "1010", "10110101" })
+        {
+            INFO("s = " << s);
+            Bitset a{ std::string(s) };
+            const Bitset b{ a };
+
+            REQUIRE_NOTHROW(a <<= 0);
+            REQUIRE(a == b);
+
+            REQUIRE_NOTHROW(a >>= 0);
+            REQUIRE(a == b);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. <<= 1 на маленьких bitset'ах
+    // ------------------------------------------------------------------------
+    SECTION("<<= 1 on small bitsets")
+    {
+        Bitset a{ "1010" };
+        a <<= 1;
+        REQUIRE(a.equals("0100"));
+        REQUIRE(a.size() == 4);
+        requireInvariants(a, "<<=1 1010");
+
+        Bitset b{ "1001" };
+        b <<= 1;
+        REQUIRE(b.equals("0010"));
+
+        Bitset c{ "1111" };
+        c <<= 1;
+        REQUIRE(c.equals("1110"));
+
+        Bitset d{ "0001" };
+        d <<= 1;
+        REQUIRE(d.equals("0010"));
+
+        Bitset e{ "1000" };
+        e <<= 1;
+        REQUIRE(e.equals("0000"));
+
+        Bitset one{ "1" };
+        one <<= 1;
+        REQUIRE(one.equals("0"));
+
+        Bitset zero{ "0" };
+        zero <<= 1;
+        REQUIRE(zero.equals("0"));
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. >>= 1 на маленьких bitset'ах
+    // ------------------------------------------------------------------------
+    SECTION(">>= 1 on small bitsets")
+    {
+        Bitset a{ "1010" };
+        a >>= 1;
+        REQUIRE(a.equals("0101"));
+        requireInvariants(a, ">>=1 1010");
+
+        Bitset b{ "1001" };
+        b >>= 1;
+        REQUIRE(b.equals("0100"));
+
+        Bitset c{ "1111" };
+        c >>= 1;
+        REQUIRE(c.equals("0111"));
+
+        Bitset d{ "1000" };
+        d >>= 1;
+        REQUIRE(d.equals("0100"));
+
+        Bitset e{ "0001" };
+        e >>= 1;
+        REQUIRE(e.equals("0000"));
+
+        Bitset one{ "1" };
+        one >>= 1;
+        REQUIRE(one.equals("0"));
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Соответствие ручному сдвигу: один бит
+    // ------------------------------------------------------------------------
+    SECTION("<<= k moves bit 0 to bit k")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 4u, 8u, WORD_BITS })
+        {
+            for (size_t k : std::initializer_list<size_t>{ 0u, 1u, 2u, n - 1 })
+            {
+                INFO("n = " << n << ", k = " << k);
+                Bitset a{ n };
+                a.set(0, true);
+                a <<= k;
+
+                Bitset expected{ n };
+                expected.set(k, true);
+                REQUIRE(a == expected);
+                REQUIRE(a.popcount() == 1);
+                requireInvariants(a, "<<= k manual");
+            }
+        }
+    }
+
+    SECTION(">>= k moves top bit down by k")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 4u, 8u, WORD_BITS })
+        {
+            for (size_t k : std::initializer_list<size_t>{ 0u, 1u, 2u, n - 1 })
+            {
+                INFO("n = " << n << ", k = " << k);
+                Bitset a{ n };
+                a.set(n - 1, true);
+                a >>= k;
+
+                Bitset expected{ n };
+                expected.set(n - 1 - k, true);
+                REQUIRE(a == expected);
+                REQUIRE(a.popcount() == 1);
+                requireInvariants(a, ">>= k manual");
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Сдвиги, пересекающие границу слов
+    // ------------------------------------------------------------------------
+    SECTION("<<= crossing word boundary")
+    {
+        Bitset b(2 * WORD_BITS);
+        b.set(0, true);
+        b <<= WORD_BITS;
+        REQUIRE(b[WORD_BITS] == true);
+        REQUIRE(b.popcount() == 1);
+        requireInvariants(b, "<<= cross word full");
+
+        Bitset c(2 * WORD_BITS);
+        c.set(0, true);
+        c <<= WORD_BITS - 1;
+        REQUIRE(c[WORD_BITS - 1] == true);
+        REQUIRE(c.popcount() == 1);
+        requireInvariants(c, "<<= cross word -1");
+
+        Bitset d(2 * WORD_BITS);
+        d.set(0, true);
+        d <<= WORD_BITS + 1;
+        REQUIRE(d[WORD_BITS + 1] == true);
+        REQUIRE(d.popcount() == 1);
+        requireInvariants(d, "<<= cross word +1");
+    }
+
+    SECTION(">>= crossing word boundary")
+    {
+        Bitset b(2 * WORD_BITS);
+        b.set(2 * WORD_BITS - 1, true);
+        b >>= WORD_BITS;
+        REQUIRE(b[WORD_BITS - 1] == true);
+        REQUIRE(b.popcount() == 1);
+        requireInvariants(b, ">>= cross word");
+
+        Bitset c(2 * WORD_BITS);
+        c.set(WORD_BITS, true);
+        c >>= WORD_BITS - 1;
+        REQUIRE(c[1] == true);
+        REQUIRE(c.popcount() == 1);
+        requireInvariants(c, ">>= cross word -1");
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Размер сохраняется
+    // ------------------------------------------------------------------------
+    SECTION("shifts preserve size and wordsSize")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         2 * WORD_BITS + 3 })
+        {
+            INFO("n = " << n);
+            Bitset a{ n };
+            const size_t n0{ a.size() };
+            const size_t w0{ a.wordsSize() };
+            a <<= 1;
+            REQUIRE(a.size() == n0);
+            REQUIRE(a.wordsSize() == w0);
+            a >>= 3;
+            REQUIRE(a.size() == n0);
+            REQUIRE(a.wordsSize() == w0);
+            requireInvariants(a, "shift size preserve");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. <<= n и >>= n на all-ones
+    // ------------------------------------------------------------------------
+    SECTION("<<= k on all-ones zeroes lower k bits")
+    {
+        Bitset b{ "11111111" };
+        b <<= 3;
+        REQUIRE(b.equals("11111000"));
+        requireInvariants(b, "<<=3 all-ones");
+
+        Bitset c{ "1111" };
+        c <<= 2;
+        REQUIRE(c.equals("1100"));
+
+        Bitset d{ "1111" };
+        d <<= 3;
+        REQUIRE(d.equals("1000"));
+
+        Bitset e{ "1111" };
+        e <<= 4;
+        REQUIRE(e.equals("0000"));   // если mod: должно быть "1111"
+        // ВНИМАНИЕ: этот REQUIRE отражает modulo-семантику
+        // (<<=4 на size 4 == <<=0). Если падает — см. audit-секцию.
+    }
+
+    SECTION(">>= k on all-ones zeroes upper k bits")
+    {
+        Bitset b{ "11111111" };
+        b >>= 3;
+        REQUIRE(b.equals("00011111"));
+
+        Bitset c{ "1111" };
+        c >>= 2;
+        REQUIRE(c.equals("0011"));
+
+        Bitset d{ "1111" };
+        d >>= 3;
+        REQUIRE(d.equals("0001"));
+
+        Bitset e{ "1111" };
+        e >>= 4;
+        REQUIRE(e.equals("0000"));
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Пустой bitset безопасен
+    // ------------------------------------------------------------------------
+    SECTION("shifts on empty bitset are safe")
+    {
+        Bitset e;
+        REQUIRE_NOTHROW(e <<= 1);
+        REQUIRE_NOTHROW(e >>= 1);
+        REQUIRE_NOTHROW(e <<= 100);
+        REQUIRE_NOTHROW(e >>= 100);
+        REQUIRE_NOTHROW(e <<= 0);
+        REQUIRE_NOTHROW(e >>= 0);
+        REQUIRE(e.size() == 0);
+        REQUIRE(e.wordsSize() == 0);
+        requireInvariants(e, "empty shifts");
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Мусорные биты остаются нулевыми
+    // ------------------------------------------------------------------------
+    SECTION("garbage bits stay zero after shifts")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS + 1,
+                         WORD_BITS + 5, 2 * WORD_BITS + 3 })
+        {
+            INFO("n = " << n);
+            Bitset a{ n };
+            a.setAll(true);
+            a <<= 1;
+            requireInvariants(a, "<<= garbage");
+
+            Bitset b{ n };
+            b.setAll(true);
+            b >>= 1;
+            requireInvariants(b, ">>= garbage");
+
+            Bitset c{ n };
+            c.setAll(true);
+            c <<= 5;
+            requireInvariants(c, "<<=5 garbage");
+
+            Bitset d{ n };
+            d.setAll(true);
+            d >>= 5;
+            requireInvariants(d, ">>=5 garbage");
+        }
+    }
+
+    SECTION("shift by size zeroes all bits")
+    {
+        for (auto s : { "1", "10", "1010", "101101" })
+        {
+            Bitset a{ std::string(s) };
+            a <<= a.size();
+            REQUIRE(a.isZero());
+
+            Bitset b{ std::string(s) };
+            b >>= b.size();
+            REQUIRE(b.isZero());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. Композиция сдвигов
+    // ------------------------------------------------------------------------
+    SECTION("<<= p then <<= q equals <<= (p+q) for small p+q")
+    {
+        for (auto s : { "1000", "1001", "1010", "1100" })
+        {
+            INFO("s = " << s);
+            for (size_t p : { 0u, 1u, 2u })
+                for (size_t q : { 0u, 1u, 2u })
+                {
+                    if (p + q >= 4) continue;
+                    INFO("p = " << p << ", q = " << q);
+
+                    Bitset a{ std::string(s) };
+                    Bitset b{ std::string(s) };
+
+                    a <<= p;
+                    a <<= q;
+
+                    b <<= (p + q);
+
+                    REQUIRE(a == b);
+                }
+        }
+    }
+
+    SECTION("<<= and >>= are inverses when no bit lost")
+    {
+        Bitset a{ "0011" };
+        const Bitset copy{ a };
+        a <<= 2;
+        a >>= 2;
+        REQUIRE(a == copy);
+        requireInvariants(a, "<<=k then >>=k inverse");
+    }
+
+    SECTION("double flip via shifts for symmetric input")
+    {
+        Bitset a{ "1111" };
+        Bitset b{ a };
+        b <<= 2;
+        b >>= 2;
+        // a = "1111", b после <<=2 = "1100", после >>=2 = "0011"
+        REQUIRE(b.equals("0011"));
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. Пример из существующих тестов (24-битный)
+    // ------------------------------------------------------------------------
+    SECTION("24-bit example with uint8_t words")
+    {
+        mylib::Bitset<std::uint8_t> bs{
+                                       std::vector<std::uint8_t>{ 0xFF, 0xFF, 0xFF } };
+        REQUIRE(bs.size() == 24);
+        REQUIRE(bs.toString() == "111111111111111111111111");
+
+        bs <<= 16;
+        REQUIRE(bs.toString() == "111111110000000000000000");
+
+        bs >>= 8;
+        // "111111110000000000000000" >>= 8:
+        // верхние 8 бит становятся 0, остальное сдвигается вниз
+        REQUIRE(bs.toString() == "000000001111111100000000");
+    }
+}
