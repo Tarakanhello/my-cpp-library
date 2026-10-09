@@ -3595,3 +3595,446 @@ TEST_CASE("Bitset comparison operators (full)", "[bitset][comparison]")
     }
 }
 
+// ============================================================================
+//  ЭТАП 8. Побитовые операции
+// ============================================================================
+TEST_CASE("Bitset bitwise operations", "[bitset][bitwise]")
+{
+    // ------------------------------------------------------------------------
+    // 1. operator&= — базовые случаи
+    // ------------------------------------------------------------------------
+    SECTION("&= basic truth table on single bits")
+    {
+        // Все 4 комбинации
+        struct Case { const char* a; const char* b; const char* r; };
+        for (auto c : std::initializer_list<Case>{
+                                                  { "0", "0", "0" },
+                                                  { "0", "1", "0" },
+                                                  { "1", "0", "0" },
+                                                  { "1", "1", "1" } })
+        {
+            INFO("a = " << c.a << ", b = " << c.b);
+            Bitset a{ std::string(c.a) };
+            Bitset b{ std::string(c.b) };
+            a &= b;
+            REQUIRE(a.equals(c.r));
+            requireInvariants(a, "&= single");
+        }
+    }
+
+    SECTION("&= on longer bitsets")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "1100" };
+        a &= b;
+        REQUIRE(a.equals("1000"));
+        requireInvariants(a, "&= longer");
+
+        Bitset c{ "11110000" };
+        Bitset d{ "10101010" };
+        c &= d;
+        REQUIRE(c.equals("10100000"));
+        requireInvariants(c, "&= longer 2");
+    }
+
+    SECTION("&= with all zeros / all ones")
+    {
+        Bitset x{ "101101" };
+        Bitset zero{ "000000" };
+        Bitset ones{ "111111" };
+
+        Bitset a{ x };
+        a &= zero;
+        REQUIRE(a.isZero());
+        REQUIRE(a.popcount() == 0);
+
+        Bitset b{ x };
+        b &= ones;
+        REQUIRE(b == x);
+        requireInvariants(b, "&= all ones");
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. operator|= — базовые случаи
+    // ------------------------------------------------------------------------
+    SECTION("|= basic truth table on single bits")
+    {
+        struct Case { const char* a; const char* b; const char* r; };
+        for (auto c : std::initializer_list<Case>{
+                                                  { "0", "0", "0" },
+                                                  { "0", "1", "1" },
+                                                  { "1", "0", "1" },
+                                                  { "1", "1", "1" } })
+        {
+            INFO("a = " << c.a << ", b = " << c.b);
+            Bitset a{ std::string(c.a) };
+            Bitset b{ std::string(c.b) };
+            a |= b;
+            REQUIRE(a.equals(c.r));
+            requireInvariants(a, "|= single");
+        }
+    }
+
+    SECTION("|= on longer bitsets")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "1100" };
+        a |= b;
+        REQUIRE(a.equals("1110"));
+        requireInvariants(a, "|= longer");
+    }
+
+    SECTION("|= with all zeros / all ones")
+    {
+        Bitset x{ "101101" };
+        Bitset zero{ "000000" };
+        Bitset ones{ "111111" };
+
+        Bitset a{ x };
+        a |= zero;
+        REQUIRE(a == x);
+
+        Bitset b{ x };
+        b |= ones;
+        REQUIRE(b.equals("111111"));
+        REQUIRE(b.popcount() == 6);
+        requireInvariants(b, "|= all ones");
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. operator^= — базовые случаи
+    // ------------------------------------------------------------------------
+    SECTION("^= basic truth table on single bits")
+    {
+        struct Case { const char* a; const char* b; const char* r; };
+        for (auto c : std::initializer_list<Case>{
+                                                  { "0", "0", "0" },
+                                                  { "0", "1", "1" },
+                                                  { "1", "0", "1" },
+                                                  { "1", "1", "0" } })
+        {
+            INFO("a = " << c.a << ", b = " << c.b);
+            Bitset a{ std::string(c.a) };
+            Bitset b{ std::string(c.b) };
+            a ^= b;
+            REQUIRE(a.equals(c.r));
+            requireInvariants(a, "^= single");
+        }
+    }
+
+    SECTION("^= on longer bitsets")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "1100" };
+        a ^= b;
+        REQUIRE(a.equals("0110"));
+        requireInvariants(a, "^= longer");
+    }
+
+    SECTION("^= with self produces zero")
+    {
+        Bitset a{ "101101" };
+        Bitset b{ a };
+        a ^= b;
+        REQUIRE(a.isZero());
+        REQUIRE(a.popcount() == 0);
+        requireInvariants(a, "^= self");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Возвращаемое значение — ссылка на *this
+    // ------------------------------------------------------------------------
+    SECTION("operators return *this reference")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "1100" };
+
+        Bitset& refA = (a &= b);
+        REQUIRE(&refA == &a);
+
+        Bitset c{ "1010" };
+        Bitset& refC = (c |= b);
+        REQUIRE(&refC == &c);
+
+        Bitset d{ "1010" };
+        Bitset& refD = (d ^= b);
+        REQUIRE(&refD == &d);
+    }
+
+    SECTION("chaining works")
+    {
+        Bitset a{ "1111" };
+        Bitset b{ "1010" };
+        Bitset c{ "1100" };
+        a &= b;
+        a |= c;
+        // a = ((1111 & 1010) | 1100) = (1010 | 1100) = 1110
+        REQUIRE(a.equals("1110"));
+        requireInvariants(a, "chain");
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Self-присваивание (a &= a, a |= a, a ^= a)
+    // ------------------------------------------------------------------------
+    SECTION("self &=")
+    {
+        Bitset a{ "101101" };
+        Bitset copy{ a };
+        a &= copy;   // через копию, чтобы не ловить -Wself-assign
+        REQUIRE(a == copy);
+    }
+
+    SECTION("self |=")
+    {
+        Bitset a{ "101101" };
+        Bitset copy{ a };
+        a |= copy;
+        REQUIRE(a == copy);
+    }
+
+    SECTION("self ^=")
+    {
+        Bitset a{ "101101" };
+        Bitset copy{ a };
+        a ^= copy;
+        REQUIRE(a.isZero());
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Мусорные биты: результат тоже не должен их иметь
+    // ------------------------------------------------------------------------
+    SECTION("garbage bits stay zero after bitwise ops")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS + 1,
+                         WORD_BITS + 5, 2 * WORD_BITS + 3 })
+        {
+            INFO("n = " << n);
+            Bitset a{ n };
+            Bitset b{ n };
+            a.setAll(true);
+            b.setAll(true);
+
+            Bitset c{ a };
+            c &= b;
+            requireInvariants(c, "&= garbage");
+
+            Bitset d{ a };
+            d |= b;
+            requireInvariants(d, "|= garbage");
+
+            Bitset e{ a };
+            e ^= b;
+            requireInvariants(e, "^= garbage");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Разный размер — std::length_error
+    // ------------------------------------------------------------------------
+    SECTION("&= on different sizes throws length_error")
+    {
+        Bitset a{ "1010" };   // size 4
+        Bitset b{ "101" };    // size 3
+        const Bitset copy{ a };
+        REQUIRE_THROWS_AS(a &= b, std::length_error);
+        REQUIRE(a == copy);   // strong guarantee
+    }
+
+    SECTION("|= on different sizes throws length_error")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "101" };
+        const Bitset copy{ a };
+        REQUIRE_THROWS_AS(a |= b, std::length_error);
+        REQUIRE(a == copy);
+    }
+
+    SECTION("^= on different sizes throws length_error")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "101" };
+        const Bitset copy{ a };
+        REQUIRE_THROWS_AS(a ^= b, std::length_error);
+        REQUIRE(a == copy);
+    }
+
+    SECTION("empty vs non-empty throws length_error")
+    {
+        Bitset e;
+        Bitset b{ "1" };
+        REQUIRE_THROWS_AS(e &= b, std::length_error);
+        REQUIRE_THROWS_AS(e |= b, std::length_error);
+        REQUIRE_THROWS_AS(e ^= b, std::length_error);
+
+        Bitset e2;
+        Bitset b2{ "1" };
+        REQUIRE_THROWS_AS(b2 &= e2, std::length_error);
+        REQUIRE_THROWS_AS(b2 |= e2, std::length_error);
+        REQUIRE_THROWS_AS(b2 ^= e2, std::length_error);
+    }
+
+    SECTION("empty &= empty is a no-op")
+    {
+        Bitset a, b;
+        REQUIRE_NOTHROW(a &= b);
+        REQUIRE_NOTHROW(a |= b);
+        REQUIRE_NOTHROW(a ^= b);
+        REQUIRE(a.size() == 0);
+        requireInvariants(a, "empty bitwise");
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Алгебраические свойства
+    // ------------------------------------------------------------------------
+    SECTION("commutativity: a & b == b & a")
+    {
+        for (auto pair : std::initializer_list<std::pair<const char*, const char*>>{
+                                                                                      { "1010", "1100" },
+                                                                                      { "0000", "1111" },
+                                                                                      { "101101", "011010" },
+                                                                                      { "1111000011110000", "1010101010101010" } })
+        {
+            Bitset a{ std::string(pair.first) };
+            Bitset b{ std::string(pair.second) };
+
+            Bitset ab{ a }, ba{ b };
+            ab &= b;
+            ba &= a;
+            REQUIRE(ab == ba);
+
+            Bitset ao{ a }, bo{ b };
+            ao |= b;
+            bo |= a;
+            REQUIRE(ao == bo);
+
+            Bitset ax{ a }, bx{ b };
+            ax ^= b;
+            bx ^= a;
+            REQUIRE(ax == bx);
+        }
+    }
+
+    SECTION("De Morgan's laws")
+    {
+        Bitset a{ "101101" };
+        Bitset b{ "110011" };
+
+        // NOT (a & b) == (NOT a) | (NOT b)
+        Bitset left{ a };
+        left &= b;
+        left.flip();
+
+        Bitset na{ a }; na.flip();
+        Bitset nb{ b }; nb.flip();
+        na |= nb;
+
+        REQUIRE(left == na);
+    }
+
+    SECTION("a & (b | c) == (a & b) | (a & c)")
+    {
+        Bitset a{ "101010" };
+        Bitset b{ "110011" };
+        Bitset c{ "001111" };
+
+        Bitset left{ b };
+        left |= c;
+        left &= a;
+
+        Bitset ab{ a }; ab &= b;
+        Bitset ac{ a }; ac &= c;
+        ab |= ac;
+
+        REQUIRE(left == ab);
+    }
+
+    SECTION("a ^ b == (a | b) & ~(a & b)")
+    {
+        Bitset a{ "101101" };
+        Bitset b{ "110011" };
+
+        Bitset left{ a }; left ^= b;
+
+        Bitset orAB{ a }; orAB |= b;
+        Bitset andAB{ a }; andAB &= b;
+        andAB.flip();
+        orAB &= andAB;
+
+        REQUIRE(left == orAB);
+    }
+
+    SECTION("a ^ b == (a | b) & (~a | ~b)")
+    {
+        Bitset a{ "101101" };
+        Bitset b{ "110011" };
+
+        Bitset left{ a }; left ^= b;
+
+        Bitset orAB{ a }; orAB |= b;
+        Bitset na{ a }; na.flip();
+        Bitset nb{ b }; nb.flip();
+        na |= nb;
+        orAB &= na;
+
+        REQUIRE(left == orAB);
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Согласованность с popcount / ==
+    // ------------------------------------------------------------------------
+    SECTION("popcount relationships")
+    {
+        for (auto pair : std::initializer_list<std::pair<const char*, const char*>>{
+                                                                                      { "1010", "1100" },
+                                                                                      { "11110000", "10101010" } })
+        {
+            Bitset a{ std::string(pair.first) };
+            Bitset b{ std::string(pair.second) };
+
+            Bitset andAB{ a }; andAB &= b;
+            Bitset orAB{ a }; orAB |= b;
+            Bitset xorAB{ a }; xorAB ^= b;
+
+            // |a| + |b| == |a&b| + |a|b|
+            REQUIRE(a.popcount() + b.popcount() ==
+                    andAB.popcount() + orAB.popcount());
+            // |a^b| == |a|b| - |a&b|
+            REQUIRE(xorAB.popcount() == orAB.popcount() - andAB.popcount());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. Round-trip / инволюция
+    // ------------------------------------------------------------------------
+    SECTION("^= is its own inverse")
+    {
+        Bitset a{ "101101" };
+        Bitset b{ "110011" };
+        const Bitset a0{ a };
+
+        a ^= b;
+        a ^= b;
+        REQUIRE(a == a0);
+        requireInvariants(a, "^= involution");
+    }
+
+    SECTION("&= is idempotent")
+    {
+        Bitset a{ "101101" };
+        const Bitset copy{ a };
+        a &= copy;
+        a &= copy;
+        a &= copy;
+        REQUIRE(a == copy);
+    }
+
+    SECTION("|= is idempotent")
+    {
+        Bitset a{ "101101" };
+        const Bitset copy{ a };
+        a |= copy;
+        a |= copy;
+        a |= copy;
+        REQUIRE(a == copy);
+    }
+}
