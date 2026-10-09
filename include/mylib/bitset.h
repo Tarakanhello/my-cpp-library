@@ -878,7 +878,7 @@ template<typename WORD>
     requires std::unsigned_integral<WORD>
 void Bitset<WORD>::flip() noexcept
 {
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         m_words[i] = ~m_words[i];
     }
@@ -968,7 +968,7 @@ template<typename WORD>
     requires std::unsigned_integral<WORD>
 bool Bitset<WORD>::isZero() const noexcept
 {
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         if(static_cast<bool>(m_words[i]))
         {
@@ -1017,7 +1017,7 @@ Bitset<WORD>& Bitset<WORD>::operator&=(const Bitset& other)
         throw std::length_error("Bitset::operator &=: length is not the same");
     }
 
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         m_words[i] &= other.m_words[i];
     }
@@ -1065,7 +1065,7 @@ Bitset<WORD>& Bitset<WORD>::operator|=(const Bitset& other)
         throw std::length_error("Bitset::operator |=: length is not the same");
     }
 
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         m_words[i] |= other.m_words[i];
     }
@@ -1084,7 +1084,7 @@ Bitset<WORD>& Bitset<WORD>::operator^=(const Bitset& other)
         throw std::length_error("Bitset::operator ^=: length is not the same");
     }
 
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         m_words[i] ^= other.m_words[i];
     }
@@ -1147,7 +1147,7 @@ Bitset<WORD>& Bitset<WORD>::operator<<=(size_t shift) noexcept
     if(bitShift > 0) // сдвиг по битам
     {
         WORD carry{};
-        for(size_t i{ wordShift }; i < wordsSize(); ++i)
+        for(size_t i{ wordShift }; i < wordsNeeded(); ++i)
         {
             WORD tempCarry{ static_cast<WORD>(m_words[i] >> (numberOfDigits - bitShift)) };
             m_words[i] <<= bitShift;
@@ -1180,7 +1180,7 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
 
     if(wordShift > 0) // сдвиг по словам
     {
-        for(size_t i{}; i + wordShift < wordsSize(); ++i)
+        for(size_t i{}; i + wordShift < wordsNeeded(); ++i)
         {
             m_words[i] = m_words[i + wordShift];
         }
@@ -1217,7 +1217,7 @@ template<typename WORD>
 size_t Bitset<WORD>::popcount() const noexcept
 {
     size_t sum{};
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         sum += static_cast<size_t>(bit::popcount<WORD>(m_words[i]));
     }
@@ -1397,16 +1397,8 @@ void Bitset<WORD>::appendLSB(const Bitset& other)
      void Bitset<WORD>::removeLSB()
 {
     assert(m_bitSize > 0);
-    if(m_bitSize == 1)
-    {
-        m_words.clear();
-        m_bitSize = 0;
-        return;
-    }
-
     *this >>= 1;
-    --m_bitSize;
-    zeroOutReminder();
+    resize(--m_bitSize);
 }
 
 // ---- removeFirst ----------------------------------------------------
@@ -1415,13 +1407,7 @@ template<typename WORD>
 void Bitset<WORD>::removeMSB()
 {
     assert(m_bitSize > 0);
-    if(lastWordBits() == 1)
-    {
-        m_words.pop_back();
-    }
-
-    --m_bitSize;
-    zeroOutReminder();
+    resize(--m_bitSize);
 }
 
 // ---- resize ---------------------------------------------------------
@@ -1459,7 +1445,7 @@ void Bitset<WORD>::reverse() noexcept
         std::reverse(m_words.begin(), m_words.end());
     }
 
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         m_words[i] = bit::reverseAllBits(m_words[i]);
     }
@@ -1487,7 +1473,7 @@ template<typename WORD>
     requires std::unsigned_integral<WORD>
 void Bitset<WORD>::setAll(bool value) noexcept
 {
-    for(size_t i{}; i < wordsSize(); ++i)
+    for(size_t i{}; i < wordsNeeded(); ++i)
     {
         m_words[i] = value ? static_cast<WORD>(bit::FULL) : static_cast<WORD>(bit::ZERO);
     }
@@ -1624,6 +1610,10 @@ void Bitset<WORD>::zeroOutReminder()
     if(m_bitSize > 0)
     {
         m_words.back() &= bit::lowerMask(lastWordBits());
+    }
+    else if(m_bitSize == 0)
+    {
+        m_words.clear();
     }
 }
 
