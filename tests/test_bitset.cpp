@@ -4771,3 +4771,411 @@ TEST_CASE("Bitset queries (operator bool, isZero, popcount)",
         REQUIRE((andAB.popcount() + xorAB.popcount()) == orAB.popcount());
     }
 }
+
+// ============================================================================
+//  ЭТАП 11. Исключения и strong guarantee
+// ============================================================================
+TEST_CASE("Bitset exceptions and strong guarantee", "[bitset][exceptions]")
+{
+    // ------------------------------------------------------------------------
+    // 1. operator[] — std::out_of_range
+    // ------------------------------------------------------------------------
+    SECTION("operator[] throws out_of_range")
+    {
+        Bitset b{ 8 };
+        const Bitset& cb{ b };
+
+        REQUIRE_THROWS_AS(b[8], std::out_of_range);
+        REQUIRE_THROWS_AS(b[100], std::out_of_range);
+        REQUIRE_THROWS_AS(b[std::numeric_limits<size_t>::max()], std::out_of_range);
+        REQUIRE_THROWS_AS(cb[8], std::out_of_range);
+        REQUIRE_THROWS_AS(cb[100], std::out_of_range);
+
+        // Пустой bitset — любое обращение бросает
+        Bitset e;
+        const Bitset& ce{ e };
+        REQUIRE_THROWS_AS(e[0], std::out_of_range);
+        REQUIRE_THROWS_AS(ce[0], std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. set — std::out_of_range
+    // ------------------------------------------------------------------------
+    SECTION("set(i, value) throws out_of_range, object unchanged")
+    {
+        Bitset b{ 8 };
+        b.set(0, true);
+        b.set(7, true);
+        const Bitset copy{ b };
+
+        REQUIRE_THROWS_AS(b.set(8, true), std::out_of_range);
+        REQUIRE_THROWS_AS(b.set(8, false), std::out_of_range);
+        REQUIRE_THROWS_AS(b.set(100), std::out_of_range);
+        REQUIRE(b == copy);
+        requireInvariants(b, "set out_of_range");
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. getValue / setValue — std::out_of_range
+    // ------------------------------------------------------------------------
+    SECTION("getValue throws out_of_range, object unchanged")
+    {
+        Bitset b{ 8 };
+        b.setAll(true);
+        const Bitset copy{ b };
+
+        REQUIRE_THROWS_AS(b.getValue(0, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.getValue(4, 5), std::out_of_range);
+        REQUIRE_THROWS_AS(b.getValue(8, 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.getValue(100, 1), std::out_of_range);
+        REQUIRE(b == copy);
+        requireInvariants(b, "getValue out_of_range");
+    }
+
+    SECTION("setValue throws out_of_range, object unchanged")
+    {
+        Bitset b{ 8 };
+        b.setAll(true);
+        const Bitset copy{ b };
+
+        REQUIRE_THROWS_AS(b.setValue(Word{ 0 }, 0, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setValue(Word{ 0 }, 4, 5), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setValue(Word{ 0 }, 8, 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setValue(Word{ 0 }, 100, 1), std::out_of_range);
+        REQUIRE(b == copy);
+        requireInvariants(b, "setValue out_of_range");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Bitset(std::string) — invalid_argument
+    // ------------------------------------------------------------------------
+    SECTION("string ctor throws invalid_argument")
+    {
+        for (auto s : { "2", "10x", "abc", "  ", "10 1", "1.0", "-1", "one" })
+        {
+            INFO("s = " << s);
+            REQUIRE_THROWS_AS(Bitset(std::string(s)), std::invalid_argument);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. setFromString — invalid_argument
+    // ------------------------------------------------------------------------
+    SECTION("setFromString throws invalid_argument, object unchanged")
+    {
+        Bitset b{ "101101" };
+        const Bitset copy{ b };
+
+        for (auto s : { "10x", "2", " ", "1.0", "abc" })
+        {
+            INFO("s = " << s);
+            REQUIRE_THROWS_AS(b.setFromString(s), std::invalid_argument);
+            REQUIRE(b == copy);
+        }
+        requireInvariants(b, "setFromString invalid");
+    }
+
+    SECTION("setFromString at nonzero position throws, object unchanged")
+    {
+        Bitset b{ 16 };
+        b.setAll(true);
+        const Bitset copy{ b };
+
+        REQUIRE_THROWS_AS(b.setFromString("10x1", 4), std::invalid_argument);
+        REQUIRE(b == copy);
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. appendLSB(std::string_view) — invalid_argument
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB(string) throws invalid_argument, object unchanged")
+    {
+        Bitset b{ "101101" };
+        const Bitset copy{ b };
+
+        for (auto s : { "10x", "2", " ", "1.0", "abc" })
+        {
+            INFO("s = " << s);
+            REQUIRE_THROWS_AS(b.appendLSB(s), std::invalid_argument);
+            REQUIRE(b == copy);
+        }
+        requireInvariants(b, "appendLSB invalid");
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. prependFromString — invalid_argument
+    // ------------------------------------------------------------------------
+    SECTION("prependFromString throws invalid_argument, object unchanged")
+    {
+        Bitset b{ "101101" };
+        const Bitset copy{ b };
+
+        for (auto s : { "10x", "2", " ", "1.0", "abc" })
+        {
+            INFO("s = " << s);
+            REQUIRE_THROWS_AS(b.prependFromString(s), std::invalid_argument);
+            REQUIRE(b == copy);
+        }
+        requireInvariants(b, "prependFromString invalid");
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. appendMSB(WORD, size) — out_of_range
+    // ------------------------------------------------------------------------
+    SECTION("appendMSB(WORD, size) throws out_of_range, object unchanged")
+    {
+        Bitset b{ "101101" };
+        const Bitset copy{ b };
+
+        REQUIRE_THROWS_AS(b.appendMSB(Word{ 0 }, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.appendMSB(Word{ 0 }, WORD_BITS * 10), std::out_of_range);
+        REQUIRE(b == copy);
+        requireInvariants(b, "appendMSB out_of_range");
+    }
+
+    SECTION("appendMSB(WORD, 0) throws out_of_range, object unchanged")
+    {
+        Bitset b{ "101101" };
+        const Bitset copy{ b };
+
+        REQUIRE_THROWS_AS(b.appendMSB(Word{ 1 }, 0), std::out_of_range);
+        REQUIRE(b == copy);
+        requireInvariants(b, "appendMSB size=0");
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. appendLSB(WORD, size) — out_of_range
+    // ------------------------------------------------------------------------
+    SECTION("appendLSB(WORD, size) throws out_of_range, object unchanged")
+    {
+        Bitset b{ "101101" };
+        const Bitset copy{ b };
+
+        REQUIRE_THROWS_AS(b.appendLSB(Word{ 0 }, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.appendLSB(Word{ 0 }, WORD_BITS * 10), std::out_of_range);
+        REQUIRE(b == copy);
+        requireInvariants(b, "appendLSB out_of_range");
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. BitReference ctor — out_of_range
+    // ------------------------------------------------------------------------
+    SECTION("BitReference ctor throws out_of_range on offset >= WORD_BITS")
+    {
+        using Ref = Bitset::BitReference;
+        Bitset b{ WORD_BITS };
+        Word* ptr{ const_cast<Word*>(b.getData()) };
+
+        REQUIRE_THROWS_AS(Ref(ptr, WORD_BITS), std::out_of_range);
+        REQUIRE_THROWS_AS(Ref(ptr, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(Ref(ptr, 1000), std::out_of_range);
+        REQUIRE_THROWS_AS(Ref(ptr, std::numeric_limits<size_t>::max()),
+                          std::out_of_range);
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. Побитовые операции на разных размерах — length_error
+    // ------------------------------------------------------------------------
+    SECTION("&= throws length_error, object unchanged")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "101" };
+        Bitset c{ 100 };
+        const Bitset copy{ a };
+
+        REQUIRE_THROWS_AS(a &= b, std::length_error);
+        REQUIRE(a == copy);
+
+        REQUIRE_THROWS_AS(a &= c, std::length_error);
+        REQUIRE(a == copy);
+        requireInvariants(a, "&= length_error");
+    }
+
+    SECTION("|= throws length_error, object unchanged")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "101" };
+        const Bitset copy{ a };
+
+        REQUIRE_THROWS_AS(a |= b, std::length_error);
+        REQUIRE(a == copy);
+        requireInvariants(a, "|= length_error");
+    }
+
+    SECTION("^= throws length_error, object unchanged")
+    {
+        Bitset a{ "1010" };
+        Bitset b{ "101" };
+        const Bitset copy{ a };
+
+        REQUIRE_THROWS_AS(a ^= b, std::length_error);
+        REQUIRE(a == copy);
+        requireInvariants(a, "^= length_error");
+    }
+
+    SECTION("bitwise with empty vs non-empty throws length_error")
+    {
+        Bitset e;
+        Bitset b{ "1" };
+
+        REQUIRE_THROWS_AS(e &= b, std::length_error);
+        REQUIRE_THROWS_AS(e |= b, std::length_error);
+        REQUIRE_THROWS_AS(e ^= b, std::length_error);
+
+        Bitset e2;
+        Bitset b2{ "1" };
+        REQUIRE_THROWS_AS(b2 &= e2, std::length_error);
+        REQUIRE_THROWS_AS(b2 |= e2, std::length_error);
+        REQUIRE_THROWS_AS(b2 ^= e2, std::length_error);
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. what() — сообщения содержат имя операции
+    // ------------------------------------------------------------------------
+    SECTION("exception what() contains method name")
+    {
+        // Проверяем, что what() непустой и содержит осмысленный текст.
+        // Точный формат может отличаться, поэтому проверяем подстроку.
+
+        // operator[]
+        try { Bitset b{ 4 }; (void)b[10]; FAIL("expected out_of_range"); }
+        catch (const std::out_of_range& e)
+        {
+            const std::string msg{ e.what() };
+            REQUIRE_FALSE(msg.empty());
+        }
+
+        // Bitset(string)
+        try { Bitset b{ std::string("abc") }; FAIL("expected invalid_argument"); }
+        catch (const std::invalid_argument& e)
+        {
+            REQUIRE_FALSE(std::string(e.what()).empty());
+        }
+
+        // &= разных размеров
+        try
+        {
+            Bitset a{ "10" }; Bitset b{ "1" };
+            a &= b;
+            FAIL("expected length_error");
+        }
+        catch (const std::length_error& e)
+        {
+            REQUIRE_FALSE(std::string(e.what()).empty());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 13. Комбинированный strong guarantee: серия исключений подряд
+    // ------------------------------------------------------------------------
+    SECTION("object survives a series of throwing calls unchanged")
+    {
+        Bitset b{ "10110101" };
+        const Bitset snapshot{ b };
+
+        REQUIRE_THROWS_AS(b[100], std::out_of_range);
+        REQUIRE_THROWS_AS(b.set(100), std::out_of_range);
+        REQUIRE_THROWS_AS(b.getValue(0, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setValue(Word{ 0 }, 100, 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setFromString("10x"), std::invalid_argument);
+        REQUIRE_THROWS_AS(b.prependFromString("2"), std::invalid_argument);
+        REQUIRE_THROWS_AS(b.appendLSB("x"), std::invalid_argument);
+        REQUIRE_THROWS_AS(b.appendMSB(Word{ 0 }, WORD_BITS + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.appendLSB(Word{ 0 }, WORD_BITS + 1), std::out_of_range);
+
+        Bitset other{ "1" };
+        REQUIRE_THROWS_AS(b &= other, std::length_error);
+
+        REQUIRE(b == snapshot);
+        requireInvariants(b, "series of throws");
+    }
+
+    // ------------------------------------------------------------------------
+    // 14. Успешный вызов после исключения работает корректно
+    // ------------------------------------------------------------------------
+    SECTION("object is fully usable after a throw")
+    {
+        Bitset b{ "1010" };
+
+        REQUIRE_THROWS_AS(b.set(100), std::out_of_range);
+        b.set(0, true);
+        REQUIRE(b[0] == true);
+
+        REQUIRE_THROWS_AS(b.setFromString("x"), std::invalid_argument);
+        b.setFromString("11", 2);
+        REQUIRE(b.equals("1111"));
+
+        Bitset other{ "1" };
+        REQUIRE_THROWS_AS(b &= other, std::length_error);
+        Bitset same{ "1111" };
+        b &= same;
+        REQUIRE(b.equals("1111"));
+        requireInvariants(b, "after throw usable");
+    }
+
+    // ------------------------------------------------------------------------
+    // 15. noexcept — противоположная сторона
+    // ------------------------------------------------------------------------
+    SECTION("non-throwing methods remain noexcept")
+    {
+        STATIC_REQUIRE(noexcept(std::declval<Bitset&>().clear()));
+        STATIC_REQUIRE(noexcept(std::declval<Bitset&>().flip()));
+        STATIC_REQUIRE(noexcept(std::declval<Bitset&>().reverse()));
+        STATIC_REQUIRE(noexcept(std::declval<Bitset&>().setAll(true)));
+        STATIC_REQUIRE(noexcept(std::declval<Bitset&>() <<= 1));
+        STATIC_REQUIRE(noexcept(std::declval<Bitset&>() >>= 1));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().equals(std::string_view{})));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() == std::declval<const Bitset&>()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>() <=> std::declval<const Bitset&>()));
+    }
+
+    // ------------------------------------------------------------------------
+    // 16. Empty bitset: исключения по границам
+    // ------------------------------------------------------------------------
+    SECTION("empty bitset throws only where expected")
+    {
+        Bitset e;
+
+        REQUIRE_THROWS_AS(e[0], std::out_of_range);
+        REQUIRE_THROWS_AS(e.set(0), std::out_of_range);
+
+        // Не бросающие на пустом
+        REQUIRE_NOTHROW(e.clear());
+        REQUIRE_NOTHROW(e.flip());
+        REQUIRE_NOTHROW(e.reverse());
+        REQUIRE_NOTHROW(e.setAll(true));
+        REQUIRE_NOTHROW(e <<= 5);
+        REQUIRE_NOTHROW(e >>= 5);
+
+        // Побитовые на пустом vs пустом — тоже ok
+        Bitset e2;
+        REQUIRE_NOTHROW(e &= e2);
+        REQUIRE_NOTHROW(e |= e2);
+        REQUIRE_NOTHROW(e ^= e2);
+
+        requireInvariants(e, "empty after non-throwing");
+    }
+
+    // ------------------------------------------------------------------------
+    // 17. Диагностика: типы исключений не пересекаются
+    // ------------------------------------------------------------------------
+    SECTION("out_of_range vs invalid_argument vs length_error are distinct")
+    {
+        // Проверяем, что контейнер не бросает, например, generic std::runtime_error
+        // или std::exception вместо конкретного типа.
+
+        Bitset b{ 8 };
+
+        // out_of_range — не std::invalid_argument, не std::length_error
+        REQUIRE_THROWS_AS(b[10], std::out_of_range);
+        REQUIRE_THROWS_AS(b[10], std::logic_error);   // out_of_range derives from logic_error
+
+        // invalid_argument — не std::out_of_range
+        REQUIRE_THROWS_AS(Bitset(std::string("x")), std::invalid_argument);
+
+        // length_error — не std::out_of_range, не std::invalid_argument
+        Bitset x{ "10" };
+        Bitset y{ "1" };
+        REQUIRE_THROWS_AS(x &= y, std::length_error);
+    }
+}
