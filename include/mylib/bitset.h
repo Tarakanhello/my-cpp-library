@@ -654,7 +654,7 @@ public:
          * @brief Left shift assignment.
          * @param shift Number of bits to shift (moves left).
          * @return *this.
-         * @note Shift amount is reduced modulo m_bitSize.
+         * @note If shift == 0, no-op. If shift >= size(), all bits are set to zero.
          */
     Bitset& operator<<=(size_t shift) noexcept;
 
@@ -662,7 +662,7 @@ public:
          * @brief Right shift assignment.
          * @param shift Number of bits to shift (moves right).
          * @return *this.
-         * @note Shift amount is reduced modulo m_bitSize.
+         * @note If shift == 0, no-op. If shift >= size(), all bits are set to zero.
          */
     Bitset& operator>>=(size_t shift) noexcept;
 
@@ -1118,10 +1118,14 @@ Bitset<WORD>& Bitset<WORD>::operator<<=(size_t shift) noexcept
     {
         return *this;   // ничего не делаем, если набор пуст
     }
+    if(shift >= m_bitSize)
+    {
+        setAll(false);
+        return *this;
+    }
 
-    const size_t normalShift{ shift % m_bitSize };
-    const size_t wordShift{ index(normalShift) };
-    const size_t bitShift{ offset(normalShift) };
+    const size_t wordShift{ index(shift) };
+    const size_t bitShift{ offset(shift) };
 
     if(wordShift > 0) // сдвиг по словам
     {
@@ -1133,7 +1137,6 @@ Bitset<WORD>& Bitset<WORD>::operator<<=(size_t shift) noexcept
     }
     if(bitShift > 0) // сдвиг по битам
     {
-        // Пример: 10000000 | 00000011 <<= 4 -> 00000000 | 00111000
         WORD carry{};
         for(size_t i{ wordShift }; i < wordsSize(); ++i)
         {
@@ -1157,10 +1160,14 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
     {
         return *this;   // ничего не делаем, если набор пуст
     }
+    if(shift >= m_bitSize)
+    {
+        setAll(false);
+        return *this;
+    }
 
-    const size_t normalShift{ shift % m_bitSize };
-    const size_t wordShift{ index(normalShift) };
-    const size_t bitShift{ offset(normalShift) };
+    const size_t wordShift{ index(shift) };
+    const size_t bitShift{ offset(shift) };
 
     if(wordShift > 0) // сдвиг по словам
     {
@@ -1173,7 +1180,6 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
     }
     if(bitShift > 0)
     {
-        //  00000101 | 00111000 >>= 4 -> 10000000 | 00000011
         WORD carry{};
         for(size_t i{ wordsSize() - wordShift }; i-- > 0; )
         {
