@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_template_test_macros.hpp>
 
 #include <array>
 #include <bit>
@@ -5177,5 +5178,297 @@ TEST_CASE("Bitset exceptions and strong guarantee", "[bitset][exceptions]")
         Bitset x{ "10" };
         Bitset y{ "1" };
         REQUIRE_THROWS_AS(x &= y, std::length_error);
+    }
+}
+
+// ============================================================================
+//  ЭТАП 12. Параметризация по WORD
+// ============================================================================
+TEMPLATE_TEST_CASE("Bitset works for all WORD types", "[bitset][template]",
+                   std::uint8_t, std::uint16_t, std::uint32_t, std::uint64_t)
+{
+    using W = TestType;
+    using B = mylib::Bitset<W>;
+    constexpr size_t WB{ std::numeric_limits<W>::digits };
+
+    // Хелперы локально, чтобы не зависеть от bitset_test::*
+    auto inv = [](const B& b, const char* ctx)
+    {
+        INFO("ctx = " << ctx);
+        INFO("size = " << b.size() << ", words = " << b.wordsSize());
+        if (b.size() == 0)
+        {
+            REQUIRE(b.wordsSize() == 0);
+            REQUIRE(b.getData() == nullptr);
+            REQUIRE(b.garbageBits() == 0);
+            return;
+        }
+        const size_t expWords{ (b.size() + WB - 1) / WB };
+        REQUIRE(b.wordsSize() == expWords);
+        const size_t lastBits{ (b.size() % WB == 0) ? WB : (b.size() % WB) };
+        REQUIRE(b.lastWordBits() == lastBits);
+        REQUIRE(b.garbageBits() == WB - lastBits);
+
+        const W lastWord{ b.getData()[expWords - 1] };
+        const W mask{ (lastBits == WB)
+                         ? static_cast<W>(~W{ 0 })
+                         : static_cast<W>((W{ 1 } << lastBits) - W{ 1 }) };
+        REQUIRE((lastWord & static_cast<W>(~mask)) == 0);
+    };
+
+    // ------------------------------------------------------------------------
+    // 1. Граничные размеры вокруг границы слова
+    // ------------------------------------------------------------------------
+    SECTION("construction with boundary sizes")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 0u, 1u, WB - 1, WB, WB + 1, 2 * WB, 2 * WB + 1, 3 * WB + 5 })
+        {
+            INFO("n = " << n);
+            B b{ n };
+            REQUIRE(b.size() == n);
+            REQUIRE(b.isZero());
+            REQUIRE(b.popcount() == 0);
+            inv(b, "boundary size");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Строковые преобразования round-trip
+    // ------------------------------------------------------------------------
+    SECTION("string round-trip")
+    {
+        std::vector<std::string> strings{
+            "",
+            "0",
+            "1",
+            "10",
+            "1010",
+            std::string(WB, '1'),
+            std::string(WB, '0') + "1",
+            std::string(WB + 1, '1')
+        };
+        for (const auto& str : strings)
+        {
+            INFO("str.size() = " << str.size());
+            B b{ str };
+            REQUIRE(b.size() == str.size());
+            REQUIRE(b.toString() == str);
+            REQUIRE(b.equals(str));
+            inv(b, "string round-trip");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. set/get по границам слов
+    // ------------------------------------------------------------------------
+    SECTION("bit set/get across word boundary")
+    {
+        B b{ 2 * WB + 3 };
+        const std::vector<size_t> positions{ 0u, WB - 1, WB, WB + 1,
+                                            2 * WB - 1, 2 * WB, 2 * WB + 2 };
+        for (size_t i : positions)
+        {
+            INFO("i = " << i);
+            b.set(i, true);
+            REQUIRE(b[i] == true);
+            REQUIRE(b.popcount() == 1);
+            b.set(i, false);
+            REQUIRE(b[i] == false);
+            REQUIRE(b.popcount() == 0);
+        }
+        inv(b, "boundary set/get");
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. setAll / flip / popcount
+    // ------------------------------------------------------------------------
+    SECTION("setAll + flip + popcount")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WB - 1, WB, WB + 1, 2 * WB + 7 })
+        {
+            INFO("n = " << n);
+            B b{ n };
+            b.setAll(true);
+            REQUIRE(b.popcount() == n);
+            inv(b, "setAll true");
+
+            b.flip();
+            REQUIRE(b.popcount() == 0);
+            REQUIRE(b.isZero());
+            inv(b, "flip back");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. appendMSB / appendLSB на границе слова
+    // ------------------------------------------------------------------------
+    SECTION("appendMSB crosses word boundary")
+    {
+        B b;
+        for (size_t i = 0; i < WB; ++i)
+            b.appendMSB(true);
+        REQUIRE(b.size() == WB);
+        REQUIRE(b.popcount() == WB);
+        inv(b, "appendMSB fill word");
+
+        b.appendMSB(false);
+        REQUIRE(b.size() == WB + 1);
+        REQUIRE(b.wordsSize() == 2);
+        REQUIRE(b.lastWordBits() == 1);
+        inv(b, "appendMSB cross");
+    }
+
+    SECTION("appendLSB crosses word boundary")
+    {
+        B b;
+        for (size_t i = 0; i < WB; ++i)
+            b.appendLSB(true);
+        REQUIRE(b.size() == WB);
+        b.appendLSB(false);
+        REQUIRE(b.size() == WB + 1);
+        REQUIRE(b.wordsSize() == 2);
+        REQUIRE(b.lastWordBits() == 1);
+        inv(b, "appendLSB cross");
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. getValue / setValue на границе слов
+    // ------------------------------------------------------------------------
+    SECTION("getValue/setValue across word boundary")
+    {
+        B b{ 2 * WB };
+        const W v{ static_cast<W>((W{ 1 } << (WB - 2)) | W{ 3 }) };
+        // Поле длиной WB-1, начинающееся на bit 1: займёт bits 1..WB-1
+        // Возьмём корректный размер поля WB/2, начиная с WB-1 (переход через границу)
+        const size_t half{ WB / 2 };
+        const W val{ static_cast<W>((W{ 1 } << (half - 1)) | W{ 1 }) }; // 100..001
+        b.setValue(val, WB - 1, half);
+
+        REQUIRE(b.getValue(WB - 1, half) == val);
+        REQUIRE(b.popcount() == static_cast<size_t>(std::popcount(val)));
+        inv(b, "setValue/getValue cross");
+
+        (void)v;
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Побитовые операции на границе слова
+    // ------------------------------------------------------------------------
+    SECTION("bitwise ops across boundary")
+    {
+        B a{ 2 * WB };
+        B b{ 2 * WB };
+        a.setAll(true);
+        b.setAll(true);
+
+        B c{ a }; c &= b;
+        REQUIRE(c == a);
+        REQUIRE(c.popcount() == 2 * WB);
+        inv(c, "&=");
+
+        B d{ a }; d ^= b;
+        REQUIRE(d.isZero());
+        inv(d, "^=");
+
+        B e{ a }; e |= b;
+        REQUIRE(e == a);
+        inv(e, "|=");
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Сдвиги на границе слова
+    // ------------------------------------------------------------------------
+    SECTION("shift by WB moves bit 0 to bit WB")
+    {
+        B b{ 2 * WB };
+        b.set(0, true);
+        b <<= WB;
+        REQUIRE(b[WB] == true);
+        REQUIRE(b.popcount() == 1);
+        inv(b, "<<= WB");
+
+        B c{ 2 * WB };
+        c.set(2 * WB - 1, true);
+        c >>= WB;
+        REQUIRE(c[WB - 1] == true);
+        REQUIRE(c.popcount() == 1);
+        inv(c, ">>= WB");
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Сравнения
+    // ------------------------------------------------------------------------
+    SECTION("comparisons across boundaries")
+    {
+        B a{ 2 * WB };
+        B b{ 2 * WB };
+        a.setValue(W{ 1 }, 0, WB);
+        b.setValue(W{ 1 }, WB, WB);
+
+        // Старшее слово решает: b > a
+        REQUIRE(a < b);
+        REQUIRE(b > a);
+        REQUIRE(a != b);
+
+        // Равенство
+        B c{ a };
+        REQUIRE(a == c);
+        inv(a, "comparison");
+        inv(b, "comparison");
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. Ошибки для этого WORD
+    // ------------------------------------------------------------------------
+    SECTION("exceptions respect WORD type")
+    {
+        B b{ 2 * WB };
+
+        REQUIRE_THROWS_AS(b[2 * WB], std::out_of_range);
+        REQUIRE_THROWS_AS(b.set(2 * WB), std::out_of_range);
+        REQUIRE_THROWS_AS(b.getValue(0, WB + 1), std::out_of_range);
+        REQUIRE_THROWS_AS(b.setValue(W{ 0 }, 0, WB + 1), std::out_of_range);
+
+        B small{ WB - 1 };
+        REQUIRE_THROWS_AS(b &= small, std::length_error);
+        REQUIRE_THROWS_AS(b |= small, std::length_error);
+        REQUIRE_THROWS_AS(b ^= small, std::length_error);
+
+        inv(b, "after throws");
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. Remove MSB/LSB через границу слова
+    // ------------------------------------------------------------------------
+    SECTION("removeMSB/removeLSB across boundary")
+    {
+        B b{ 2 * WB + 3 };
+        b.setAll(true);
+        REQUIRE(b.popcount() == 2 * WB + 3);
+
+        b.removeMSB();
+        REQUIRE(b.size() == 2 * WB + 2);
+        REQUIRE(b.popcount() == 2 * WB + 2);
+        inv(b, "removeMSB");
+
+        b.removeLSB();
+        REQUIRE(b.size() == 2 * WB + 1);
+        REQUIRE(b.popcount() == 2 * WB + 1);
+        inv(b, "removeLSB");
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. Маска for WORD: all-ones во всех словах
+    // ------------------------------------------------------------------------
+    SECTION("all-ones across multiple words")
+    {
+        B b{ 3 * WB };
+        b.setAll(true);
+        REQUIRE(b.popcount() == 3 * WB);
+        for (size_t i = 0; i < 3; ++i)
+        {
+            REQUIRE(b.getData()[i] == static_cast<W>(~W{ 0 }));
+        }
+        inv(b, "all ones 3 words");
     }
 }
