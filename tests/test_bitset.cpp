@@ -4364,32 +4364,89 @@ TEST_CASE("Bitset shift operations", "[bitset][shifts]")
 
                     a <<= p;
                     a <<= q;
-
                     b <<= (p + q);
-
                     REQUIRE(a == b);
                 }
         }
     }
 
-    SECTION("<<= and >>= are inverses when no bit lost")
+    SECTION("<<= p then <<= q == 0 when p + q >= size")
     {
-        Bitset a{ "0011" };
-        const Bitset copy{ a };
+        Bitset a{ "1010" };
         a <<= 2;
-        a >>= 2;
-        REQUIRE(a == copy);
-        requireInvariants(a, "<<=k then >>=k inverse");
+        a <<= 2;
+        REQUIRE(a.isZero());
+
+        Bitset b{ "1010" };
+        b >>= 2;
+        b >>= 2;
+        REQUIRE(b.isZero());
     }
 
-    SECTION("double flip via shifts for symmetric input")
+    // ------------------------------------------------------------------------
+    // 11. Новая семантика: shift >= size() -> все биты 0
+    // ------------------------------------------------------------------------
+    SECTION("shift by size() zeroes all bits")
     {
-        Bitset a{ "1111" };
-        Bitset b{ a };
-        b <<= 2;
-        b >>= 2;
-        // a = "1111", b после <<=2 = "1100", после >>=2 = "0011"
-        REQUIRE(b.equals("0011"));
+        for (auto s : { "1", "10", "1010", "101101" })
+        {
+            INFO("s = " << s);
+            Bitset a{ std::string(s) };
+            a <<= a.size();
+            REQUIRE(a.isZero());
+            REQUIRE(a.size() == std::string(s).size());
+            requireInvariants(a, "<<=size");
+
+            Bitset b{ std::string(s) };
+            b >>= b.size();
+            REQUIRE(b.isZero());
+            REQUIRE(b.size() == std::string(s).size());
+            requireInvariants(b, ">>=size");
+        }
+    }
+
+    SECTION("shift by size()+k zeroes all bits")
+    {
+        for (size_t k : { 1u, 5u, 100u })
+        {
+            INFO("k = " << k);
+            Bitset a{ "1010" };
+            a <<= 4 + k;
+            REQUIRE(a.isZero());
+
+            Bitset b{ "1010" };
+            b >>= 4 + k;
+            REQUIRE(b.isZero());
+        }
+    }
+
+    SECTION("shift by SIZE_MAX zeroes all bits")
+    {
+        Bitset a{ "1010" };
+        REQUIRE_NOTHROW(a <<= std::numeric_limits<size_t>::max());
+        REQUIRE(a.isZero());
+
+        Bitset b{ "1010" };
+        REQUIRE_NOTHROW(b >>= std::numeric_limits<size_t>::max());
+        REQUIRE(b.isZero());
+
+        Bitset e;
+        REQUIRE_NOTHROW(e <<= std::numeric_limits<size_t>::max());
+        REQUIRE_NOTHROW(e >>= std::numeric_limits<size_t>::max());
+        REQUIRE(e.size() == 0);
+    }
+
+    SECTION("shift by size()-1 moves one bit to the edge")
+    {
+        Bitset a{ 8 };
+        a.set(0, true);
+        a <<= 7;
+        REQUIRE(a.equals("10000000"));
+
+        Bitset b{ 8 };
+        b.set(7, true);
+        b >>= 7;
+        REQUIRE(b.equals("00000001"));
     }
 
     // ------------------------------------------------------------------------
@@ -4409,5 +4466,308 @@ TEST_CASE("Bitset shift operations", "[bitset][shifts]")
         // "111111110000000000000000" >>= 8:
         // верхние 8 бит становятся 0, остальное сдвигается вниз
         REQUIRE(bs.toString() == "000000001111111100000000");
+    }
+}
+
+// ============================================================================
+//  ЭТАП 10. Запросы: operator bool, isZero, popcount
+// ============================================================================
+TEST_CASE("Bitset queries (operator bool, isZero, popcount)",
+          "[bitset][queries]")
+{
+    // ------------------------------------------------------------------------
+    // 1. operator bool
+    // ------------------------------------------------------------------------
+    SECTION("operator bool is false for empty")
+    {
+        Bitset e;
+        REQUIRE_FALSE(static_cast<bool>(e));
+        REQUIRE(e.isZero());
+        REQUIRE(e.popcount() == 0);
+    }
+
+    SECTION("operator bool is false for all-zero of any size")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, 2u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         2 * WORD_BITS + 3, 100u, 1000u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            REQUIRE_FALSE(static_cast<bool>(b));
+            REQUIRE(b.isZero());
+            REQUIRE(b.popcount() == 0);
+            requireInvariants(b, "all-zero queries");
+        }
+    }
+
+    SECTION("operator bool is true for a single set bit at each position")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, 8u, WORD_BITS, WORD_BITS + 5, 2 * WORD_BITS })
+        {
+            INFO("n = " << n);
+
+            // Все позиции в [0, n), но не больше 4 разных — берём уникальные
+            std::vector<size_t> positions;
+            for (size_t i : std::initializer_list<size_t>{ 0u, 1u, n / 2, n - 1 })
+            {
+                if (i < n &&
+                    std::find(positions.begin(), positions.end(), i) == positions.end())
+                {
+                    positions.push_back(i);
+                }
+            }
+
+            for (size_t i : positions)
+            {
+                INFO("i = " << i);
+                Bitset b{ n };
+                b.set(i, true);
+                REQUIRE(static_cast<bool>(b));
+                REQUIRE_FALSE(b.isZero());
+                REQUIRE(b.popcount() == 1);
+                requireInvariants(b, "single set bit");
+            }
+        }
+    }
+
+    SECTION("operator bool becomes false after clearing the last set bit")
+    {
+        Bitset b{ 64 };
+        b.set(0, true);
+        b.set(63, true);
+        REQUIRE(static_cast<bool>(b));
+
+        b.set(0, false);
+        REQUIRE(static_cast<bool>(b));
+        b.set(63, false);
+        REQUIRE_FALSE(static_cast<bool>(b));
+        REQUIRE(b.isZero());
+        REQUIRE(b.popcount() == 0);
+        requireInvariants(b, "last set bit cleared");
+    }
+
+    SECTION("operator bool is explicit")
+    {
+        // Проверка через концепт: implicit conversion в bool не должна компилироваться
+        STATIC_REQUIRE(std::is_constructible_v<bool, Bitset>);
+        STATIC_REQUIRE_FALSE(std::is_convertible_v<Bitset, bool>);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. isZero
+    // ------------------------------------------------------------------------
+    SECTION("isZero is true iff popcount == 0")
+    {
+        std::vector<std::string> strings{
+            "0", "1", "00", "01", "10", "11",
+            "0000", "0001", "1000", "1111",
+            "0000000000000000", "0000000000000001"
+        };
+        for (const auto& s : strings)
+        {
+            INFO("s = " << s);
+            Bitset b{ s };
+            REQUIRE(b.isZero() == (b.popcount() == 0));
+            REQUIRE(b.isZero() == (s.find('1') == std::string::npos));
+        }
+    }
+
+    SECTION("isZero after setAll")
+    {
+        Bitset b{ 130 };
+        b.setAll(true);
+        REQUIRE_FALSE(b.isZero());
+
+        b.setAll(false);
+        REQUIRE(b.isZero());
+
+        b.set(129, true);
+        REQUIRE_FALSE(b.isZero());
+
+        b.clear();
+        REQUIRE(b.isZero());
+    }
+
+    SECTION("isZero after flip")
+    {
+        Bitset b{ 100 };       // все нули
+        REQUIRE(b.isZero());
+        b.flip();
+        REQUIRE_FALSE(b.isZero());
+        b.flip();
+        REQUIRE(b.isZero());
+    }
+
+    SECTION("isZero after shifts")
+    {
+        Bitset b{ "1000" };
+        b >>= 3;                // "1000" -> "0001"
+        REQUIRE_FALSE(b.isZero());
+
+        b >>= 1;                // "0001" -> "0000"
+        REQUIRE(b.isZero());
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. popcount
+    // ------------------------------------------------------------------------
+    SECTION("popcount on hand-crafted strings")
+    {
+        struct Case { const char* s; size_t expected; };
+        for (auto c : std::initializer_list<Case>{
+                                                  { "0", 0 }, { "1", 1 },
+                                                  { "10", 1 }, { "11", 2 },
+                                                  { "1010", 2 }, { "11110000", 4 },
+                                                  { "11111111", 8 }, { "00000000", 0 },
+                                                  { "10000001", 2 }, { "1010101010", 5 } })
+        {
+            INFO("s = " << c.s);
+            Bitset b{ std::string(c.s) };
+            REQUIRE(b.popcount() == c.expected);
+            requireInvariants(b, "popcount crafted");
+        }
+    }
+
+    SECTION("popcount on all-ones for every boundary size")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, 2u, WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                         2 * WORD_BITS, 2 * WORD_BITS + 7, 100u, 1000u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.setAll(true);
+            REQUIRE(b.popcount() == n);
+            requireInvariants(b, "popcount all-ones");
+        }
+    }
+
+    SECTION("popcount agrees with std::popcount per word")
+    {
+        std::vector<Word> words{
+            0x0000000000000000ull,
+            0x0000000000000001ull,
+            0xFFFFFFFFFFFFFFFFull,
+            0xAAAAAAAAAAAAAAAAull,
+            0x5555555555555555ull,
+            0x123456789ABCDEF0ull
+        };
+        Bitset b{ words };
+
+        size_t expected{ 0 };
+        for (Word w : words) expected += std::popcount(w);
+        REQUIRE(b.popcount() == expected);
+        requireInvariants(b, "popcount per word");
+    }
+
+    SECTION("popcount after flip on partial word")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 1u, WORD_BITS - 1, WORD_BITS + 3, 2 * WORD_BITS + 5 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            REQUIRE(b.popcount() == 0);
+            b.flip();
+            REQUIRE(b.popcount() == n);       // все валидные биты == 1
+            requireInvariants(b, "popcount flip");
+        }
+    }
+
+    SECTION("popcount after clear / setAll round-trips")
+    {
+        Bitset b{ 200 };
+        b.setAll(true);
+        REQUIRE(b.popcount() == 200);
+        b.clear();
+        REQUIRE(b.popcount() == 0);
+        b.setAll(false);
+        REQUIRE(b.popcount() == 0);
+        b.set(199, true);
+        REQUIRE(b.popcount() == 1);
+        b.setAll(true);
+        REQUIRE(b.popcount() == 200);
+        requireInvariants(b, "popcount round-trips");
+    }
+
+    SECTION("popcount after each bit toggle")
+    {
+        Bitset b{ 32 };
+        for (size_t i = 0; i < 32; ++i)
+        {
+            b.set(i, true);
+            INFO("i = " << i);
+            REQUIRE(b.popcount() == i + 1);
+        }
+        for (size_t i = 0; i < 32; ++i)
+        {
+            b.set(i, false);
+            INFO("i = " << i);
+            REQUIRE(b.popcount() == 31 - i);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Согласованность трёх запросов
+    // ------------------------------------------------------------------------
+    SECTION("bool(b) == !isZero(b) == (popcount(b) != 0)")
+    {
+        std::vector<std::string> strings{
+            "", "0", "1", "10", "11", "0000",
+            "1010", "11110000", "00000001",
+            "1111111111111111", "1000000000000000"
+        };
+        for (const auto& s : strings)
+        {
+            INFO("s = " << s);
+            Bitset b{ s };
+            const bool bb{ static_cast<bool>(b) };
+            const bool iz{ b.isZero() };
+            const size_t pc{ b.popcount() };
+
+            REQUIRE(bb == !iz);
+            REQUIRE(bb == (pc != 0));
+            REQUIRE(iz == (pc == 0));
+        }
+    }
+
+    SECTION("popcount <= size() always")
+    {
+        for (size_t n : std::initializer_list<size_t>{ 0u, 1u, 5u, WORD_BITS, WORD_BITS + 3, 2 * WORD_BITS + 1 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.setAll(true);
+            REQUIRE(b.popcount() <= b.size());
+
+            b.flip();
+            REQUIRE(b.popcount() <= b.size());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. noexcept
+    // ------------------------------------------------------------------------
+    SECTION("query methods are noexcept")
+    {
+        STATIC_REQUIRE(noexcept(static_cast<bool>(std::declval<const Bitset&>())));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().isZero()));
+        STATIC_REQUIRE(noexcept(std::declval<const Bitset&>().popcount()));
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. popcount как эталон для побитовых операций
+    // ------------------------------------------------------------------------
+    SECTION("popcount identities with bitwise ops")
+    {
+        Bitset a{ "101101" };
+        Bitset b{ "110011" };
+
+        Bitset andAB{ a }; andAB &= b;
+        Bitset orAB{ a }; orAB |= b;
+        Bitset xorAB{ a }; xorAB ^= b;
+
+        REQUIRE(a.popcount() + b.popcount() ==
+                andAB.popcount() + orAB.popcount());
+        REQUIRE(xorAB.popcount() == orAB.popcount() - andAB.popcount());
+        REQUIRE((andAB.popcount() + xorAB.popcount()) == orAB.popcount());
     }
 }
