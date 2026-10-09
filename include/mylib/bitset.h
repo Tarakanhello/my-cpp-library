@@ -282,6 +282,15 @@ public:
          */
     size_t wordsSize() const noexcept;
 
+    /**
+     * @brief (shrink-to-fit).
+     * @throw std::bad_alloc if resize needed.
+     */
+    void shrink_to_fit()
+    {
+        m_words.shrink_to_fit();
+    }
+
     // ================================================================
     //  Element access
     // ================================================================
