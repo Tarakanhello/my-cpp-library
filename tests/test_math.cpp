@@ -24,4 +24,12 @@ TEST_CASE("Целочисленное деление с округлением �
         REQUIRE_THROWS_WITH(mylib::math::ceiling(100, 0),
                             Catch::Matchers::ContainsSubstring("division by zero"));
     }
+
+    SECTION("Деление отрицательного числа")
+    {
+        REQUIRE(mylib::math::floor(-1, 4) == -1);
+        REQUIRE(mylib::math::floor(-4, 4) == -1);
+        REQUIRE(mylib::math::floor(-5, 4) == -2);
+        REQUIRE(mylib::math::floor(5, 4) == 1);
+    }
 }

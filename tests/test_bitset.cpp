@@ -6000,3 +6000,416 @@ TEST_CASE("Bitset property-based invariants", "[bitset][property]")
         }
     }
 }
+
+// ============================================================================
+//  ЭТАП 15. Константный итератор
+// ============================================================================
+TEST_CASE("Bitset const_iterator", "[bitset][iterator]")
+{
+    using It = Bitset::const_iterator;
+
+    // ------------------------------------------------------------------------
+    // 0. Соглашение об индексах (напоминание, а не тест):
+    //    Bitset[0]      == LSB (младший бит)
+    //    Bitset[size-1] == MSB (старший бит)
+    //    Итератор идёт в порядке индексов: 0, 1, 2, ..., size-1.
+    //    Порядок итерации — LSB-first, ОБРАТЕН порядку toString() (MSB-first).
+    // ------------------------------------------------------------------------
+
+    // ------------------------------------------------------------------------
+    // 1. type traits
+    // ------------------------------------------------------------------------
+    SECTION("iterator typedefs are correct")
+    {
+        STATIC_REQUIRE(std::is_same_v<
+            typename std::iterator_traits<It>::iterator_category,
+            std::random_access_iterator_tag>);
+        STATIC_REQUIRE(std::is_same_v<
+            typename std::iterator_traits<It>::value_type, bool>);
+        STATIC_REQUIRE(std::is_same_v<
+            typename std::iterator_traits<It>::reference, bool>);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. begin / end / cbegin / cend
+    // ------------------------------------------------------------------------
+    SECTION("begin/cbegin/cend on non-empty")
+    {
+        Bitset b{ "1010" };
+        const Bitset& cb{ b };
+
+        REQUIRE(cb.begin() != cb.end());
+        REQUIRE(cb.cbegin() != cb.cend());
+        REQUIRE(std::distance(cb.begin(), cb.end()) == 4);
+        REQUIRE(std::distance(cb.cbegin(), cb.cend()) == 4);
+    }
+
+    SECTION("begin == end on empty")
+    {
+        Bitset e;
+        const Bitset& ce{ e };
+        REQUIRE(ce.begin() == ce.end());
+        REQUIRE(ce.cbegin() == ce.cend());
+        REQUIRE(std::distance(ce.begin(), ce.end()) == 0);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Порядок обхода: LSB-first (совпадает с индексным порядком, т.е.
+    //    итерация эквивалентна for i in [0..size): bitset[i])
+    // ------------------------------------------------------------------------
+    SECTION("iteration order equals index order 0..size-1 (LSB-first)")
+    {
+        Bitset b{ "1011" };   // b[0]=1, b[1]=1, b[2]=0, b[3]=1
+        const Bitset& cb{ b };
+
+        std::string collected;
+        for (auto it = cb.begin(); it != cb.end(); ++it)
+        {
+            collected += (*it ? '1' : '0');
+        }
+
+        // Собираем эталон по индексам 0..size-1
+        std::string expectedByIndex;
+        for (size_t i = 0; i < cb.size(); ++i)
+        {
+            expectedByIndex += (cb[i] ? '1' : '0');
+        }
+
+        REQUIRE(collected == expectedByIndex);
+        // Для "1011": индексы [0,1,2,3] дают "1101"
+        REQUIRE(collected == "1101");
+    }
+
+    SECTION("iteration order is reverse of toString (LSB-first vs MSB-first)")
+    {
+        for (auto s : { "1", "10", "1011", "10010110" })
+        {
+            INFO("s = " << s);
+            Bitset b{ std::string(s) };
+            const Bitset& cb{ b };
+
+            std::string itOrder;
+            for (bool bit : cb) itOrder += (bit ? '1' : '0');
+
+            std::string reversed(s);
+            std::reverse(reversed.begin(), reversed.end());
+
+            REQUIRE(itOrder == reversed);
+        }
+    }
+
+    SECTION("first element is LSB (bit 0)")
+    {
+        Bitset b{ 8 };
+        b.set(0, true);   // LSB
+        const Bitset& cb{ b };
+
+        REQUIRE(*cb.begin() == true);       // первый = bit 0
+        auto last = cb.end();
+        --last;                              // если есть operator--, иначе std::prev
+        REQUIRE(*last == false);            // последний = bit 7 (MSB), он 0
+    }
+
+    SECTION("last element is MSB (bit size-1)")
+    {
+        Bitset b{ 8 };
+        b.set(7, true);   // MSB
+        const Bitset& cb{ b };
+
+        auto last = cb.end();
+        --last;
+        REQUIRE(*last == true);             // последний = bit 7
+        REQUIRE(*cb.begin() == false);      // первый = bit 0, он 0
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Каждый бит попадает ровно один раз
+    // ------------------------------------------------------------------------
+    SECTION("every bit visited exactly once in index order")
+    {
+        for (size_t n : { 1u, 2u, 7u, 8u, 63u, 64u, 65u, 100u, 200u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            for (size_t i = 0; i < n; i += 3) b.set(i, true);
+
+            const Bitset& cb{ b };
+            size_t idx{ 0 };
+            size_t ones{ 0 };
+            for (auto it = cb.begin(); it != cb.end(); ++it, ++idx)
+            {
+                // Итератор идёт в порядке индексов: *it == cb[idx]
+                REQUIRE(*it == cb[idx]);
+                if (*it) ++ones;
+            }
+            REQUIRE(idx == n);
+            REQUIRE(ones == b.popcount());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Инкремент: pre и post
+    // ------------------------------------------------------------------------
+    SECTION("pre-increment returns new position")
+    {
+        Bitset b{ "1001" };   // b[0]=1, b[1]=0, b[2]=0, b[3]=1
+        const Bitset& cb{ b };
+        auto it = cb.begin();
+
+        REQUIRE(*it == true);        // bit 0 (LSB)
+        auto& ref = ++it;
+        REQUIRE(&ref == &it);        // возвращает ссылку на себя
+        REQUIRE(*it == false);       // bit 1
+        ++it;                         // bit 2
+        REQUIRE(*it == false);
+        ++it;                         // bit 3 (MSB)
+        REQUIRE(*it == true);
+        ++it;                         // end
+        REQUIRE(it == cb.end());
+    }
+
+    SECTION("post-increment returns old iterator")
+    {
+        Bitset b{ "10" };   // b[0]=0, b[1]=1
+        const Bitset& cb{ b };
+        auto it = cb.begin();
+        auto old = it++;
+
+        REQUIRE(*old == false);      // старый указывал на bit 0 (LSB) = 0
+        REQUIRE(*it == true);        // новый — на bit 1 (MSB) = 1
+
+        REQUIRE(*old == false);      // пост-инкремент не меняет старое значение
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Equality / inequality
+    // ------------------------------------------------------------------------
+    SECTION("two iterators at the same position compare equal")
+    {
+        Bitset b{ "1011" };
+        const Bitset& cb{ b };
+        auto a = cb.begin();
+        auto c = cb.begin();
+        REQUIRE(a == c);
+        REQUIRE_FALSE(a != c);
+
+        ++a;
+        REQUIRE(a != c);
+        REQUIRE_FALSE(a == c);
+
+        ++c;
+        REQUIRE(a == c);
+    }
+
+    SECTION("begin != end for non-empty, == for empty")
+    {
+        Bitset b{ "1" };
+        const Bitset& cb{ b };
+        REQUIRE(cb.begin() != cb.end());
+
+        Bitset e;
+        const Bitset& ce{ e };
+        REQUIRE(ce.begin() == ce.end());
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. range-based for
+    // ------------------------------------------------------------------------
+    SECTION("range-based for iterates bits in index order")
+    {
+        Bitset b{ "11001" };   // b[0]=1, b[1]=0, b[2]=0, b[3]=1, b[4]=1
+        const Bitset& cb{ b };
+
+        std::string s;
+        for (bool bit : cb)
+        {
+            s += (bit ? '1' : '0');
+        }
+        // LSB-first: индексы 0..4 дают "10011"
+        REQUIRE(s == "10011");
+    }
+
+    SECTION("range-based for on empty produces nothing")
+    {
+        Bitset e;
+        const Bitset& ce{ e };
+        size_t count{ 0 };
+        for ([[maybe_unused]] bool bit : ce) { ++count; }
+        REQUIRE(count == 0);
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Совместимость с STL-алгоритмами
+    // ------------------------------------------------------------------------
+    SECTION("std::distance(begin, end) == size")
+    {
+        for (size_t n : { 0u, 1u, 7u, 8u, 63u, 64u, 65u, 100u })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            const Bitset& cb{ b };
+            REQUIRE(static_cast<size_t>(std::distance(cb.begin(), cb.end())) == n);
+        }
+    }
+
+    SECTION("std::count(begin, end, true) == popcount")
+    {
+        Bitset b{ "10110100" };
+        const Bitset& cb{ b };
+        REQUIRE(std::count(cb.begin(), cb.end(), true) ==
+                static_cast<std::ptrdiff_t>(b.popcount()));
+    }
+
+    SECTION("std::find locates first set bit by index order")
+    {
+        // b[2] = 1, больше единиц нет. LSB-first: находим на позиции 2.
+        Bitset b{ "00100" };   // b[0]=0, b[1]=0, b[2]=1, b[3]=0, b[4]=0
+        const Bitset& cb{ b };
+
+        auto it = std::find(cb.begin(), cb.end(), true);
+        REQUIRE(it != cb.end());
+        REQUIRE(*it == true);
+        REQUIRE(std::distance(cb.begin(), it) == 2);   // позиция = индекс бита
+    }
+
+    SECTION("std::all_of / std::any_of / std::none_of")
+    {
+        Bitset allOnes{ "1111" };
+        Bitset someOnes{ "1011" };
+        Bitset noOnes{ 4 };
+
+        const Bitset& c1{ allOnes };
+        const Bitset& c2{ someOnes };
+        const Bitset& c3{ noOnes };
+
+        REQUIRE(std::all_of(c1.begin(), c1.end(), [](bool b){ return b; }));
+        REQUIRE_FALSE(std::all_of(c2.begin(), c2.end(), [](bool b){ return b; }));
+        REQUIRE(std::any_of(c2.begin(), c2.end(), [](bool b){ return b; }));
+        REQUIRE_FALSE(std::any_of(c3.begin(), c3.end(), [](bool b){ return b; }));
+        REQUIRE(std::none_of(c3.begin(), c3.end(), [](bool b){ return b; }));
+    }
+
+    SECTION("std::copy to vector<bool> (index order)")
+    {
+        Bitset b{ "10110" };   // b[0]=0, b[1]=1, b[2]=1, b[3]=0, b[4]=1
+        const Bitset& cb{ b };
+
+        std::vector<bool> v;
+        std::copy(cb.begin(), cb.end(), std::back_inserter(v));
+
+        REQUIRE(v.size() == 5);
+        REQUIRE(v[0] == false);   // bit 0
+        REQUIRE(v[1] == true);    // bit 1
+        REQUIRE(v[2] == true);    // bit 2
+        REQUIRE(v[3] == false);   // bit 3
+        REQUIRE(v[4] == true);    // bit 4
+    }
+
+    SECTION("std::equal with vector<bool> built by index")
+    {
+        Bitset b{ "1011" };   // b[0]=1, b[1]=1, b[2]=0, b[3]=1
+        const Bitset& cb{ b };
+
+        std::vector<bool> expected;
+        for (size_t i = 0; i < cb.size(); ++i)
+            expected.push_back(cb[i]);
+
+        REQUIRE(std::equal(cb.begin(), cb.end(),
+                           expected.begin(), expected.end()));
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Инварианты: итерация не меняет bitset
+    // ------------------------------------------------------------------------
+    SECTION("iteration is non-mutating")
+    {
+        Bitset b{ "101101" };
+        const Bitset& cb{ b };
+        const Bitset snapshot{ b };
+
+        for (auto it = cb.begin(); it != cb.end(); ++it)
+        {
+            (void)*it;
+        }
+        REQUIRE(b == snapshot);
+        requireInvariants(b, "after iteration");
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. Итератор видит состояние bitset на момент создания
+    // ------------------------------------------------------------------------
+    SECTION("iterator reflects bitset state at creation time")
+    {
+        Bitset b{ 8 };
+        b.set(0, true);   // LSB
+        b.set(7, true);   // MSB
+        const Bitset& cb{ b };
+
+        std::string s;
+        for (bool bit : cb) s += (bit ? '1' : '0');
+        // LSB-first: bit0=1, bit1..bit6=0, bit7=1  →  "10000001"
+        REQUIRE(s == "10000001");
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. Граничные размеры вокруг WORD_BITS
+    // ------------------------------------------------------------------------
+    SECTION("iteration across word boundary")
+    {
+        for (size_t n : { WORD_BITS - 1, WORD_BITS, WORD_BITS + 1,
+                          2 * WORD_BITS, 2 * WORD_BITS + 3 })
+        {
+            INFO("n = " << n);
+            Bitset b{ n };
+            b.setAll(true);
+
+            const Bitset& cb{ b };
+            size_t ones{ 0 };
+            for (bool bit : cb) { if (bit) ++ones; }
+            REQUIRE(ones == n);
+        }
+    }
+
+    SECTION("iteration matches index access for every position")
+    {
+        const size_t n{ 2 * WORD_BITS + 5 };
+        Bitset b{ n };
+        // Установим каждый третий бит по индексу
+        for (size_t i = 0; i < n; i += 3) b.set(i, true);
+
+        const Bitset& cb{ b };
+        size_t idx{ 0 };
+        for (bool bit : cb)
+        {
+            INFO("idx = " << idx);
+            REQUIRE(bit == cb[idx]);   // итератор идёт в индексном порядке
+            ++idx;
+        }
+        REQUIRE(idx == n);
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. Совместимость cbegin/cend с begin/end
+    // ------------------------------------------------------------------------
+    SECTION("cbegin == begin, cend == end")
+    {
+        Bitset b{ "1010" };
+        const Bitset& cb{ b };
+        REQUIRE(cb.begin() == cb.cbegin());
+        REQUIRE(cb.end() == cb.cend());
+    }
+
+    // ------------------------------------------------------------------------
+    // 13. Обход после мутаций (семантика зависит от дизайна; здесь — только
+    //     «до мутаций»)
+    // ------------------------------------------------------------------------
+    SECTION("iteration before mutations gives stable result")
+    {
+        Bitset b{ "1000" };
+        const Bitset& cb{ b };
+
+        size_t onesBefore{ 0 };
+        for (bool bit : cb) onesBefore += bit ? 1 : 0;
+        REQUIRE(onesBefore == 1);
+    }
+}

@@ -1,6 +1,7 @@
 #ifndef MATH_H_INCLUDED
 #define MATH_H_INCLUDED
 
+#include <concepts>
 #include <cstdint>
 #include <stdexcept>
 
@@ -33,12 +34,28 @@ namespace mylib
     {
         if(0 == divisor)
         {
-            throw std::invalid_argument("division by zero");
+            throw std::invalid_argument("mylib::math::ceiling::division by zero");
         }
 
         return static_cast<std::int64_t>(dividend / divisor) +
                static_cast<std::int64_t>(dividend % divisor != 0);
     }
+
+    template<std::integral T, std::integral Z>
+    inline std::int64_t floor(T dividend, Z divisor)
+    {
+        if(0 == divisor)
+        {
+            throw std::invalid_argument("mylib::math::floor::division by zero");
+        }
+
+        const auto q{ dividend / divisor };
+        const auto r{ dividend % divisor };
+
+        return static_cast<std::int64_t>(q) - static_cast<std::int64_t>(r != 0 && ((dividend < 0) != (divisor < 0)));
+    }
+
+
     } // end namespace math
 
 } //end namespace mylib

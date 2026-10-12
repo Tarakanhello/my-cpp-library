@@ -7,6 +7,7 @@
 #include <concepts>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -20,8 +21,11 @@
 namespace mylib
 {
 /**
-     * @brief Concept to check if a container has a reverse() method.
-     */
+ * @brief Concept that detects a container exposing a noexcept reverse() method.
+ *
+ * Used by Bitset::reverse() to decide whether to call the container's own
+ * reverse() (O(1) for Vector) or fall back to std::reverse.
+ */
 template<typename CONTAINER>
 concept HasReverse = requires(CONTAINER& c)
 {
@@ -29,15 +33,20 @@ concept HasReverse = requires(CONTAINER& c)
 };
 
 /**
-     * @brief A dynamic bitset (bit array) with arbitrary size.
-     *
-     * @tparam WORD Underlying unsigned integer type used as a storage word.
-     *         Must be an unsigned integral type (e.g., uint64_t, uint32_t).
-     *
-     * The bitset stores bits in a vector of WORDs, with automatic resizing.
-     * Provides standard bitwise operations, shifts, reversal, and popcount.
-     * Supports direct bit access via proxy reference.
-     */
+ * @brief A dynamic bitset (bit array) with arbitrary size.
+ *
+ * @tparam WORD Underlying unsigned integer type used as a storage word.
+ *         Must be an unsigned integral type (e.g., uint64_t, uint32_t).
+ *
+ * The bitset stores bits in a vector of WORDs, with automatic resizing.
+ * Provides standard bitwise operations, shifts, reversal, and popcount.
+ * Supports direct bit access via proxy reference.
+ *
+ * @note Invariants:
+ *       - m_words.size() == wordsNeeded() always holds.
+ *       - All unused bits in the last word are zero (see zeroOutReminder()).
+ *       - Bit 0 is the least significant bit of word 0.
+ */
 template<typename WORD = std::uint64_t>
     requires std::unsigned_integral<WORD>
 class Bitset final
@@ -45,10 +54,26 @@ class Bitset final
 private:
     using Container = Vector<WORD>;
 
+    /** @brief Tag selecting the kind of overflow check. */
     enum class Op{ Add, Mul };
 
 public:
     class BitReference;
+    class ConstIterator;
+
+    // ================================================================
+    //  Standard container type aliases
+    // ================================================================
+
+    using value_type             = bool;                                ///< Element type (bit value).
+    using reference              = BitReference;                        ///< Mutable proxy reference to a bit.
+    using const_reference        = bool;                                ///< Read-only bit value.
+    using size_type              = size_t;                              ///< Unsigned size type.
+    using difference_type        = std::ptrdiff_t;                      ///< Iterator difference type.
+    using const_iterator         = ConstIterator;                       ///< Read-only bit iterator.
+    using pointer                = void;                                ///< No contiguous pointer type.
+    using const_pointer          = void;                                ///< No contiguous pointer type.
+    using const_reverse_iterator = std::reverse_iterator<ConstIterator>;///< Reverse read-only iterator.
 
 private:
     static constexpr size_t numberOfDigits{ std::numeric_limits<WORD>::digits };
@@ -60,18 +85,22 @@ private:
     // ================================================================
 
     /**
-         * @brief Returns the value of a specific bit (no bounds check).
-         */
+     * @brief Returns the value of a specific bit (no bounds check).
+     * @param i Bit index (0-based).
+     * @pre i < m_bitSize.
+     */
     bool getBit(size_t i) const;
 
     /**
-         * @brief Returns the word index for a given bit index.
-         */
+     * @brief Returns the word index for a given bit index.
+     * @param index Bit index (0-based).
+     */
     size_t index(size_t index) const noexcept;
 
     /**
-         * @brief Returns the bit offset within a word for a given bit index.
-         */
+     * @brief Returns the bit offset within a word for a given bit index.
+     * @param index Bit index (0-based).
+     */
     size_t offset(size_t index) const noexcept;
 
     // ================================================================
@@ -79,33 +108,40 @@ private:
     // ================================================================
 
     /**
-         * @brief Changes the number of bits in the bitset, growing or shrinking it.
-         *
-         * If `newSize` is greater than the current size, the bitset is extended with
-         * zero-initialised bits. If `newSize` is smaller, the trailing bits are
-         * discarded and the underlying storage may be compacted. If the number of
-         * words required for `newSize` is less than the current capacity by a
-         * significant margin, the storage is reallocated to fit.
-         *
-         * @param newSize New number of bits.
-         *
-         * @throw std::bad_alloc    if memory allocation fails (only when growing).
-         *
-         * @note On failure the bitset remains unchanged (strong guarantee).
-         * @note Bits are zero-initialised in the extended region.
-         * @note After the call, `size() == newSize` and all unused bits in the last
-         *       word are cleared.
-         *
-         * @see prepend
-         * @see setFromString
-         */
+     * @brief Changes the number of bits in the bitset, growing or shrinking it.
+     *
+     * If `newSize` is greater than the current size, the bitset is extended with
+     * zero-initialised bits. If `newSize` is smaller, the trailing bits are
+     * discarded and the underlying storage may be compacted. If the number of
+     * words required for `newSize` is less than the current capacity by a
+     * significant margin, the storage is reallocated to fit.
+     *
+     * @param newSize New number of bits.
+     *
+     * @throw std::bad_alloc    if memory allocation fails (only when growing).
+     *
+     * @note On failure the bitset remains unchanged (strong guarantee).
+     * @note Bits are zero-initialised in the extended region.
+     * @note After the call, `size() == newSize` and all unused bits in the last
+     *       word are cleared.
+     *
+     * @see prependFromString
+     * @see setFromString
+     */
     void resize(size_t newSize);
 
     /**
-         * @brief Computes the number of words needed to store m_bitSize bits.
-         */
+     * @brief Computes the number of words needed to store m_bitSize bits.
+     */
     size_t wordsNeeded() const noexcept;
 
+    /**
+     * @brief Throws std::length_error if a + b (or a * b) would overflow size_t.
+     * @tparam op Either Op::Add or Op::Mul.
+     * @param a First operand.
+     * @param b Second operand.
+     * @param source Name of the caller for the diagnostic message.
+     */
     template<Op op>
     static void overflowCheck(size_t a, size_t b, std::string_view source = "")
     {
@@ -130,15 +166,15 @@ private:
     // ================================================================
 
     /**
-         * @brief Writes bits without validating. Assumes str is valid and
-         *        position + str.size() <= m_bitSize.
-         */
+     * @brief Writes bits without validating. Assumes str is valid and
+     *        position + str.size() <= m_bitSize.
+     */
     void setFromStringUnchecked(std::string_view str, size_t position) noexcept;
 
     /**
-         * @brief Validates that the string contains only '0' and '1'.
-         * @throw std::invalid_argument on invalid character.
-         */
+     * @brief Validates that the string contains only '0' and '1'.
+     * @throw std::invalid_argument on invalid character.
+     */
     static void validateBinaryString(std::string_view str);
 
     // ================================================================
@@ -146,8 +182,10 @@ private:
     // ================================================================
 
     /**
-         * @brief Clears the unused bits in the last word.
-         */
+     * @brief Clears the unused bits in the last word.
+     *
+     * If the bitset is empty, releases the underlying storage.
+     */
     void zeroOutReminder() noexcept;
 
 public:
@@ -156,43 +194,43 @@ public:
     // ================================================================
 
     /**
-         * @brief Default constructor creating an empty bitset.
-         * @param initialSize Initial number of bits (all zero). Default 0.
-         */
+     * @brief Default constructor creating an empty bitset.
+     * @param initialSize Initial number of bits (all zero). Default 0.
+     */
     explicit Bitset(size_t initialSize = 0);
 
     /**
-         * @brief Constructs a bitset from a string of '0' and '1' characters.
-         *
-         * The string is interpreted as a binary representation with the first character
-         * being the most significant bit (MSB). The resulting bitset will have a size
-         * equal to the length of the string. The last character of the string becomes
-         * bit 0 (LSB).
-         *
-         * @param str String of '0' and '1' characters (MSB first).
-         *
-         * @throw std::invalid_argument if the string contains any character other
-         *        than '0' or '1'.
-         * @throw std::length_error if the string length exceeds the maximum allowed
-         *        size.
-         *
-         * @note The constructor is `explicit` to prevent accidental implicit
-         *       conversions from strings.
-         *
-         * @see prependFromString
-         * @see setFromString
-         * @see toString
-         */
+     * @brief Constructs a bitset from a string of '0' and '1' characters.
+     *
+     * The string is interpreted as a binary representation with the first character
+     * being the most significant bit (MSB). The resulting bitset will have a size
+     * equal to the length of the string. The last character of the string becomes
+     * bit 0 (LSB).
+     *
+     * @param str String of '0' and '1' characters (MSB first).
+     *
+     * @throw std::invalid_argument if the string contains any character other
+     *        than '0' or '1'.
+     * @throw std::length_error if the string length exceeds the maximum allowed
+     *        size.
+     *
+     * @note The constructor is `explicit` to prevent accidental implicit
+     *       conversions from strings.
+     *
+     * @see prependFromString
+     * @see setFromString
+     * @see toString
+     */
     explicit Bitset(const std::string& str);
 
     /**
-         * @brief Constructs a bitset from a container of WORDs.
-         * @tparam CONTAINER Type of the container. Must provide begin(), end(), size(), data().
-         *                   value_type must be WORD.
-         * @param container Container with initial data.
-         * @note The size is set to numberOfDigits * container.size().
-         *       Unused bits in the last word are zeroed out.
-         */
+     * @brief Constructs a bitset from a container of WORDs.
+     * @tparam CONTAINER Type of the container. Must provide begin(), end(), size(), data().
+     *                   value_type must be WORD.
+     * @param container Container with initial data.
+     * @note The size is set to numberOfDigits * container.size().
+     *       Unused bits in the last word are zeroed out.
+     */
     template<typename CONTAINER>
         requires requires(const CONTAINER& c)
     {
@@ -206,7 +244,7 @@ public:
     Bitset(const CONTAINER& container);
 
     // ================================================================
-    //  Rule of Five (explicitly defaulted)
+    //  Rule of Five
     // ================================================================
 
     /**
@@ -217,9 +255,11 @@ public:
 
     /**
      * @brief Move constructor.
-     * @param other Bitset to move from. Left in a valid but unspecified state.
+     * @param other Bitset to move from. Left in a valid empty state.
      * @note Marked noexcept: the underlying Vector move is noexcept, so
      *       `std::vector<Bitset>` will use move during reallocation.
+     * @note The source is explicitly reset via std::exchange so that all
+     *       class invariants (m_bitSize == 0, empty storage) hold.
      */
     Bitset(Bitset&& other) noexcept
         : m_bitSize{ std::exchange(other.m_bitSize, 0) }
@@ -238,7 +278,7 @@ public:
 
     /**
      * @brief Move assignment.
-     * @param other Bitset to move from.
+     * @param other Bitset to move from. Left in a valid empty state.
      * @return *this.
      * @note Marked noexcept.
      */
@@ -264,31 +304,32 @@ public:
     // ================================================================
 
     /**
-         * @brief Returns the number of garbage (unused) bits in the last word.
-         * @return numberOfDigits - lastWordBits(), or 0 if empty.
-         */
+     * @brief Returns the number of garbage (unused) bits in the last word.
+     * @return numberOfDigits - lastWordBits(), or 0 if empty.
+     */
     size_t garbageBits() const noexcept;
 
     /**
-         * @brief Returns the number of valid bits in the last word.
-         * @return Number of bits in the last word (1..numberOfDigits).
-         * @pre m_bitSize > 0.
-         */
+     * @brief Returns the number of valid bits in the last word.
+     * @return Number of bits in the last word (1..numberOfDigits).
+     * @pre m_bitSize > 0.
+     */
     size_t lastWordBits() const noexcept;
 
     /**
-         * @brief Returns the number of bits in the bitset.
-         */
+     * @brief Returns the number of bits in the bitset.
+     */
     size_t size() const noexcept;
 
     /**
-         * @brief Returns the number of words currently used.
-         */
+     * @brief Returns the number of words currently stored.
+     * @note By the class invariant this always equals wordsNeeded().
+     */
     size_t wordsSize() const noexcept;
 
     /**
-     * @brief (shrink-to-fit).
-     * @throw std::bad_alloc if resize needed.
+     * @brief Requests the underlying storage to shrink to fit the current size.
+     * @throw std::bad_alloc if reallocation is required and fails.
      */
     void shrink_to_fit()
     {
@@ -300,13 +341,13 @@ public:
     // ================================================================
 
     /**
-         * @brief Returns a const reference to the underlying storage container.
-         */
+     * @brief Returns a const reference to the underlying storage container.
+     */
     const Container& get() const noexcept;
 
     /**
-         * @brief Returns a pointer to the raw word array.
-         */
+     * @brief Returns a pointer to the raw word array.
+     */
     const WORD* getData() const noexcept;
 
     /**
@@ -328,7 +369,7 @@ public:
     /**
      * @brief Mutable access to a bit via proxy reference.
      * @param i Bit index (0-based). Bit 0 is the least significant bit
-     *          bit of word 0; bit `numberOfDigits` is the least significant
+     *          of word 0; bit `numberOfDigits` is the least significant
      *          bit of word 1, and so on.
      * @return BitReference allowing assignment and conversion to bool.
      * @throw std::out_of_range if i >= size().
@@ -336,13 +377,13 @@ public:
     BitReference operator[](size_t i);
 
     /**
-         * @brief Const access to a bit.
-         * @param i Bit index (0-based). Bit 0 is the least significant bit
-         *          bit of word 0; bit `numberOfDigits` is the least significant
-         *          bit of word 1, and so on.
-         * @return true if the bit is set, false otherwise.
-         * @throw std::out_of_range if i >= size().
-         */
+     * @brief Const access to a bit.
+     * @param i Bit index (0-based). Bit 0 is the least significant bit
+     *          of word 0; bit `numberOfDigits` is the least significant
+     *          bit of word 1, and so on.
+     * @return true if the bit is set, false otherwise.
+     * @throw std::out_of_range if i >= size().
+     */
     bool operator[](size_t i) const;
 
     // ================================================================
@@ -350,46 +391,46 @@ public:
     // ================================================================
 
     /**
-         * @brief Clears all bits to zero.
-         */
+     * @brief Clears all bits to zero.
+     */
     void clear() noexcept;
 
     /**
-         * @brief Flips (inverts) all bits in the bitset.
-         */
+     * @brief Flips (inverts) all bits in the bitset.
+     */
     void flip() noexcept;
 
     /**
-         * @brief Reverses the order of all bits in the bitset.
-         * @note Performs a bit‑reversal of the entire sequence.
-         * @exception noexcept – does not throw.
-         */
+     * @brief Reverses the order of all bits in the bitset.
+     * @note Performs a bit-reversal of the entire sequence.
+     * @exception noexcept – does not throw.
+     */
     void reverse() noexcept;
 
     /**
-         * @brief Sets a specific bit to a given value.
-         * @param i Bit index (0-based). Bit 0 is the least significant bit
-         *          of word 0; bit `numberOfDigits - 1` is the most significant
-         *          bit of word 0; bit `numberOfDigits` is the least significant
-         *          bit of word 1, and so on
-         * @param value Value to set (true=1, false=0). Default true.
-         * @throw std::out_of_range if i >= size().
-         */
+     * @brief Sets a specific bit to a given value.
+     * @param i Bit index (0-based). Bit 0 is the least significant bit
+     *          of word 0; bit `numberOfDigits - 1` is the most significant
+     *          bit of word 0; bit `numberOfDigits` is the least significant
+     *          bit of word 1, and so on.
+     * @param value Value to set (true=1, false=0). Default true.
+     * @throw std::out_of_range if i >= size().
+     */
     void set(size_t i, bool value = true);
 
     /**
-         * @brief Sets all bits to a given value.
-         * @param value Value to set (true=1, false=0). Default true.
-         */
+     * @brief Sets all bits to a given value.
+     * @param value Value to set (true=1, false=0). Default true.
+     */
     void setAll(bool value = true) noexcept;
 
     /**
-         * @brief Writes a value into a field of bits at position i, length n.
-         * @param value The value to write (only low-order n bits are used).
-         * @param i Starting bit index (0-based, LSB side).
-         * @param n Number of bits to overwrite (must be <= numberOfDigits).
-         * @throw std::out_of_range if n > numberOfDigits or i+n > size().
-         */
+     * @brief Writes a value into a field of bits at position i, length n.
+     * @param value The value to write (only low-order n bits are used).
+     * @param i Starting bit index (0-based, LSB side).
+     * @param n Number of bits to overwrite (must be <= numberOfDigits).
+     * @throw std::out_of_range if n > numberOfDigits or i+n > size().
+     */
     void setValue(WORD value, size_t i, size_t n);
 
     // ================================================================
@@ -397,122 +438,128 @@ public:
     // ================================================================
 
     /**
-         * @brief Appends a single bit to the end of the string representation.
-         *
-         * The new bit becomes the last character of toString() (bit 0). All existing
-         * bits are shifted to higher indices.
-         *
-         * @param value Value of the new bit.
-         * @exception Strong guarantee – on failure the bitset remains unchanged.
-         *
-         * @note Implemented as: prepend a dummy 0-bit, shift left by 1, then set bit 0.
-         *       The dummy bit absorbs the shift, so no real bit is lost.
-         */
-     void appendLSB(std::same_as<bool> auto value);
+     * @brief Appends a single bit to the end of the string representation.
+     *
+     * The new bit becomes the last character of toString() (bit 0). All existing
+     * bits are shifted to higher indices.
+     *
+     * @param value Value of the new bit.
+     * @exception Strong guarantee – on failure the bitset remains unchanged.
+     *
+     * @note Constrained to std::same_as<bool> so that e.g. a string literal
+     *       cannot silently bind to this overload via const char* -> bool.
+     *       The string overload below is selected for those arguments.
+     */
+    void appendLSB(std::same_as<bool> auto value);
 
     /**
      * @brief Removes the most significant bit. Alias for removeMSB().
+     * @pre size() > 0.
      */
     void popMSB();
 
     /**
-         * @brief Prepends a single bit to the front of the bitset.
-         *
-         * In the string representation (MSB first), the new bit becomes the first
-         * character of toString(). Internally the bit is added at index size().
-         *
-         * @param value Value of the new bit.
-         * @exception Strong exception guarantee – on failure the bitset remains unchanged.
-         */
+     * @brief Prepends a single bit to the front of the bitset.
+     *
+     * In the string representation (MSB first), the new bit becomes the first
+     * character of toString(). Internally the bit is added at index size().
+     *
+     * @param value Value of the new bit.
+     * @exception Strong exception guarantee – on failure the bitset remains unchanged.
+     *
+     * @note Constrained to std::same_as<bool> for the same reason as appendLSB.
+     */
     void appendMSB(std::same_as<bool> auto value);
 
     /**
-         * @brief Prepends a block of bits from a WORD value.
-         *
-         * The low-order `size` bits of `value` are placed at the highest indices,
-         * so they appear at the front of the string representation.
-         *
-         * @param value The word containing the bits to prepend.
-         * @param size Number of low-order bits to take from value (1..numberOfDigits).
-         * @throw std::out_of_range size > numberOfDigits.
-         * @exception Strong guarantee – no change on failure.
-         */
+     * @brief Prepends a block of bits from a WORD value.
+     *
+     * The low-order `size` bits of `value` are placed at the highest indices,
+     * so they appear at the front of the string representation.
+     *
+     * @param value The word containing the bits to prepend.
+     * @param size Number of low-order bits to take from value (1..numberOfDigits).
+     * @throw std::out_of_range if size > numberOfDigits.
+     * @exception Strong guarantee – no change on failure.
+     */
     void appendMSB(WORD value, size_t size);
 
     /**
-         * @brief Prepends another bitset to the front.
-         *
-         * After the operation, the string representation is
-         * `other.toString() + this->toString()`.
-         *
-         * @param other Bitset to prepend.
-         * @note Handles self-prepend by making a temporary copy.
-         * @exception Strong guarantee – no change on failure.
-         */
+     * @brief Prepends another bitset to the front.
+     *
+     * After the operation, the string representation is
+     * `other.toString() + this->toString()`.
+     *
+     * @param other Bitset to prepend.
+     * @note Handles self-prepend by making a temporary copy.
+     * @exception Strong guarantee – no change on failure.
+     */
     void appendMSB(const Bitset& other);
 
     /**
-         * @brief Appends bits from a string representation to the end of the bitset.
-         *
-         * Equivalent to concatenating `str` to the right of `toString()`. The string
-         * is interpreted MSB-first: its first character becomes the most significant
-         * bit of the appended block.
-         *
-         * @param str String of '0' and '1' characters (MSB first).
-         *
-         * @throw std::invalid_argument if the string contains any character other
-         *        than '0' or '1'.
-         * @throw std::length_error if the resulting size exceeds the maximum allowed.
-         * @exception Strong guarantee – on failure the bitset remains unchanged.
-         *
-         * @see setFromString
-         * @see toString
-         */
+     * @brief Appends bits from a string representation to the end of the bitset.
+     *
+     * Equivalent to concatenating `str` to the right of `toString()`. The string
+     * is interpreted MSB-first: its first character becomes the most significant
+     * bit of the appended block.
+     *
+     * @param str String of '0' and '1' characters (MSB first).
+     *
+     * @throw std::invalid_argument if the string contains any character other
+     *        than '0' or '1'.
+     * @throw std::length_error if the resulting size exceeds the maximum allowed.
+     * @exception Strong guarantee – on failure the bitset remains unchanged.
+     *
+     * @see setFromString
+     * @see toString
+     */
     void appendLSB(std::string_view str);
 
     /**
-         * @brief Appends a block of `size` low-order bits from `word` to the end of
-         *        the string representation.
-         *
-         * The first character of the appended block corresponds to bit `size-1` of
-         * `word`, the last — to bit 0. After the call, the string representation is
-         * `this->toString() + blockString`, where `blockString` is the `size`-bit
-         * binary representation of `word` (MSB first).
-         *
-         * @param word Value whose low-order `size` bits are appended.
-         * @param size Number of bits to append (1..numberOfDigits). If 0, no-op.
-         *
-         * @throw std::out_of_range if size > numberOfDigits.
-         * @exception Strong guarantee – on failure the bitset remains unchanged.
-         *
-         * @note Implemented via appendMSB(0, size), then <<= size, then setValue at 0.
-         */
+     * @brief Appends a block of `size` low-order bits from `word` to the end of
+     *        the string representation.
+     *
+     * The first character of the appended block corresponds to bit `size-1` of
+     * `word`, the last — to bit 0. After the call, the string representation is
+     * `this->toString() + blockString`, where `blockString` is the `size`-bit
+     * binary representation of `word` (MSB first).
+     *
+     * @param word Value whose low-order `size` bits are appended.
+     * @param size Number of bits to append (1..numberOfDigits). If 0, no-op.
+     *
+     * @throw std::out_of_range if size > numberOfDigits.
+     * @exception Strong guarantee – on failure the bitset remains unchanged.
+     *
+     * @note Implemented via appendMSB(0, size), then <<= size, then setValue at 0.
+     */
     void appendLSB(WORD word, size_t size);
 
     /**
-         * @brief Appends another bitset to the end of this one.
-         * @param bitset Bitset to append.
-         */
+     * @brief Appends another bitset to the end of this one.
+     * @param other Bitset to append.
+     * @note Handles self-append by making a temporary copy.
+     */
     void appendLSB(const Bitset& other);
 
     /**
-    * @brief Removes the least significant bit (the rightmost character of toString()).
-    *
-    * All remaining bits are shifted toward lower indices (to the right in the
-    * string representation).
-    *
-    * @pre m_bitSize > 0 (asserted in debug build).
-    * @note Cost: O(size() / numberOfDigits) — shifts all words.
-    */
+     * @brief Removes the least significant bit (the rightmost character of toString()).
+     *
+     * All remaining bits are shifted toward lower indices (to the right in the
+     * string representation).
+     *
+     * @pre m_bitSize > 0 (asserted in debug build).
+     * @note Cost: O(size() / numberOfDigits) — shifts all words.
+     * @exception Strong guarantee: on failure the bitset is restored.
+     */
     void removeLSB();
 
     /**
-         * @brief Removes the first bit (the leading character of toString()).
-         *
-         * Internally removes the bit with index size() - 1.
-         *
-         * @pre m_bitSize > 0 (asserted in debug build).
-         */
+     * @brief Removes the most significant bit (the leading character of toString()).
+     *
+     * Internally removes the bit with index size() - 1.
+     *
+     * @pre m_bitSize > 0 (asserted in debug build).
+     */
     void removeMSB();
 
     // ================================================================
@@ -520,85 +567,85 @@ public:
     // ================================================================
 
     /**
-         * @brief Checks whether the bitset is equal to a binary string representation.
-         *
-         * The string must consist only of '0' and '1' characters and must have the same
-         * length as the bitset. The first character corresponds to the most significant
-         * bit (MSB), the last character to the least significant bit (LSB).
-         *
-         * @param str Binary string to compare with (MSB first).
-         * @return true if the bitset has the same size and all bits match the string;
-         *         false otherwise, including when the string contains invalid characters
-         *         or has a different length.
-         *
-         * @note This method does not throw exceptions; it returns false for any
-         *       mismatch, including invalid input.
-         * @see toString
-         * @see setFromString
-         */
+     * @brief Checks whether the bitset is equal to a binary string representation.
+     *
+     * The string must consist only of '0' and '1' characters and must have the same
+     * length as the bitset. The first character corresponds to the most significant
+     * bit (MSB), the last character to the least significant bit (LSB).
+     *
+     * @param str Binary string to compare with (MSB first).
+     * @return true if the bitset has the same size and all bits match the string;
+     *         false otherwise, including when the string contains invalid characters
+     *         or has a different length.
+     *
+     * @note This method does not throw exceptions; it returns false for any
+     *       mismatch, including invalid input.
+     * @see toString
+     * @see setFromString
+     */
     bool equals(std::string_view str) const noexcept;
 
     /**
-         * @brief Prepends bits from a string representation to the front of the bitset.
-         *
-         * Equivalent to `setFromString(str, size())`. The string is interpreted in
-         * the same way: MSB first, so the first character becomes the most significant
-         * bit of the prepended block (highest index). After the call the string
-         * representation is `str + this->toString()`.
-         *
-         * @param str String of '0' and '1' characters (MSB first).
-         *
-         * @throw std::invalid_argument if the string contains invalid characters.
-         * @throw std::length_error if size overflow occurs.
-         * @exception Strong guarantee.
-         *
-         * @see setFromString
-         * @see toString
-         */
+     * @brief Prepends bits from a string representation to the front of the bitset.
+     *
+     * Equivalent to `setFromString(str, size())`. The string is interpreted in
+     * the same way: MSB first, so the first character becomes the most significant
+     * bit of the prepended block (highest index). After the call the string
+     * representation is `str + this->toString()`.
+     *
+     * @param str String of '0' and '1' characters (MSB first).
+     *
+     * @throw std::invalid_argument if the string contains invalid characters.
+     * @throw std::length_error if size overflow occurs.
+     * @exception Strong guarantee.
+     *
+     * @see setFromString
+     * @see toString
+     */
     void prependFromString(std::string_view str);
 
     /**
-         * @brief Writes bits from a string representation into the bitset.
-         *
-         * The string must contain only characters '0' and '1'. The first character of
-         * the string is treated as the most significant bit (MSB) of the block being
-         * written. It will be stored at the highest bit index within the written range:
-         * position + str.size() - 1. The last character corresponds to the lowest bit
-         * (position). If the bitset is smaller than needed, it is automatically
-         * resized.
-         *
-         * @param str      String of '0' and '1' characters (MSB first).
-         * @param position Starting bit index (LSB of the written block). Default 0.
-         *
-         * @throw std::invalid_argument if the string contains any character other
-         *        than '0' or '1'.
-         * @throw std::length_error if the resulting size exceeds the maximum allowed.
-         * @exception Strong guarantee – on failure the bitset remains unchanged.
-         *
-         * @note If `position + str.size()` exceeds the current size, the bitset is
-         *       extended (new bits are zero-initialised). If the string is empty,
-         *       the function does nothing.
-         *
-         * @see prependFromString
-         * @see toString
-         */
+     * @brief Writes bits from a string representation into the bitset.
+     *
+     * The string must contain only characters '0' and '1'. The first character of
+     * the string is treated as the most significant bit (MSB) of the block being
+     * written. It will be stored at the highest bit index within the written range:
+     * position + str.size() - 1. The last character corresponds to the lowest bit
+     * (position). If the bitset is smaller than needed, it is automatically
+     * resized.
+     *
+     * @param str      String of '0' and '1' characters (MSB first).
+     * @param position Starting bit index (LSB of the written block). Default 0.
+     *
+     * @throw std::invalid_argument if the string contains any character other
+     *        than '0' or '1'.
+     * @throw std::length_error if the resulting size exceeds the maximum allowed.
+     * @exception Strong guarantee – on failure the bitset remains unchanged.
+     *
+     * @note If `position + str.size()` exceeds the current size, the bitset is
+     *       extended (new bits are zero-initialised). If the string is empty,
+     *       the function does nothing.
+     *
+     * @see prependFromString
+     * @see toString
+     */
     void setFromString(std::string_view str, size_t position = 0);
 
     /**
-         * @brief Converts the entire bitset to a string of '0' and '1' characters.
-         *
-         * The string is built from the most significant bit to the least significant
-         * bit (MSB first). That is, the first character corresponds to the bit with
-         * index `size() - 1`, the last character corresponds to bit 0.
-         *
-         * @return std::string containing '0' and '1' characters, length equals size().
-         *         Returns an empty string if the bitset is empty.
-         *
-         * @note The method is `const` and does not modify the bitset.
-         *
-         * @see setFromString
-         * @see prependFromString
-         */
+     * @brief Converts the entire bitset to a string of '0' and '1' characters.
+     *
+     * The string is built from the most significant bit to the least significant
+     * bit (MSB first). That is, the first character corresponds to the bit with
+     * index `size() - 1`, the last character corresponds to bit 0.
+     *
+     * @return std::string containing '0' and '1' characters, length equals size().
+     *         Returns an empty string if the bitset is empty.
+     *
+     * @note The method is `const` and does not modify the bitset.
+     *
+     * @see setFromString
+     * @see prependFromString
+     */
     std::string toString() const;
 
     // ================================================================
@@ -636,27 +683,27 @@ public:
     // ================================================================
 
     /**
-         * @brief Bitwise AND assignment.
-         * @param other Bitset of the same size.
-         * @return *this.
-         * @throw std::length_error if sizes differ.
-         */
+     * @brief Bitwise AND assignment.
+     * @param other Bitset of the same size.
+     * @return *this.
+     * @throw std::length_error if sizes differ.
+     */
     Bitset& operator&=(const Bitset& other);
 
     /**
-         * @brief Bitwise XOR assignment.
-         * @param other Bitset of the same size.
-         * @return *this.
-         * @throw std::length_error if sizes differ.
-         */
+     * @brief Bitwise XOR assignment.
+     * @param other Bitset of the same size.
+     * @return *this.
+     * @throw std::length_error if sizes differ.
+     */
     Bitset& operator^=(const Bitset& other);
 
     /**
-         * @brief Bitwise OR assignment.
-         * @param other Bitset of the same size.
-         * @return *this.
-         * @throw std::length_error if sizes differ.
-         */
+     * @brief Bitwise OR assignment.
+     * @param other Bitset of the same size.
+     * @return *this.
+     * @throw std::length_error if sizes differ.
+     */
     Bitset& operator|=(const Bitset& other);
 
     // ================================================================
@@ -664,19 +711,19 @@ public:
     // ================================================================
 
     /**
-         * @brief Left shift assignment.
-         * @param shift Number of bits to shift (moves left).
-         * @return *this.
-         * @note If shift == 0, no-op. If shift >= size(), all bits are set to zero.
-         */
+     * @brief Left shift assignment.
+     * @param shift Number of bits to shift (moves left).
+     * @return *this.
+     * @note If shift == 0, no-op. If shift >= size(), all bits are set to zero.
+     */
     Bitset& operator<<=(size_t shift) noexcept;
 
     /**
-         * @brief Right shift assignment.
-         * @param shift Number of bits to shift (moves right).
-         * @return *this.
-         * @note If shift == 0, no-op. If shift >= size(), all bits are set to zero.
-         */
+     * @brief Right shift assignment.
+     * @param shift Number of bits to shift (moves right).
+     * @return *this.
+     * @note If shift == 0, no-op. If shift >= size(), all bits are set to zero.
+     */
     Bitset& operator>>=(size_t shift) noexcept;
 
     // ================================================================
@@ -684,66 +731,142 @@ public:
     // ================================================================
 
     /**
-         * @brief Checks if the bitset is non‑zero.
-         * @return true if at least one bit is set.
-         */
+     * @brief Checks if the bitset is non-zero.
+     * @return true if at least one bit is set.
+     */
     explicit operator bool() const noexcept;
 
     /**
-         * @brief Checks if all bits are zero.
-         * @return true if no bit is set.
-         */
+     * @brief Checks if all bits are zero.
+     * @return true if no bit is set.
+     */
     bool isZero() const noexcept;
 
     /**
-         * @brief Counts the number of set bits in the bitset.
-         * @return Total popcount.
-         */
+     * @brief Counts the number of set bits in the bitset.
+     * @return Total popcount.
+     */
     size_t popcount() const noexcept;
+
+    // ================================================================
+    //  Iterators
+    // ================================================================
+    //
+    //  The bitset exposes only read-only iterators (ConstIterator). Bit
+    //  values are returned by value via a proxy dereference; mutation must
+    //  go through operator[] / set().
+    //
+    //  Iteration order is LSB-first: begin() points at bit 0, end() points
+    //  one past bit size()-1.
+    // ================================================================
+
+    /**
+     * @brief Returns an iterator to the first bit (bit 0, LSB).
+     */
+    constexpr const_iterator begin() const noexcept
+    {
+        return const_iterator(m_words.data(), 0);
+    }
+
+    /**
+     * @brief Returns a const iterator to the first bit (bit 0, LSB).
+     */
+    constexpr const_iterator cbegin() const noexcept
+    {
+        return const_iterator(m_words.data(), 0);
+    }
+
+    /**
+     * @brief Returns an iterator one past the last bit.
+     */
+    constexpr const_iterator end() const noexcept
+    {
+        return const_iterator(m_words.data(), m_bitSize);
+    }
+
+    /**
+     * @brief Returns a const iterator one past the last bit.
+     */
+    constexpr const_iterator cend() const noexcept
+    {
+        return const_iterator(m_words.data(), m_bitSize);
+    }
+
+    /**
+     * @brief Returns a reverse iterator to the last bit.
+     */
+    constexpr const_reverse_iterator rbegin() const noexcept
+    {
+        return const_reverse_iterator(end());
+    }
+
+    /**
+     * @brief Returns a const reverse iterator to the last bit.
+     */
+    constexpr const_reverse_iterator crbegin() const noexcept
+    {
+        return const_reverse_iterator(cend());
+    }
+
+    /**
+     * @brief Returns a reverse iterator one past the first bit.
+     */
+    constexpr const_reverse_iterator rend() const noexcept
+    {
+        return const_reverse_iterator(begin());
+    }
+
+    /**
+     * @brief Returns a const reverse iterator one past the first bit.
+     */
+    constexpr const_reverse_iterator crend() const noexcept
+    {
+        return const_reverse_iterator(cbegin());
+    }
 
     // ================================================================
     //  Nested types
     // ================================================================
 
     /**
-         * @brief Proxy class allowing direct bit assignment and conversion.
-         * @details Used by operator[] to provide lvalue access.
-         */
+     * @brief Proxy class allowing direct bit assignment and conversion.
+     * @details Used by operator[] to provide lvalue access.
+     */
     class BitReference final
     {
     private:
-        WORD* m_blockPtr{ nullptr };
-        int m_index{};
+        WORD* m_blockPtr{ nullptr };    ///< Pointer to the containing word.
+        int m_index{};                  ///< Bit offset within the word.
 
         /**
-             * @brief Returns the referenced bit value.
-             */
+         * @brief Returns the referenced bit value.
+         */
         bool get() const noexcept;
 
     public:
         /**
-             * @brief Constructs a reference to a bit.
-             * @param ptr Pointer to the WORD containing the bit.
-             * @param offset Bit offset within the WORD (0..numberOfDigits-1).
-             * @throw std::out_of_range if offset >= numberOfDigits.
-             */
+         * @brief Constructs a reference to a bit.
+         * @param ptr Pointer to the WORD containing the bit.
+         * @param offset Bit offset within the WORD (0..numberOfDigits-1).
+         * @throw std::out_of_range if offset >= numberOfDigits.
+         */
         BitReference(WORD* ptr, size_t offset);
 
         /**
-             * @brief Converts the referenced bit to bool.
-             */
+         * @brief Converts the referenced bit to bool.
+         */
         explicit operator bool() const noexcept;
 
         /**
-             * @brief Logical NOT of the referenced bit.
-             */
+         * @brief Logical NOT of the referenced bit.
+         */
         bool operator!() const noexcept;
 
         /**
-             * @brief Assigns a bool value to the referenced bit.
-             * @param value Value to set.
-             * @return *this.
-             */
+         * @brief Assigns a bool value to the referenced bit.
+         * @param value Value to set.
+         * @return *this.
+         */
         BitReference& operator=(bool value);
 
         /**
@@ -753,23 +876,23 @@ public:
         BitReference& operator=(const BitReference& other);
 
         /**
-             * @brief Compares the referenced bit with a bool.
-             */
+         * @brief Compares the referenced bit with a bool.
+         */
         bool operator==(bool b) const noexcept;
 
         /**
-             * @brief Compares two BitReference objects.
-             */
+         * @brief Compares two BitReference objects.
+         */
         bool operator==(const BitReference& other) const noexcept;
 
         /**
-             * @brief Compares the referenced bit with a bool (not equal).
-             */
+         * @brief Compares the referenced bit with a bool (not equal).
+         */
         bool operator!=(bool b) const noexcept;
 
         /**
-             * @brief Compares two BitReference objects (not equal).
-             */
+         * @brief Compares two BitReference objects (not equal).
+         */
         bool operator!=(const BitReference& other) const noexcept;
 
         friend bool operator==(bool b, const BitReference& ref) noexcept
@@ -782,13 +905,183 @@ public:
             return ref != b;
         }
     };
+
+    /**
+     * @brief Random-access, read-only iterator over the bits of a Bitset.
+     *
+     * Dereferencing yields a `bool` by value (proxy semantics). The iterator
+     * stores a pointer to the underlying word array and a global bit index,
+     * so it is a single object that can be compared with `<`, `+`, `-` etc.
+     *
+     * Satisfies std::random_access_iterator when `<iterator>` concepts are
+     * checked, except that `pointer` is `void` — no contiguous access exists.
+     */
+    class ConstIterator final
+    {
+    public:
+        using iterator_category = std::random_access_iterator_tag;  ///< Iterator category.
+        using iterator_concept  = std::random_access_iterator_tag;  ///< C++20 iterator concept tag.
+        using value_type        = bool;                             ///< Dereferenced value type.
+        using difference_type   = std::ptrdiff_t;                   ///< Distance type.
+        using pointer           = void;                             ///< No pointer type.
+        using reference         = bool;                             ///< Dereference yields a bool by value.
+
+    private:
+        const WORD* m_data;   ///< Base pointer of the storage.
+        size_t m_index;       ///< Global bit index (0 .. size()).
+
+    public:
+        /**
+         * @brief Constructs an iterator.
+         * @param word Pointer to the first word of the storage.
+         * @param index Global bit index.
+         */
+        constexpr ConstIterator(const WORD* word, size_t index)
+            : m_data{ word }
+            , m_index{ index }
+        {}
+
+        /**
+         * @brief Dereferences the iterator, returning the bit value.
+         */
+        constexpr reference operator*() const noexcept
+        {
+            const std::size_t wordIndex{ m_index / numberOfDigits };
+            const std::size_t bitOffset{ m_index % numberOfDigits };
+            return static_cast<bool>((m_data[wordIndex] >> bitOffset) & WORD{1});
+        }
+
+        /**
+         * @brief Pre-increment.
+         */
+        constexpr const_iterator& operator++() noexcept
+        {
+            ++m_index;
+            return *this;
+        }
+
+        /**
+         * @brief Post-increment.
+         */
+        constexpr const_iterator operator++(int) noexcept
+        {
+            const_iterator temp(*this);
+
+            ++(*this);
+
+            return temp;
+        }
+
+        /**
+         * @brief Pre-decrement.
+         */
+        constexpr const_iterator& operator--() noexcept
+        {
+            --m_index;
+
+            return *this;
+        }
+
+        /**
+         * @brief Post-decrement.
+         */
+        constexpr const_iterator operator--(int) noexcept
+        {
+            const_iterator temp(*this);
+
+            --(*this);
+
+            return temp;
+        }
+
+        /**
+         * @brief Advances the iterator by n bits.
+         */
+        constexpr const_iterator& operator+=(std::ptrdiff_t n) noexcept
+        {
+            m_index = static_cast<size_t>(static_cast<std::ptrdiff_t>(m_index) + n);
+            return *this;
+        }
+
+        /**
+         * @brief Moves the iterator back by n bits.
+         */
+        constexpr const_iterator& operator-=(std::ptrdiff_t n) noexcept
+        {
+            m_index = static_cast<size_t>(static_cast<std::ptrdiff_t>(m_index) - n);
+            return *this;
+        }
+
+        /**
+         * @brief Returns an iterator advanced by n bits.
+         */
+        constexpr const_iterator operator+(std::ptrdiff_t n) noexcept
+        {
+            const_iterator temp{ *this };
+            temp += n;
+            return temp;
+        }
+
+        /**
+         * @brief Returns an iterator moved back by n bits.
+         */
+        constexpr const_iterator operator-(std::ptrdiff_t n) noexcept
+        {
+            const_iterator temp{ *this };
+            temp -= n;
+            return temp;
+        }
+
+        /**
+         * @brief Non-member symmetric operator+.
+         */
+        friend constexpr const_iterator operator+(std::ptrdiff_t n, const const_iterator& it) noexcept
+        {
+            return it + n;
+        }
+
+        /**
+         * @brief Returns the signed distance between two iterators.
+         * @pre Both iterators must belong to the same Bitset.
+         */
+        constexpr std::ptrdiff_t operator-(const const_iterator& other) const noexcept
+        {
+            return static_cast<std::ptrdiff_t>(m_index) - static_cast<std::ptrdiff_t>(other.m_index);
+        }
+
+        /**
+         * @brief Three-way comparison.
+         * @pre Both iterators must belong to the same Bitset (asserted in debug).
+         */
+        constexpr auto operator<=>(const const_iterator& other) const noexcept
+        {
+            assert(m_data == other.m_data && "iterators from different Bitset compared");
+            return m_index <=> other.m_index;
+        }
+
+        /**
+         * @brief Equality comparison. Iterators from different bitsets are never equal.
+         */
+        constexpr bool operator==(const const_iterator& other) const noexcept
+        {
+            return m_data == other.m_data && m_index == other.m_index;
+        }
+
+        /**
+         * @brief Random access: returns the bit at offset n.
+         */
+        constexpr reference operator[](std::ptrdiff_t n) const noexcept
+        {
+            return *(*this + n);
+        }
+    };
 };
 
 // ====================================================================
-//  Bitset<WORD> — method definitions (alphabetical order)
+//  Bitset<WORD> — method definitions, in alphabetical order
 // ====================================================================
 
-// ---- append ---------------------------------------------------------
+// ---- appendLSB(std::same_as<bool> auto) -----------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
 void Bitset<WORD>::appendLSB(std::same_as<bool> auto value)
@@ -796,6 +1089,180 @@ void Bitset<WORD>::appendLSB(std::same_as<bool> auto value)
     appendMSB(false);
     *this <<= 1;
     set(0, value);
+}
+
+// ---- appendLSB(std::string_view) ------------------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+void Bitset<WORD>::appendLSB(std::string_view str)
+{
+    if (str.empty())
+    {
+        return;
+    }
+    validateBinaryString(str);
+
+    overflowCheck<Op::Add>(m_bitSize, str.size(), "appendLSB(std::string_view)");
+    resize(m_bitSize + str.size());
+    *this <<= str.size();
+    setFromStringUnchecked(str, 0);
+}
+
+// ---- appendLSB(WORD, size_t) ----------------------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+void Bitset<WORD>::appendLSB(WORD word, size_t size)
+{
+    if(0 == size)
+    {
+        return;
+    }
+
+    appendMSB(static_cast<WORD>(0), size);
+
+    *this <<= static_cast<int>(size);
+
+    setValue(word, 0, size);
+}
+
+// ---- appendLSB(const Bitset&) ---------------------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+void Bitset<WORD>::appendLSB(const Bitset& other)
+{
+    if(this == &other)
+    {
+        Bitset temp{ other };
+        appendLSB(temp);
+        return;
+    }
+    if(other.size() == 0)
+    {
+        return;
+    }
+
+    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendLSB(const Bitset&)");
+    resize(m_bitSize + other.size());
+    *this <<= other.size();
+
+    for(size_t i{}; i < other.wordsSize(); ++i)
+    {
+        m_words[i] |= other.m_words[i];
+    }
+}
+
+// ---- appendMSB(std::same_as<bool> auto) -----------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+void Bitset<WORD>::appendMSB(std::same_as<bool> auto value)
+{
+    overflowCheck<Op::Add>(m_bitSize, 1, "appendMSB(std::same_as<bool> auto)");
+    ++m_bitSize;
+    if(wordsSize() < wordsNeeded())
+    {
+        try
+        {
+            m_words.push_back(0);
+        }
+        catch(...)
+        {
+            --m_bitSize;
+            throw;
+        }
+    }
+    set(m_bitSize - 1, value);
+}
+
+// ---- appendMSB(WORD, size_t) ----------------------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+void Bitset<WORD>::appendMSB(WORD value, size_t size)
+{
+    if(0 == size)
+    {
+        return;
+    }
+
+    if (size > std::numeric_limits<WORD>::digits)
+    {
+        throw std::out_of_range("mylib::Bitset::appendMSB(WORD, size_t): size exceeds WORD bits");
+    }
+
+    size_t start{ m_bitSize };
+
+    overflowCheck<Op::Add>(m_bitSize, size, "appendMSB(WORD, size_t)");
+    resize(m_bitSize + size);
+
+    setValue(value, start, size);
+}
+
+// ---- appendMSB(const Bitset&) ---------------------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+void Bitset<WORD>::appendMSB(const Bitset& other)
+{
+    if(this == &other)
+    {
+        Bitset temp{ other };
+        appendMSB(temp);
+        return;
+    }
+
+    if(other.size() == 0)
+    {
+        return;
+    }
+
+    // Copy bits from other into the current set.
+    size_t destWord{ index(m_bitSize) };
+    size_t destBit{ offset(m_bitSize) };
+
+    size_t srcPos{ 0 };  // current position inside other
+    size_t srcBits{ other.size() };
+
+    // Grow and allocate.
+    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendMSB(const Bitset&)");
+    resize(m_bitSize + other.size());
+
+    while(srcPos < srcBits)
+    {
+        // How many bits are left to copy from other.
+        size_t remaining{ srcBits - srcPos };
+        // How much space remains in the current destination word.
+        size_t spaceInWord{ numberOfDigits - destBit };
+        size_t chunk{ std::min(remaining, spaceInWord) };
+
+        // Read `chunk` bits from other, starting at srcPos.
+        WORD chunkValue{ other.getValue(srcPos, chunk) };
+
+        // Write them into the current destination word.
+        bit::setValue(m_words[destWord], chunkValue, static_cast<int>(destBit), static_cast<int>(chunk));
+
+        // Advance the pointers.
+        srcPos += chunk;
+        destBit += chunk;
+        if(destBit == numberOfDigits)
+        {
+            destBit = 0;
+            ++destWord;
+        }
+    }
+}
+
+// ---- Bitset(size_t) -------------------------------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+Bitset<WORD>::Bitset(size_t initialSize)
+    : m_bitSize{ initialSize }
+    , m_words(wordsNeeded())
+{}
+
+// ---- Bitset(const std::string&) -------------------------------------
+template<typename WORD>
+    requires std::unsigned_integral<WORD>
+Bitset<WORD>::Bitset(const std::string& str)
+{
+    prependFromString(str);
 }
 
 // ---- Bitset(const CONTAINER&) ---------------------------------------
@@ -813,29 +1280,13 @@ template<typename CONTAINER>
                  && std::same_as<typename CONTAINER::value_type, WORD>
 Bitset<WORD>::Bitset(const CONTAINER& container)
     : m_bitSize{ (overflowCheck<Op::Mul>(container.size(), // throws on overflow
-                                         numberOfDigits,
-                                         "Bitset(const CONTAINER&)"),
+                                        numberOfDigits,
+                                        "Bitset(const CONTAINER&)"),
                  container.size() * numberOfDigits) }   // computed only if safe
     , m_words(container.size())
 {
     std::ranges::copy(container, m_words.begin());
     zeroOutReminder();
-}
-
-// ---- Bitset(size_t) -------------------------------------------------
-template<typename WORD>
-    requires std::unsigned_integral<WORD>
-Bitset<WORD>::Bitset(size_t initialSize)
-    : m_bitSize{ initialSize }
-    , m_words(wordsNeeded())
-{}
-
-// ---- Bitset(const std::string&) -------------------------------------
-template<typename WORD>
-    requires std::unsigned_integral<WORD>
-Bitset<WORD>::Bitset(const std::string& str)
-{
-    prependFromString(str);
 }
 
 // ---- clear ----------------------------------------------------------
@@ -864,7 +1315,7 @@ bool Bitset<WORD>::equals(std::string_view str) const noexcept
             return false;
         }
 
-        // str[0] — MSB (индекс m_bitSize - 1), str[m_bitSize - 1] — LSB (индекс 0)
+        // str[0] — MSB (index m_bitSize - 1), str[m_bitSize - 1] — LSB (index 0)
         size_t bitIndex{ m_bitSize - 1 - i };
 
         bool bitValue{ c == '1' };
@@ -936,24 +1387,24 @@ WORD Bitset<WORD>::getValue(size_t i, size_t n) const
     }
 
     WORD result{};
-    size_t word{ index(i) };    // индекс слова, где находится начало
-    size_t bit{ offset(i) };    // позиция бита внутри этого слова
-    size_t shift{};             // сдвиг для укладки извлечённых бит в результат
+    size_t word{ index(i) };    // index of the starting word
+    size_t bit{ offset(i) };    // starting bit inside that word
+    size_t shift{};             // shift for packing bits into result
 
     int numbers{ static_cast<int>(n) };
     while(numbers > 0)
     {
-        // сколько бит можно взять из текущего слова (либо до конца слова,
-        // либо сколько осталось до конца поля)
+        // How many bits can be taken from the current word
+        // (either up to the end of the word, or up to the end of the field).
         size_t m{ std::min(static_cast<size_t>(numbers), numberOfDigits - bit) };
 
-        // извлекаем m бит из текущего слова, начиная с позиции bit,
-        // и помещаем их в результат со сдвигом shift
+        // Extract m bits from the current word starting at `bit`
+        // and place them into result at `shift`.
         result |= bit::getValue(m_words[word++], static_cast<int>(bit), static_cast<int>(m)) << shift;
         shift += m;
         numbers -= static_cast<int>(m);
 
-        bit = 0; // после первого слова все последующие читаем с нулевого бита
+        bit = 0; // all subsequent words are read starting from bit 0
     }
 
     return result;
@@ -1129,7 +1580,7 @@ Bitset<WORD>& Bitset<WORD>::operator<<=(size_t shift) noexcept
 {
     if(m_bitSize == 0)
     {
-        return *this;   // ничего не делаем, если набор пуст
+        return *this;   // nothing to do for an empty bitset
     }
     if(shift >= m_bitSize)
     {
@@ -1140,7 +1591,7 @@ Bitset<WORD>& Bitset<WORD>::operator<<=(size_t shift) noexcept
     const size_t wordShift{ index(shift) };
     const size_t bitShift{ offset(shift) };
 
-    if(wordShift > 0) // сдвиг по словам
+    if(wordShift > 0) // word-level shift
     {
         for(size_t i{ wordsSize() }; i-- > wordShift; )
         {
@@ -1148,7 +1599,7 @@ Bitset<WORD>& Bitset<WORD>::operator<<=(size_t shift) noexcept
         }
         std::fill(m_words.begin(), m_words.begin() + wordShift, 0);
     }
-    if(bitShift > 0) // сдвиг по битам
+    if(bitShift > 0) // bit-level shift
     {
         WORD carry{};
         for(size_t i{ wordShift }; i < wordsNeeded(); ++i)
@@ -1171,7 +1622,7 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
 {
     if(m_bitSize == 0)
     {
-        return *this;   // ничего не делаем, если набор пуст
+        return *this;   // nothing to do for an empty bitset
     }
     if(shift >= m_bitSize)
     {
@@ -1182,7 +1633,7 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
     const size_t wordShift{ index(shift) };
     const size_t bitShift{ offset(shift) };
 
-    if(wordShift > 0) // сдвиг по словам
+    if(wordShift > 0) // word-level shift
     {
         for(size_t i{}; i + wordShift < wordsNeeded(); ++i)
         {
@@ -1207,7 +1658,7 @@ Bitset<WORD>& Bitset<WORD>::operator>>=(size_t shift) noexcept
     return *this;
 }
 
-// ---- pop_front ------------------------------------------------------
+// ---- popMSB ---------------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
 void Bitset<WORD>::popMSB()
@@ -1229,104 +1680,6 @@ size_t Bitset<WORD>::popcount() const noexcept
     return sum;
 }
 
-// ---- appendMSB(std::same_as<bool> auto) --------------------------------------------------
-template<typename WORD>
-    requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendMSB(std::same_as<bool> auto value)
-{
-    overflowCheck<Op::Add>(m_bitSize, 1, "appendMSB(std::same_as<bool> auto)");
-    ++m_bitSize;
-    if(wordsSize() < wordsNeeded())
-    {
-        try
-        {
-            m_words.push_back(0);
-        }
-        catch(...)
-        {
-            --m_bitSize;
-            throw;
-        }
-    }
-    set(m_bitSize - 1, value);
-}
-
-// ---- appendMSB(WORD, size_t) ------------------------------------------
-template<typename WORD>
-    requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendMSB(WORD value, size_t size)
-{
-    if(0 == size)
-    {
-        return;
-    }
-
-    if (size > std::numeric_limits<WORD>::digits)
-    {
-        throw std::out_of_range("mylib::Bitset::appendMSB(WORD, size_t): size exceeds WORD bits");
-    }
-
-    size_t start{ m_bitSize };
-
-    overflowCheck<Op::Add>(m_bitSize, size, "appendMSB(WORD, size_t)");
-    resize(m_bitSize + size);
-
-    setValue(value, start, size);
-}
-
-// ---- appendMSB(const Bitset&) -----------------------------------------
-template<typename WORD>
-    requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendMSB(const Bitset& other)
-{
-    if(this == &other)
-    {
-        Bitset temp{ other };
-        appendMSB(temp);
-        return;
-    }
-
-    if(other.size() == 0)
-    {
-        return;
-    }
-
-    // Копируем биты из other в текущий набор
-    size_t destWord{ index(m_bitSize) };
-    size_t destBit{ offset(m_bitSize) };
-
-    size_t srcPos{ 0 };  // текущая позиция в other
-    size_t srcBits{ other.size() };
-
-    // Вычисляем новый размер и выделяем память
-    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendMSB(const Bitset&)");
-    resize(m_bitSize + other.size());
-
-    while(srcPos < srcBits)
-    {
-        // Сколько бит осталось скопировать из other
-        size_t remaining{ srcBits - srcPos };
-        // Сколько места осталось в текущем слове
-        size_t spaceInWord{ numberOfDigits - destBit };
-        size_t chunk{ std::min(remaining, spaceInWord) };
-
-        // Читаем chunk бит из other, начиная с позиции srcPos
-        WORD chunkValue{ other.getValue(srcPos, chunk) };  // используем метод getValue
-
-        // Записываем в текущее слово
-        bit::setValue(m_words[destWord], chunkValue, static_cast<int>(destBit), static_cast<int>(chunk));
-
-        // Продвигаем указатели
-        srcPos += chunk;
-        destBit += chunk;
-        if(destBit == numberOfDigits)
-        {
-            destBit = 0;
-            ++destWord;
-        }
-    }
-}
-
 // ---- prependFromString ----------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
@@ -1335,70 +1688,10 @@ void Bitset<WORD>::prependFromString(std::string_view str)
     setFromString(str, m_bitSize);
 }
 
-// ---- appendLSB(std::string_view) ------------------------------------
+// ---- removeLSB ------------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendLSB(std::string_view str)
-{
-    if (str.empty())
-    {
-        return;
-    }
-    validateBinaryString(str);
-
-    overflowCheck<Op::Add>(m_bitSize, str.size(), "appendLSB(std::string_view)");
-    resize(m_bitSize + str.size());
-    *this <<= str.size();
-    setFromStringUnchecked(str, 0);
-}
-
-// ---- appendLSB(WORD, size_t) ----------------------------------------
-template<typename WORD>
-    requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendLSB(WORD word, size_t size)
-{
-    if(0 == size)
-    {
-        return;
-    }
-
-    appendMSB(static_cast<WORD>(0), size);
-
-    *this <<= static_cast<int>(size);
-
-    setValue(word, 0, size);
-}
-
-// ---- appendLSB(const Bitset&) ---------------------------------------
-template<typename WORD>
-    requires std::unsigned_integral<WORD>
-void Bitset<WORD>::appendLSB(const Bitset& other)
-{
-    if(this == &other)
-    {
-        Bitset temp{ other };
-        appendLSB(temp);
-        return;
-    }
-    if(other.size() == 0)
-    {
-        return;
-    }
-
-    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendLSB(const Bitset&)");
-    resize(m_bitSize + other.size());
-    *this <<= other.size();
-
-    for(size_t i{}; i < other.wordsSize(); ++i)
-    {
-        m_words[i] |= other.m_words[i];
-    }
-}
-
-// ---- removeLast ----------------------------------------------------
-     template<typename WORD>
-         requires std::unsigned_integral<WORD>
-     void Bitset<WORD>::removeLSB()
+void Bitset<WORD>::removeLSB()
 {
     assert(m_bitSize > 0);
     bool lastBit{ getBit(0) };
@@ -1409,13 +1702,14 @@ void Bitset<WORD>::appendLSB(const Bitset& other)
     }
     catch(...)
     {
+        // Restore the state: undo the shift and put the old LSB back.
         *this <<= 1;
         set(0, lastBit);
         throw;
     }
 }
 
-// ---- removeFirst ----------------------------------------------------
+// ---- removeMSB ------------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
 void Bitset<WORD>::removeMSB()
@@ -1449,7 +1743,7 @@ void Bitset<WORD>::reverse() noexcept
 
     m_bitSize += nFill;
     (*this) <<= static_cast<int>(nFill);
-    // инвертирование слов на хранении
+    // Reverse the storage words.
     if constexpr(HasReverse<decltype(m_words)>)
     {
         m_words.reverse();
@@ -1464,7 +1758,7 @@ void Bitset<WORD>::reverse() noexcept
         m_words[i] = bit::reverseAllBits(m_words[i]);
     }
 
-    //удаление мусора
+    // Remove the padding again.
     m_bitSize -= nFill;
     zeroOutReminder();
 }
@@ -1504,7 +1798,7 @@ void Bitset<WORD>::setFromString(std::string_view str, size_t position)
     {
         return;
     }
-    // Проверка на валидные символы
+    // Validate characters.
     validateBinaryString(str);
     overflowCheck<Op::Add>(position, str.length(), "setFromString");
 
@@ -1513,7 +1807,7 @@ void Bitset<WORD>::setFromString(std::string_view str, size_t position)
         resize(position + str.length());
     }
 
-    // Записываем биты: первый символ -> старший бит (position+len-1)
+    // Write the bits: first character -> highest bit (position+len-1).
     setFromStringUnchecked(str, position);
 }
 
@@ -1540,24 +1834,24 @@ void Bitset<WORD>::setValue(WORD value, size_t i, size_t n)
         throw std::out_of_range("mylib::Bitset::setValue: invalid range");
     }
 
-    size_t word{ index(i) };    // индекс слова, где находится начало
-    size_t bit{ offset(i) };    // позиция бита внутри этого слова
-    size_t shift{};             // сдвиг в value, откуда брать биты
+    size_t word{ index(i) };    // index of the starting word
+    size_t bit{ offset(i) };    // starting bit inside that word
+    size_t shift{};             // shift in `value` from which to read bits
 
     size_t numbers{ n };
     while(numbers > 0)
     {
-        // сколько бит можно записать в текущее слово (либо до конца слова,
-        // либо сколько осталось до конца поля)
+        // How many bits can be written into the current word
+        // (either up to the end of the word, or up to the end of the field).
         size_t m{ std::min(numbers, numberOfDigits - bit) };
 
-        // записываем m бит из value (начиная со сдвига shift)
-        // в текущее слово, начиная с позиции bit
+        // Write m bits from value (starting at `shift`) into the current
+        // word starting at position `bit`.
         bit::setValue(m_words[word++], static_cast<WORD>(value >> shift), static_cast<int>(bit), static_cast<int>(m));
         shift += m;
         numbers -= m;
 
-        bit = 0; // после первого слова все последующие пишем с нулевого бита
+        bit = 0; // all subsequent words are written starting from bit 0
     }
 }
 
@@ -1578,7 +1872,7 @@ std::string Bitset<WORD>::toString() const
     result.reserve(m_bitSize);
     for (size_t i{ m_bitSize }; i > 0; --i)
     {
-        bool b{ getBit(i - 1) }; // getBit без проверки границ, но i-1 корректно
+        bool b{ getBit(i - 1) }; // getBit has no bounds check, but i-1 is valid
         result.push_back(b ? '1' : '0');
     }
 
@@ -1625,14 +1919,15 @@ void Bitset<WORD>::zeroOutReminder() noexcept
     {
         m_words.back() &= bit::lowerMask(lastWordBits());
     }
-    else if(m_bitSize == 0)
+    else
     {
+        // Empty bitset: storage must be empty too.
         m_words.clear();
     }
 }
 
 // ====================================================================
-//  Bitset<WORD>::BitReference — method definitions (alphabetical)
+//  Bitset<WORD>::BitReference — method definitions, alphabetical
 // ====================================================================
 
 // ---- BitReference(WORD*, size_t) ------------------------------------
@@ -1728,9 +2023,13 @@ bool Bitset<WORD>::BitReference::operator!=(const BitReference& other) const noe
     return !(*this == other);
 }
 
+// ====================================================================
+//  Deduction guides
+// ====================================================================
+
 /**
-     * @brief Deduction guide for constructing Bitset from a container.
-     */
+ * @brief Deduction guide for constructing Bitset from a container.
+ */
 template<typename CONTAINER>
 Bitset(const CONTAINER&) -> Bitset<typename CONTAINER::value_type>;
 
