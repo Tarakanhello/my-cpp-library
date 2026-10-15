@@ -194,8 +194,17 @@ public:
     // ================================================================
 
     /**
-     * @brief Default constructor creating an empty bitset.
-     * @param initialSize Initial number of bits (all zero). Default 0.
+     * @brief Default constructor creating a bitset with a given size.
+     *
+     * @param initialSize Initial number of bits. Default 0.
+     * @param value       Initial value for all bits (true = 1, false = 0).
+     *                    Default false, so the bitset is zero-initialised.
+     *
+     * @note Bits are stored contiguously; bit 0 is the least significant bit
+     *       of word 0. If `initialSize == 0`, no storage is allocated.
+     *
+     * @see Bitset(const std::string&)
+     * @see Bitset(const CONTAINER&)
      */
     explicit Bitset(size_t initialSize = 0, bool value = false);
 
