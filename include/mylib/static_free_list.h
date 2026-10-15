@@ -7,8 +7,8 @@
 #include <memory>
 #include <utility>
 
+#include "mylib/bitset.h"
 #include "mylib/memory.h"
-#include "mylib/vector.h"
 
 namespace mylib
 {
@@ -209,7 +209,7 @@ void mylib::StaticFreeList<T, ALLOCATOR>::
     {
         try
         {
-            mylib::Vector<bool> toDestruct(m_constructedSize, true);
+            mylib::Bitset toDestruct(m_constructedSize, true);
             Node* returned{ m_returned };
             while(returned)
             {
