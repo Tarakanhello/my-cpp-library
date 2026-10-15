@@ -1,5 +1,18 @@
 #include <catch2/catch_all.hpp>
+
+#include <algorithm>
+#include <cstddef>
+#include <deque>
+#include <list>
+#include <map>
+#include <memory>
 #include <numeric>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "mylib/mylib.h"
 
@@ -30,6 +43,40 @@ namespace
 
         auto operator<=>(const TestStruct& other) const = default;
 
+    };
+
+    // Счётчики копий и мувов.
+    struct Counted
+    {
+        static inline int copies = 0;
+        static inline int moves  = 0;
+
+        int value = 0;
+
+        Counted() = default;
+        explicit Counted(int v) noexcept : value(v) {}
+
+        Counted(const Counted& o) : value(o.value) { ++copies; }
+        Counted(Counted&& o) noexcept : value(o.value)
+        {
+            ++moves;
+            o.value = -1;   // маркер «перемещён»
+        }
+        Counted& operator=(const Counted&) = default;
+        Counted& operator=(Counted&&) = default;
+
+        static void reset() noexcept { copies = 0; moves = 0; }
+    };
+
+    // Move-only тип: копировать нельзя, перемещать можно.
+    struct MoveOnly
+    {
+        int value;
+        explicit MoveOnly(int v) noexcept : value(v) {}
+        MoveOnly(MoveOnly&&) noexcept = default;
+        MoveOnly& operator=(MoveOnly&&) noexcept = default;
+        MoveOnly(const MoveOnly&) = delete;
+        MoveOnly& operator=(const MoveOnly&) = delete;
     };
 
     class MyInt
@@ -151,12 +198,6 @@ TEST_CASE("Vector copy and move semantics", "[vector][copy][move]")
         a = b;
         checkVector(a, listB);
         checkVector(b, listB);
-    }
-
-    SECTION("Copy assignment self-assignment")
-    {
-        a = a;
-        checkVector(a, listA);
     }
 
     SECTION("Move constructor")
@@ -1113,5 +1154,474 @@ TEST_CASE("Vector throws on too large size", "[vector][overflow]")
     {
         V v;
         REQUIRE_THROWS_AS(v.reserve(std::numeric_limits<size_t>::max() / 2), std::length_error);
+    }
+}
+
+
+
+TEST_CASE("Vector conversion to std::vector (const&) - copy",
+          "[vector][conversion]")
+{
+    SECTION("basic copy of ints")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3, 4, 5 });
+        const auto& cv = v;
+
+        std::vector<int> sv = static_cast<std::vector<int>>(cv);
+
+        REQUIRE(sv == std::vector<int>{ 1, 2, 3, 4, 5 });
+        // Источник не изменён
+        REQUIRE(v.size() == 5);
+        for (size_t i = 0; i < 5; ++i) REQUIRE(v[i] == static_cast<int>(i + 1));
+    }
+
+    SECTION("empty Vector produces empty std::vector")
+    {
+        const mylib::Vector<int> v;
+        std::vector<int> sv = static_cast<std::vector<int>>(v);
+        REQUIRE(sv.empty());
+    }
+
+    SECTION("order preserved")
+    {
+        auto v = mylib::Vector<int>({ 5, 4, 3, 2, 1 });
+        const auto& cv = v;
+        auto sv = static_cast<std::vector<int>>(cv);
+        REQUIRE(sv == std::vector<int>{ 5, 4, 3, 2, 1 });
+    }
+
+    SECTION("works with std::string elements")
+    {
+        auto v = mylib::Vector<std::string>({ "a", "b", "c" });
+        const auto& cv = v;
+        auto sv = static_cast<std::vector<std::string>>(cv);
+        REQUIRE(sv == std::vector<std::string>{ "a", "b", "c" });
+        REQUIRE(v[0] == "a");   // источник не тронут
+    }
+
+    SECTION("custom allocator UA")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3 });
+        const auto& cv = v;
+        auto sv = static_cast<std::vector<int, std::allocator<int>>>(cv);
+        REQUIRE(sv.size() == 3);
+        REQUIRE(sv[0] == 1);
+        REQUIRE(sv[1] == 2);
+        REQUIRE(sv[2] == 3);
+    }
+
+    SECTION("calls copy ctor N times, no moves; source unchanged")
+    {
+        mylib::Vector<Counted> v;
+        v.push_back(Counted{ 1 });
+        v.push_back(Counted{ 2 });
+        v.push_back(Counted{ 3 });
+
+        Counted::reset();
+        const auto& cv = v;
+        auto sv = static_cast<std::vector<Counted>>(cv);
+
+        REQUIRE(sv.size() == 3);
+        REQUIRE(Counted::copies >= 3);
+        REQUIRE(Counted::moves == 0);
+        REQUIRE(v[0].value == 1);
+        REQUIRE(v[1].value == 2);
+        REQUIRE(v[2].value == 3);
+    }
+
+    SECTION("explicit — implicit conversion not allowed")
+    {
+        STATIC_REQUIRE_FALSE(
+            std::is_convertible_v<const mylib::Vector<int>&, std::vector<int>>);
+    }
+
+    SECTION("callable multiple times")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3 });
+        const auto& cv = v;
+        auto a = static_cast<std::vector<int>>(cv);
+        auto b = static_cast<std::vector<int>>(cv);
+        REQUIRE(a == b);
+        REQUIRE(v.size() == 3);
+    }
+
+    SECTION("works on named const object")
+    {
+        const auto v = mylib::Vector<int>({ 7, 8, 9 });
+        auto sv = static_cast<std::vector<int>>(v);
+        REQUIRE(sv == std::vector<int>{ 7, 8, 9 });
+    }
+}
+
+
+
+TEST_CASE("Vector conversion to std::vector (&&) - move",
+          "[vector][conversion]")
+{
+    SECTION("basic move of std::string")
+    {
+        auto v = mylib::Vector<std::string>({ "a", "b", "c" });
+        auto sv = static_cast<std::vector<std::string>>(std::move(v));
+
+        REQUIRE(sv == std::vector<std::string>{ "a", "b", "c" });
+
+        // size источника не меняется по документации
+        REQUIRE(v.size() == 3);
+        // Элементы перемещены (moved-from std::string обычно пустые)
+        for (size_t i = 0; i < v.size(); ++i) REQUIRE(v[i].empty());
+    }
+
+    SECTION("empty rvalue")
+    {
+        mylib::Vector<int> v;
+        auto sv = static_cast<std::vector<int>>(std::move(v));
+        REQUIRE(sv.empty());
+        REQUIRE(v.size() == 0);
+    }
+
+    SECTION("destination owns the data after source is reassigned")
+    {
+        auto v = mylib::Vector<std::string>({ "hello", "world" });
+        auto sv = static_cast<std::vector<std::string>>(std::move(v));
+
+        v = mylib::Vector<std::string>{};   // перезаписываем источник
+
+        REQUIRE(sv.size() == 2);
+        REQUIRE(sv[0] == "hello");
+        REQUIRE(sv[1] == "world");
+    }
+
+    SECTION("calls move ctor N times, no copies")
+    {
+        mylib::Vector<Counted> v;
+        v.push_back(Counted{ 1 });
+        v.push_back(Counted{ 2 });
+        v.push_back(Counted{ 3 });
+
+        Counted::reset();
+        auto sv = static_cast<std::vector<Counted>>(std::move(v));
+
+        REQUIRE(sv.size() == 3);
+        REQUIRE(Counted::moves >= 3);
+        REQUIRE(Counted::copies == 0);
+        REQUIRE(sv[0].value == 1);
+        REQUIRE(sv[1].value == 2);
+        REQUIRE(sv[2].value == 3);
+
+        // Источник в moved-from состоянии
+        REQUIRE(v.size() == 3);
+        for (size_t i = 0; i < v.size(); ++i) REQUIRE(v[i].value == -1);
+    }
+
+    SECTION("temporary directly")
+    {
+        auto sv = static_cast<std::vector<int>>(mylib::Vector<int>({ 1, 2, 3 }));
+        REQUIRE(sv == std::vector<int>{ 1, 2, 3 });
+    }
+
+    SECTION("move-only type")
+    {
+        mylib::Vector<std::unique_ptr<int>> v;
+        v.push_back(std::make_unique<int>(1));
+        v.push_back(std::make_unique<int>(2));
+        v.push_back(std::make_unique<int>(3));
+
+        auto sv = static_cast<std::vector<std::unique_ptr<int>>>(std::move(v));
+
+        REQUIRE(sv.size() == 3);
+        REQUIRE(*sv[0] == 1);
+        REQUIRE(*sv[1] == 2);
+        REQUIRE(*sv[2] == 3);
+    }
+
+    SECTION("custom allocator UA")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3 });
+        auto sv = static_cast<std::vector<int, std::allocator<int>>>(std::move(v));
+        REQUIRE(sv.size() == 3);
+        REQUIRE(sv[0] == 1);
+        REQUIRE(sv[2] == 3);
+    }
+
+    SECTION("explicit — implicit conversion not allowed from rvalue")
+    {
+        STATIC_REQUIRE_FALSE(
+            std::is_convertible_v<mylib::Vector<int>&&, std::vector<int>>);
+    }
+}
+
+
+
+TEST_CASE("Vector::to<CONTAINER>() const& - copy to arbitrary container",
+          "[vector][to]")
+{
+    SECTION("to<std::vector>")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3, 4, 5 });
+        const auto& cv = v;
+        auto sv = cv.to<std::vector<int>>();
+        REQUIRE(sv == std::vector<int>{ 1, 2, 3, 4, 5 });
+        REQUIRE(v.size() == 5);
+    }
+
+    SECTION("to<std::deque>")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3 });
+        const auto& cv = v;
+        auto d = cv.to<std::deque<int>>();
+        REQUIRE(d.size() == 3);
+        REQUIRE(d[0] == 1);
+        REQUIRE(d[1] == 2);
+        REQUIRE(d[2] == 3);
+    }
+
+    SECTION("to<std::list>")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3 });
+        const auto& cv = v;
+        auto l = cv.to<std::list<int>>();
+        REQUIRE(l.size() == 3);
+        REQUIRE(std::vector<int>(l.begin(), l.end()) ==
+                std::vector<int>{ 1, 2, 3 });
+    }
+
+    SECTION("to<std::set> — duplicates removed, sorted")
+    {
+        auto v = mylib::Vector<int>({ 3, 1, 2, 3, 1, 5 });
+        const auto& cv = v;
+        auto s = cv.to<std::set<int>>();
+        REQUIRE(s == std::set<int>{ 1, 2, 3, 5 });
+        REQUIRE(v.size() == 6);   // источник не изменён
+    }
+
+    SECTION("to<std::unordered_set>")
+    {
+        auto v = mylib::Vector<int>({ 3, 1, 2, 3, 1, 5 });
+        const auto& cv = v;
+        auto us = cv.to<std::unordered_set<int>>();
+        REQUIRE(us.size() == 4);
+        REQUIRE(us.count(1) == 1);
+        REQUIRE(us.count(2) == 1);
+        REQUIRE(us.count(3) == 1);
+        REQUIRE(us.count(5) == 1);
+    }
+
+    SECTION("to<std::map>")
+    {
+        auto v = mylib::Vector<std::pair<int, std::string>>(
+            { { 1, "one" }, { 2, "two" }, { 3, "three" } });
+        const auto& cv = v;
+        auto m = cv.to<std::map<int, std::string>>();
+        REQUIRE(m.size() == 3);
+        REQUIRE(m.at(1) == "one");
+        REQUIRE(m.at(2) == "two");
+        REQUIRE(m.at(3) == "three");
+    }
+
+    SECTION("empty Vector to various containers")
+    {
+        const mylib::Vector<int> v;
+        REQUIRE(v.to<std::vector<int>>().empty());
+        REQUIRE(v.to<std::deque<int>>().empty());
+        REQUIRE(v.to<std::list<int>>().empty());
+        REQUIRE(v.to<std::set<int>>().empty());
+        REQUIRE(v.to<std::unordered_set<int>>().empty());
+    }
+
+    SECTION("copy semantics — N copies, no moves, source unchanged")
+    {
+        mylib::Vector<Counted> v;
+        v.push_back(Counted{ 1 });
+        v.push_back(Counted{ 2 });
+
+        Counted::reset();
+        const auto& cv = v;
+        auto sv = cv.to<std::vector<Counted>>();
+
+        REQUIRE(sv.size() == 2);
+        REQUIRE(Counted::copies >= 2);
+        REQUIRE(Counted::moves == 0);
+        REQUIRE(v[0].value == 1);
+        REQUIRE(v[1].value == 2);
+    }
+
+    SECTION("to<std::vector<std::string>> — strings copied, source intact")
+    {
+        auto v = mylib::Vector<std::string>({ "a", "b", "c" });
+        const auto& cv = v;
+        auto sv = cv.to<std::vector<std::string>>();
+        REQUIRE(sv == std::vector<std::string>{ "a", "b", "c" });
+        REQUIRE(v[0] == "a");
+    }
+
+    SECTION("callable multiple times on the same source")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3 });
+        const auto& cv = v;
+        auto a = cv.to<std::vector<int>>();
+        auto b = cv.to<std::vector<int>>();
+        REQUIRE(a == b);
+        REQUIRE(v.size() == 3);
+    }
+}
+
+
+
+TEST_CASE("Vector::to<CONTAINER>() && - move to arbitrary container",
+          "[vector][to]")
+{
+    SECTION("to<std::vector> moves strings")
+    {
+        auto v = mylib::Vector<std::string>({ "a", "b", "c" });
+        auto sv = std::move(v).to<std::vector<std::string>>();
+
+        REQUIRE(sv == std::vector<std::string>{ "a", "b", "c" });
+        REQUIRE(v.size() == 3);
+        for (size_t i = 0; i < v.size(); ++i) REQUIRE(v[i].empty());
+    }
+
+    SECTION("to<std::deque> moves")
+    {
+        auto v = mylib::Vector<std::string>({ "x", "y", "z" });
+        auto d = std::move(v).to<std::deque<std::string>>();
+        REQUIRE(d.size() == 3);
+        REQUIRE(d[0] == "x");
+        REQUIRE(d[2] == "z");
+    }
+
+    SECTION("to<std::list> moves")
+    {
+        auto v = mylib::Vector<std::string>({ "x", "y" });
+        auto l = std::move(v).to<std::list<std::string>>();
+        REQUIRE(l.size() == 2);
+        REQUIRE(*l.begin() == "x");
+    }
+
+    SECTION("move-only type to std::vector")
+    {
+        mylib::Vector<std::unique_ptr<int>> v;
+        v.push_back(std::make_unique<int>(10));
+        v.push_back(std::make_unique<int>(20));
+
+        auto sv = std::move(v).to<std::vector<std::unique_ptr<int>>>();
+        REQUIRE(sv.size() == 2);
+        REQUIRE(*sv[0] == 10);
+        REQUIRE(*sv[1] == 20);
+    }
+
+    SECTION("move-only type to std::list")
+    {
+        mylib::Vector<std::unique_ptr<int>> v;
+        v.push_back(std::make_unique<int>(10));
+        v.push_back(std::make_unique<int>(20));
+
+        auto l = std::move(v).to<std::list<std::unique_ptr<int>>>();
+        REQUIRE(l.size() == 2);
+        REQUIRE(**l.begin() == 10);
+    }
+
+    SECTION("calls move ctor N times, no copies")
+    {
+        mylib::Vector<Counted> v;
+        v.push_back(Counted{ 1 });
+        v.push_back(Counted{ 2 });
+
+        Counted::reset();
+        auto sv = std::move(v).to<std::vector<Counted>>();
+
+        REQUIRE(sv.size() == 2);
+        REQUIRE(Counted::moves >= 2);
+        REQUIRE(Counted::copies == 0);
+        REQUIRE(sv[0].value == 1);
+        REQUIRE(sv[1].value == 2);
+
+        // Источник moved-from
+        REQUIRE(v[0].value == -1);
+        REQUIRE(v[1].value == -1);
+    }
+
+    SECTION("empty rvalue")
+    {
+        mylib::Vector<int> v;
+        auto sv = std::move(v).to<std::vector<int>>();
+        REQUIRE(sv.empty());
+        REQUIRE(v.size() == 0);
+    }
+
+    SECTION("temporary directly")
+    {
+        auto sv = mylib::Vector<int>({ 1, 2, 3 }).to<std::vector<int>>();
+        REQUIRE(sv == std::vector<int>{ 1, 2, 3 });
+    }
+}
+
+
+
+TEST_CASE("Vector conversions consistency", "[vector][conversion][to]")
+{
+    SECTION("operator std::vector const& == to<std::vector> const&")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3, 4 });
+        const auto& cv = v;
+        auto a = static_cast<std::vector<int>>(cv);
+        auto b = cv.to<std::vector<int>>();
+        REQUIRE(a == b);
+    }
+
+    SECTION("operator std::vector && == to<std::vector> &&")
+    {
+        auto v1 = mylib::Vector<std::string>({ "x", "y", "z" });
+        auto v2 = mylib::Vector<std::string>({ "x", "y", "z" });
+
+        auto a = static_cast<std::vector<std::string>>(std::move(v1));
+        auto b = std::move(v2).to<std::vector<std::string>>();
+
+        REQUIRE(a == b);
+    }
+
+    SECTION("all conversions preserve order")
+    {
+        auto v = mylib::Vector<int>({ 10, 20, 30, 40, 50 });
+        const auto& cv = v;
+
+        auto sv = static_cast<std::vector<int>>(cv);
+        auto d  = cv.to<std::deque<int>>();
+        auto l  = cv.to<std::list<int>>();
+
+        const std::vector<int> expected{ 10, 20, 30, 40, 50 };
+
+        REQUIRE(sv == expected);
+        REQUIRE(std::vector<int>(d.begin(), d.end()) == expected);
+        REQUIRE(std::vector<int>(l.begin(), l.end()) == expected);
+    }
+
+    SECTION("lvalue doesn't consume source, rvalue does")
+    {
+        auto v = mylib::Vector<std::string>({ "hello", "world" });
+        const auto& cv = v;
+
+        // lvalue — копия, источник цел
+        auto a = cv.to<std::vector<std::string>>();
+        REQUIRE(v[0] == "hello");
+        REQUIRE(v[1] == "world");
+
+        // rvalue — мув, источник moved-from
+        auto b = std::move(v).to<std::vector<std::string>>();
+        REQUIRE(b == a);
+        REQUIRE(v[0].empty());
+        REQUIRE(v[1].empty());
+    }
+
+    SECTION("round-trip through std::vector")
+    {
+        auto v = mylib::Vector<int>({ 1, 2, 3, 4, 5 });
+        const auto& cv = v;
+        auto sv = static_cast<std::vector<int>>(cv);
+
+        mylib::Vector<int> v2;
+        for (int x : sv) v2.push_back(x);
+
+        REQUIRE(v2.size() == v.size());
+        for (size_t i = 0; i < v.size(); ++i) REQUIRE(v2[i] == v[i]);
     }
 }

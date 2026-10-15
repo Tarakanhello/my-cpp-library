@@ -10,8 +10,10 @@
 #include <iterator>
 #include <limits>
 #include <type_traits>
+#include <vector>
 #include <utility>
 
+#include "mylib/concepts.h"
 #include "mylib/memory.h"
 #include "mylib/structs.h"
 
@@ -31,6 +33,22 @@ namespace mylib
     template<typename T, typename ALLOCATOR = mylib::MySimpleAllocator<T>>
     class Vector final : public mylib::ArithmeticType<Vector<T, ALLOCATOR>>
     {
+    public:
+        // ИТЕРАТОРЫ
+        class Iterator;
+        class ConstIterator;
+        // Обратные итераторы – используем std::reverse_iterator
+        using reverse_iterator       = std::reverse_iterator<Iterator>;
+        using const_reverse_iterator = std::reverse_iterator<ConstIterator>;
+
+        using value_type             = T;
+        using reference              = T&;
+        using const_reference        = const T&;
+        using size_type              = size_t;
+        using difference_type        = std::ptrdiff_t;
+        using iterator               = Iterator;
+        using const_iterator         = ConstIterator;
+
     private:
         /** @brief Минимальная ёмкость при первом выделении памяти. */
         enum{ MinCapacity = 8 };
@@ -173,6 +191,115 @@ namespace mylib
          * @brief Деструктор. Уничтожает все элементы и освобождает память.
          */
         ~Vector() noexcept;
+
+        /**
+         * @brief Converts to std::vector<T, UA> by copying elements (lvalue).
+         *
+         * Called when the source is an lvalue or const lvalue. Elements are
+         * copied into the new std::vector.
+         *
+         * @tparam UA Allocator type of the resulting std::vector.
+         */
+        template<typename UA = std::allocator<T>>
+        explicit operator std::vector<T, UA>() const&
+        {
+            return std::vector<T, UA>(this->begin(), this->end());
+        }
+
+        /**
+         * @brief Converts to std::vector<T, UA> by moving elements (rvalue).
+         *
+         * Called when the source is a non-const rvalue (e.g. a temporary
+         * returned from a function). Elements are moved, not copied, so
+         * the cost is one allocation + N moves instead of one allocation + N copies.
+         *
+         * @note The source is left with moved-from elements; its size and
+         *       capacity are unchanged. Do not use it after conversion.
+         */
+        template<typename UA = std::allocator<T>>
+        explicit operator std::vector<T, UA>() &&
+        {
+            return std::vector<T, UA>(
+                std::make_move_iterator(this->begin()),
+                std::make_move_iterator(this->end())
+                );
+        }
+
+        /**
+         * @brief Returns a copy of this vector as a container of type CONTAINER.
+         *
+         * Constructs CONTAINER from the range [begin(), end()), copying each
+         * element. Works for any container constructible from an iterator pair:
+         * std::vector, std::deque, std::list, std::set, std::unordered_set, etc.
+         *
+         * @tparam CONTAINER Target container type. Must satisfy
+         *         ConstructibleFromRange<CONTAINER, ConstIterator>.
+         *
+         * @return New CONTAINER with a copy of all elements.
+         *
+         * @throw std::bad_alloc        if CONTAINER allocation fails.
+         * @throw Any exception thrown by CONTAINER's constructor or by T's
+         *        copy constructor.
+         *
+         * @note Behaviour depends on CONTAINER: e.g. std::set removes duplicate
+         *       elements; std::unordered_set requires std::hash<T>; std::map
+         *       requires value_type to be a pair.
+         *
+         * @code
+         * mylib::Vector<int> v = {1, 2, 3};
+         * auto d = v.to<std::deque<int>>();       // copy
+         * auto s = v.to<std::set<int>>();         // copy, duplicates removed
+         * @endcode
+         *
+         * @see to() &&
+         * @see operator std::vector<T, UA>()
+         */
+        template<typename CONTAINER>
+            requires ConstructibleFromRange<CONTAINER, ConstIterator>
+        CONTAINER to() const&
+        {
+            return CONTAINER(this->begin(), this->end());
+        }
+
+        /**
+         * @brief Moves elements into a container of type CONTAINER.
+         *
+         * Constructs CONTAINER from the range [begin(), end()) using move
+         * iterators, so each element is moved rather than copied. The cost is
+         * one allocation + N moves instead of one allocation + N copies.
+         *
+         * @tparam CONTAINER Target container type. Must satisfy
+         *         ConstructibleFromRange<CONTAINER, Iterator>.
+         *
+         * @return New CONTAINER containing the moved elements.
+         *
+         * @throw std::bad_alloc        if CONTAINER allocation fails.
+         * @throw Any exception thrown by CONTAINER's constructor or by T's
+         *        move constructor.
+         *
+         * @note If T is not move-constructible, falls back to copy-construction
+         *       per element (std::move degenerates to a copy). No error.
+         *
+         * @note The source is left with moved-from elements; its size and
+         *       capacity are unchanged. Do not use it after conversion.
+         *
+         * @code
+         * mylib::Vector<std::string> makeVec();
+         * auto v = makeVec().to<std::vector<std::string>>();  // move
+         * @endcode
+         *
+         * @see to() const&
+         * @see operator std::vector<T, UA>()
+         */
+        template<typename CONTAINER>
+            requires ConstructibleFromRange<CONTAINER, Iterator>
+        CONTAINER to() &&
+        {
+            return CONTAINER(
+                std::make_move_iterator(this->begin()),
+                std::make_move_iterator(this->end())
+                );
+        }
 
         /**
          * @brief Добавляет элемент в конец (перегрузка для lvalue).
@@ -349,13 +476,6 @@ namespace mylib
          */
         constexpr size_t size() const noexcept;
 
-        // ИТЕРАТОРЫ
-        class Iterator;
-        class ConstIterator;
-        // Обратные итераторы – используем std::reverse_iterator
-        using reverse_iterator       = std::reverse_iterator<Iterator>;
-        using const_reverse_iterator = std::reverse_iterator<ConstIterator>;
-
         /**
          * @brief Возвращает итератор на первый элемент.
          */
@@ -415,14 +535,6 @@ namespace mylib
          * @brief Возвращает константный обратный итератор на первый элемент.
          */
         constexpr const_reverse_iterator crend() const noexcept;
-
-        using value_type             = T;
-        using reference              = T&;
-        using const_reference        = const T&;
-        using size_type              = size_t;
-        using difference_type        = std::ptrdiff_t;
-        using iterator               = Iterator;
-        using const_iterator         = ConstIterator;
     };
 
 
