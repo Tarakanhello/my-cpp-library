@@ -197,7 +197,7 @@ public:
      * @brief Default constructor creating an empty bitset.
      * @param initialSize Initial number of bits (all zero). Default 0.
      */
-    explicit Bitset(size_t initialSize = 0);
+    explicit Bitset(size_t initialSize = 0, bool value = false);
 
     /**
      * @brief Constructs a bitset from a string of '0' and '1' characters.
@@ -1252,10 +1252,15 @@ void Bitset<WORD>::appendMSB(const Bitset& other)
 // ---- Bitset(size_t) -------------------------------------------------
 template<typename WORD>
     requires std::unsigned_integral<WORD>
-Bitset<WORD>::Bitset(size_t initialSize)
+Bitset<WORD>::Bitset(size_t initialSize, bool value)
     : m_bitSize{ initialSize }
     , m_words(wordsNeeded())
-{}
+{
+    if(value && m_bitSize > 0)
+    {
+        setAll(value);
+    }
+}
 
 // ---- Bitset(const std::string&) -------------------------------------
 template<typename WORD>
