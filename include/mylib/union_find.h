@@ -224,8 +224,6 @@ public:
      * The new element gets index count() (old value) and forms its own set.
      * Increments components().
      *
-     * @note Does not check INT_MAX overflow; the caller is responsible for
-     *       keeping the total number of elements within the constructor's limit.
      */
     void add();
 
