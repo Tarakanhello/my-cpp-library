@@ -13,6 +13,7 @@
 #include "mylib/stack.h"
 #include "mylib/static_free_list.h"
 #include "mylib/structs.h"
+#include "mylib/union_find.h"
 #include "mylib/vector.h"
 
 
