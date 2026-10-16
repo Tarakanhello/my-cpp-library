@@ -51,6 +51,11 @@ size_t mylib::UnionFind::count() const noexcept
 
 void mylib::UnionFind::debug() const noexcept
 {
+    if(m_parent.empty())
+    {
+        std::cout << "UnionFind is empty";
+        return;
+    }
     for(const auto& element : m_parent)
     {
         std::cout << std::format("[{}] ", element);
