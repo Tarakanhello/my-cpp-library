@@ -42,6 +42,9 @@ add_library(mylib STATIC
     include/mylib/bit_operations.h
     include/mylib/flag_set.h
     include/mylib/bitset.h
+    include/mylib/union_find.h
+    src/union_find.cpp
+    include/mylib/concepts.h
 
 )
 target_include_directories(mylib PUBLIC include)
