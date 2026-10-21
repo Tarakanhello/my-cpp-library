@@ -9,6 +9,7 @@
 #include "mylib/math.h"
 #include "mylib/memory.h"
 #include "mylib/queue.h"
+#include "mylib/random.h"
 #include "mylib/show_debug_log_info.h"
 #include "mylib/stack.h"
 #include "mylib/static_free_list.h"

@@ -45,6 +45,7 @@ add_library(mylib STATIC
     include/mylib/union_find.h
     src/union_find.cpp
     include/mylib/concepts.h
+    include/mylib/random.h
 
 )
 target_include_directories(mylib PUBLIC include)

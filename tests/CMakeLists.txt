@@ -14,6 +14,7 @@ add_executable(unit_tests
     test_flag_set.cpp
     test_bitset.cpp
     test_union_find.cpp
+    test_random.cpp
 )
 target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 
