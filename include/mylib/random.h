@@ -5,6 +5,10 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <random>
+
+#include "concepts.h"
+#include "mylib/bit_operations.h"
 
 namespace mylib
 {
@@ -216,12 +220,247 @@ namespace random
     }; // end QualityXorshift64
 
 
-    class MT19937 final
+    /**
+     * @brief A template-based Mersenne Twister pseudo-random number generator.
+     *
+     * This class implements the Mersenne Twister algorithm, which is the de facto
+     * standard for non-cryptographic PRNGs. It is templated to support both 32-bit
+     * (equivalent to std::mt19937) and 64-bit (equivalent to std::mt19937_64) variants.
+     *
+     * Key properties:
+     *   - Extremely long period (2^19937 - 1 for 64-bit, 2^19937 - 1 for 32-bit).
+     *   - Passes stringent statistical randomness tests (e.g., BigCrush).
+     *   - Requires a large internal state (312 or 624 words).
+     *
+     * @tparam UIntType The underlying unsigned integer type (uint32_t or uint64_t).
+     *
+     * @note NOT cryptographically secure.
+     * @note Not thread-safe: concurrent calls to operator() race on m_index and
+     *       m_state. Give each thread its own instance.
+     */
+    template<UInt_32_or_64 UIntType = uint64_t>
+    class MersenneTwister final
     {
     public:
+        /**
+         * @brief Type of the values produced by the generator.
+         * Required by the UniformRandomBitGenerator concept.
+         */
+        using result_type = UIntType;
+
+        /**
+         * @brief Lower bound of the generated range (inclusive).
+         * @return 0.
+         */
+        static constexpr result_type min() noexcept { return 0; }
+
+        /**
+         * @brief Upper bound of the generated range (inclusive).
+         * @return std::numeric_limits<result_type>::max().
+         */
+        static constexpr result_type max() noexcept { return std::numeric_limits<result_type>::max(); }
+
+    private:
+        // === 1. Параметры структуры ===
+        /// @brief Размер машинного слова в битах (32 или 64).
+        static constexpr size_t bitWidth            { sizeof(result_type) * 8 };
+
+        /// @brief Количество слов в массиве состояния (624 для 32-бит, 312 для 64-бит).
+        static constexpr size_t stateSize           { bitWidth == 64 ? 312 : 624};
+
+        /// @brief Смещение для операции "закручивания" (Twist).
+        static constexpr size_t middleWordOffset    { bitWidth == 64  ? 156 : 397 };
+
+        /// @brief Точка разделения для склеивания старших и младших битов.
+        static constexpr size_t separationPoint     { 31 };
+
+        // === 2. Параметры закручивания (Twisting) ===
+        /// @brief Магическая константа (матрица A) для XOR-операции при закручивании.
+        static constexpr result_type matrixA        { bitWidth == 64 ? 0xB5026F5AA96619E9ULL : 0x9908B0DFULL };
+
+        // === 3. Параметры темперирования (Tempering) ===
+        /// @brief Параметры сдвигов и масок для финального перемешивания (темперирования).
+        static constexpr result_type temperShiftU   { bitWidth == 64 ? 29 : 11 };
+        static constexpr result_type temperMaskD    { bitWidth == 64 ? 0x5555555555555555ULL : 0xFFFFFFFFULL };
+        static constexpr result_type temperShiftS   { bitWidth == 64 ? 17 : 7 };
+        static constexpr result_type temperMaskB    { bitWidth == 64 ? 0x71D67FFFEDA60000ULL : 0x9D2C5680ULL };
+        static constexpr result_type temperShiftT   { bitWidth == 64 ? 37 : 15 };
+        static constexpr result_type temperMaskC    { bitWidth == 64 ? 0xFFF7EEE000000000ULL : 0xEFC60000ULL };
+        static constexpr result_type temperShiftL   { bitWidth == 64 ? 43 : 18 };
+
+        // === 4. Параметр инициализации ===
+        /// @brief Множитель для генерации начального состояния из одного числа (seed).
+        static constexpr result_type initMultiplier { bitWidth == 64 ? 6364136223846793005ULL : 1812433253ULL };
+
+        /// @brief Внутреннее состояние генератора (массив слов).
+        std::array<result_type, stateSize> m_state;
+
+        /// @brief Текущий индекс в массиве m_state. Когда достигает stateSize, вызывается twist().
+        std::size_t m_index;
+
+        /**
+         * @brief Инициализирует внутреннее состояние с использованием одного числа (seed).
+         *
+         * Использует линейную конгруэнтную рекуррентную формулу (LCG) для заполнения
+         * всего массива m_state на основе одного начального значения.
+         *
+         * @param seed Начальное число.
+         */
+        void initBySeed(result_type seed) noexcept
+        {
+            m_state[0] = seed;
+            for(size_t i{ 1 }; i < stateSize; ++i)
+            {
+                m_state[i] = initMultiplier * (m_state[i - 1] ^ (m_state[i - 1] >> (bitWidth - 2))) + i;
+            }
+
+            m_index = stateSize; // Заставляем генератор сделать twist() при первом вызове
+        }
+
+        /**
+         * @brief Инициализирует внутреннее состояние с использованием объекта SeedSequence.
+         *
+         * Генерирует массив 32-битных чисел с помощью seq.generate().
+         * Если целевой тип 64-битный, числа попарно склеиваются в 64-битные слова
+         * (старшие 32 бита и младшие 32 бита).
+         *
+         * @tparam SeedSeq Тип, удовлетворяющий концепту SeedSequence.
+         * @param seq Объект, генерирующий начальные данные.
+         */
+        template<SeedSequence SeedSeq>
+        void initBySeedSeq(SeedSeq& seq)
+        {
+            constexpr size_t genSize{ stateSize * (bitWidth / 32) };
+            std::array<std::uint32_t, genSize> seedData;
+            seq.generate(seedData.begin(), seedData.end());
+
+            for(size_t i{ 0 }; i < stateSize; ++i)
+            {
+                if constexpr(bitWidth == 64)
+                {
+                    m_state[i] = (static_cast<result_type>(seedData[2 * i]) << 32)
+                                | static_cast<result_type>(seedData[2 * i + 1]);
+                }
+                else
+                {
+                    m_state[i] = seedData[i];
+                }
+            }
+
+            m_index = stateSize; // Заставляем генератор сделать twist() при первом вызове
+        }
+
+        /**
+         * @brief Генерирует следующий блок из stateSize псевдослучайных чисел.
+         *
+         * Это ядро алгоритма Mersenne Twister. Оно перемешивает биты массива m_state,
+         * используя технику "закручивания" (twisting) со сдвигом и применением matrixA.
+         * После завершения цикла индекс сбрасывается в 0.
+         */
+        void twist() noexcept
+        {
+            constexpr result_type upperMask{ bit::upperMask<result_type>(separationPoint) };
+            constexpr result_type lowerMask{ ~upperMask };
+
+            for(std::size_t i{ 0 }; i < stateSize; ++i)
+            {
+                // Склеиваем старшие биты текущего элемента и младшие биты следующего
+                result_type y{ (m_state[i] & upperMask) | (m_state[(i + 1) % stateSize] & lowerMask) };
+
+                 // Закручиваем: применяем XOR с элементом со смещением middleWordOffset
+                m_state[i] = m_state[(i + middleWordOffset) % stateSize] ^ (y >> 1);
+
+                // Если младший бит y был 1, применяем матрицу A
+                if(y & 1)
+                {
+                    m_state[i] ^= matrixA;
+                }
+            }
+
+            m_index = 0;
+        }
+
+    public:
+        /**
+         * @brief Конструктор по умолчанию.
+         *
+         * Инициализирует генератор с использованием std::random_device и текущего времени.
+         * Это гарантирует, что каждый экземпляр получит уникальную последовательность,
+         * даже если объекты создаются в одну и ту же миллисекунду.
+         */
+        MersenneTwister()
+        {
+            std::random_device rd;
+            auto time { std::chrono::system_clock::now().time_since_epoch().count() };
+            std::seed_seq seq{ rd(), rd(), rd(), rd(), static_cast<std::uint32_t>(time) };
+
+            initBySeedSeq(seq);
+        }
+
+        /**
+         * @brief Конструктор с явным указанием начального числа (seed).
+         *
+         * Полезен для детерминированных тестов, когда нужно получить одинаковую
+         * последовательность чисел при каждом запуске программы.
+         *
+         * @param seed Начальное значение (зерно).
+         */
+        explicit MersenneTwister(UIntType seed) noexcept
+        {
+            initBySeed(seed);
+        }
+
+        /**
+         * @brief Конструктор с использованием внешнего SeedSequence.
+         *
+         * Позволяет передать любой объект, удовлетворяющий концепту SeedSequence
+         * (например, std::seed_seq или ваш собственный), для инициализации.
+         *
+         * @tparam SeedSeq Тип, удовлетворяющий концепту SeedSequence.
+         * @param seq Объект для генерации начального состояния.
+         */
+        template<SeedSequence SeedSeq>
+        explicit MersenneTwister(SeedSeq& seq)
+        {
+            initBySeedSeq(seq);
+        }
+
+        /**
+         * @brief Генерирует следующее псевдослучайное число.
+         *
+         * Если текущий индекс превысил размер массива, сначала происходит
+         * "закручивание" (twist). Затем берется число из массива и применяется
+         * финальное "темперирование" (tempering) для улучшения статистических свойств.
+         *
+         * @return Следующее псевдослучайное число типа result_type.
+         */
+        result_type operator()() noexcept
+        {
+            if(m_index >= stateSize)
+            {
+                twist();
+            }
+
+            result_type x{ m_state[m_index++] };
+
+            // Темперирование (Tempering): перемешиваем биты для устранения линейности
+            x ^= (x >> temperShiftU) & temperMaskD;
+            x ^= (x << temperShiftS) & temperMaskB;
+            x ^= (x << temperShiftT) & temperMaskC;
+            x ^= (x >> temperShiftL);
+
+            return x;
+        }
+
     };
 
-    using defaultRandomizer = MT19937;
+
+    /**
+     * @brief Псевдоним для MersenneTwister, используемый по умолчанию.
+     * По умолчанию использует 64-битный тип.
+     */
+    template<UInt_32_or_64 UIntType = uint64_t>
+    using defaultRandomizer = MersenneTwister<UIntType>;
 
 
 } // endnamespace random
