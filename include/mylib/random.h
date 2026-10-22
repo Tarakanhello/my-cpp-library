@@ -330,16 +330,18 @@ namespace random
         template<SeedSequence SeedSeq>
         void initBySeedSeq(SeedSeq& seq)
         {
-            constexpr size_t genSize{ stateSize * (bitWidth / 32) };
-            std::array<std::uint32_t, genSize> seedData;
+            static constexpr size_t k{ bitWidth == 32 ? 1 : 2 }; // 1 для 32, 2 для 64
+            static constexpr size_t genSize{ stateSize * k };
+
+            std::array<result_type, genSize> seedData;
             seq.generate(seedData.begin(), seedData.end());
 
             for(size_t i{ 0 }; i < stateSize; ++i)
             {
                 if constexpr(bitWidth == 64)
                 {
-                    m_state[i] = (static_cast<result_type>(seedData[2 * i]) << 32)
-                                | static_cast<result_type>(seedData[2 * i + 1]);
+                    m_state[i] =  seedData[2 * i]
+                               + (seedData[2 * i + 1] << 32);
                 }
                 else
                 {
