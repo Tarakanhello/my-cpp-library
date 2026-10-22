@@ -135,6 +135,27 @@ namespace random
              */
         result_type next() noexcept { return m_state = transform(m_state); }
 
+        /**
+         * @brief Инициализация через SeedSequence.
+         *
+         * Генерирует два 32-битных числа и склеивает их в одно 64-битное.
+         * Гарантирует, что итоговое состояние не будет равно нулю.
+         */
+        template<SeedSequence SeedSeq>
+        void initBySeedSeq(SeedSeq& seq)
+        {
+            std::array<uint32_t, 2> seedData;
+            seq.generate(seedData.begin(), seedData.end());
+
+            m_state = (static_cast<result_type>(seedData[0]) << 32) | seedData[1];
+
+            if(m_state == 0)
+            {
+                m_state = PASSWORD;
+            }
+        }
+
+
     public:
         /**
              * @brief Constructs a generator from a seed.
@@ -153,6 +174,15 @@ namespace random
                                                           std::chrono::system_clock::now().time_since_epoch()).count() ^ PASSWORD)
             : m_state{ seed ? seed : PASSWORD }
         {}
+
+        /**
+         * @brief Конструктор с использованием std::seed_seq (или любого SeedSequence).
+         */
+        template<SeedSequence SeedSeq>
+        explicit QualityXorshift64(SeedSeq& seq)
+        {
+            initBySeedSeq(seq);
+        }
 
         /**
              * @brief Lower bound of the generated range (inclusive).
@@ -463,6 +493,168 @@ namespace random
      */
     template<UInt_32_or_64 UIntType = uint64_t>
     using defaultRandomizer = MersenneTwister<UIntType>;
+
+
+
+
+    /**
+     * @brief A high-level convenience wrapper around a Uniform Random Bit Generator (URBG).
+     *
+     * This class provides an easy-to-use interface for common random generation tasks,
+     * such as rolling dice, flipping coins, or generating floating-point numbers.
+     * It eliminates the need to manually instantiate and manage `<random>` distributions
+     * for everyday use cases.
+     *
+     * By default, it uses the `defaultRandomizer` (which is `MersenneTwister<uint64_t>`),
+     * but it can wrap any type that satisfies the `std::uniform_random_bit_generator` concept.
+     *
+     * @tparam GENERATOR The underlying random number engine.
+     */
+    template<std::uniform_random_bit_generator GENERATOR = defaultRandomizer<>>
+    class Randomizer final
+    {
+    public:
+        /// @brief The type of values produced by the underlying generator.
+        using result_type = typename GENERATOR::result_type;
+
+        /// @brief Returns the minimum possible value of the underlying generator.
+        static constexpr result_type min() { return GENERATOR::min(); }
+
+        /// @brief Returns the maximum possible value of the underlying generator.
+        static constexpr result_type max() { return GENERATOR::max(); }
+
+    private:
+        GENERATOR m_g;
+
+        /**
+         * @brief Creates a default-initialized generator using high-entropy sources.
+         *
+         * Combines `std::random_device` (hardware entropy) with the current system time
+         * to create a `std::seed_seq`. This ensures that two objects created at the same
+         * time will not produce identical sequences.
+         *
+         * @return A fully initialized GENERATOR object.
+         */
+        static GENERATOR createDefault()
+        {
+            std::random_device rd{};
+            std::seed_seq seq{ rd(),
+                               rd(),
+                               rd(),
+                               rd(),
+                               rd(),
+                               rd(),
+                               rd(),
+                               static_cast<std::uint32_t>(std::chrono::system_clock::now().time_since_epoch().count()) };
+            return GENERATOR{ seq };
+        }
+
+    public:
+        /**
+         * @brief Default constructor. Initializes the generator with high entropy.
+         */
+        Randomizer()
+            : m_g{ createDefault() }
+        {}
+
+        /**
+         * @brief Constructs the generator with a specific seed.
+         * @param seed The starting value. Useful for reproducible tests.
+         */
+        explicit Randomizer(result_type seed)
+            : m_g{ seed }
+        {}
+
+        /**
+         * @brief Constructs the generator using a SeedSequence (e.g., std::seed_seq).
+         * @param seq The sequence object to use for initialization.
+         */
+        template<SeedSequence SeedSeq>
+        explicit Randomizer(SeedSeq& seq)
+            : m_g{ seq }
+        {}
+
+        /**
+         * @brief Advances the generator and returns the next raw random value.
+         * Required to satisfy the UniformRandomBitGenerator concept.
+         */
+        result_type operator()() noexcept
+        {
+            return m_g();
+        }
+
+        /**
+         * @brief Alias for operator(). Returns the next raw random value.
+         */
+        result_type next() noexcept
+        {
+            return (*this)();
+        }
+
+        /**
+         * @brief Generates a uniformly distributed integer in the range [0, n - 1].
+         *
+         * @note This function does NOT use the modulo operator (`%`). Using `%` introduces
+         *       a slight statistical bias (modulo bias). Instead, it uses
+         *       `std::uniform_int_distribution`, which employs rejection sampling to
+         *       guarantee mathematically perfect uniformity.
+         *
+         * @param n The exclusive upper bound (must be > 0).
+         * @return A random integer between 0 and n - 1.
+         */
+        result_type mod(result_type n)
+        {
+            assert(n > 0);
+
+            std::uniform_int_distribution<result_type> numbers{ 0, n - 1 };
+
+            return numbers(m_g);
+        }
+
+        /**
+         * @brief Generates either 1 or -1 with a 50/50 probability.
+         * Useful for random walks or physics simulations.
+         */
+        int sign() { return mod(2) ? 1 : -1; }
+
+        /**
+         * @brief Generates a uniformly distributed integer in the inclusive range [a, b].
+         *
+         * @tparam IntType The integer type (e.g., int, long long). Defaults to int.
+         * @param a The lower bound (inclusive).
+         * @param b The upper bound (inclusive).
+         * @return A random integer between a and b.
+         *
+         * @note We use `IntType` for the distribution, NOT `result_type`. If `result_type`
+         *       is unsigned (uint64_t) and you pass negative values for `a` or `b`, using
+         *       `result_type` would cause severe underflow bugs.
+         * @note `noexcept` is omitted because `std::uniform_int_distribution::operator()`
+         *       is not guaranteed to be `noexcept` by the C++ standard.
+         */
+        template<std::integral IntType = int>
+        IntType inRange(IntType a, IntType b)
+        {
+            assert(b >= a);
+
+            std::uniform_int_distribution<IntType> numbers{ a, b };
+
+            return numbers(m_g);
+        }
+
+        /**
+         * @brief Generates a uniformly distributed `double` in the half-open interval [0, 1).
+         *
+         * Converts the raw integer to a double and divides by 2^N (where N is the bit width
+         * of the generator). Computed via `std::ldexp` to avoid intermediate overflow and
+         * to ensure exact power-of-two division.
+         */
+        double uniform01() noexcept
+        {
+            return static_cast<double>(next()) / std::ldexp(1.0, sizeof(result_type) * 8);
+        }
+
+    };
+
 
 
 } // endnamespace random
