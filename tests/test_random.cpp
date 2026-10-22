@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_template_test_macros.hpp>
 
 #include <algorithm>
 #include <array>
@@ -514,5 +515,510 @@ TEST_CASE("QualityXorshift64 long run smoke test", "[rng][xorshift][smoke]")
             REQUIRE(curr != R{ 0 });
             prev = curr;
         }
+    }
+}
+
+
+// ============================================================================
+//  MersenneTwister: type traits, concepts, aliases
+// ============================================================================
+TEST_CASE("MersenneTwister type traits and concepts", "[rng][mt][traits]")
+{
+    SECTION("UInt_32_or_64 concept accepts exactly 32/64-bit unsigned")
+    {
+        STATIC_REQUIRE( mylib::UInt_32_or_64<std::uint32_t>);
+        STATIC_REQUIRE( mylib::UInt_32_or_64<std::uint64_t>);
+        STATIC_REQUIRE_FALSE(mylib::UInt_32_or_64<std::uint8_t>);
+        STATIC_REQUIRE_FALSE(mylib::UInt_32_or_64<std::uint16_t>);
+        STATIC_REQUIRE_FALSE(mylib::UInt_32_or_64<int>);
+        STATIC_REQUIRE_FALSE(mylib::UInt_32_or_64<std::int64_t>);
+    }
+
+    SECTION("SeedSequence concept accepts std::seed_seq")
+    {
+        STATIC_REQUIRE(mylib::SeedSequence<std::seed_seq>);
+    }
+
+    SECTION("SeedSequence rejects non-SeedSequence types")
+    {
+        STATIC_REQUIRE_FALSE(mylib::SeedSequence<int>);
+        STATIC_REQUIRE_FALSE(mylib::SeedSequence<double>);
+        STATIC_REQUIRE_FALSE(mylib::SeedSequence<std::vector<int>>);
+    }
+
+    SECTION("MersenneTwister satisfies std::uniform_random_bit_generator")
+    {
+        STATIC_REQUIRE(std::uniform_random_bit_generator<
+                       mylib::random::MersenneTwister<std::uint32_t>>);
+        STATIC_REQUIRE(std::uniform_random_bit_generator<
+                       mylib::random::MersenneTwister<std::uint64_t>>);
+    }
+
+    SECTION("result_type matches template parameter")
+    {
+        STATIC_REQUIRE(std::is_same_v<
+                       mylib::random::MersenneTwister<std::uint32_t>::result_type,
+                       std::uint32_t>);
+        STATIC_REQUIRE(std::is_same_v<
+                       mylib::random::MersenneTwister<std::uint64_t>::result_type,
+                       std::uint64_t>);
+    }
+
+    SECTION("defaultRandomizer resolves to uint64_t variant by default")
+    {
+        STATIC_REQUIRE(std::is_same_v<
+                       mylib::random::defaultRandomizer<>,
+                       mylib::random::MersenneTwister<std::uint64_t>>);
+    }
+
+    SECTION("defaultRandomizer accepts explicit UIntType")
+    {
+        STATIC_REQUIRE(std::is_same_v<
+                       mylib::random::defaultRandomizer<std::uint32_t>,
+                       mylib::random::MersenneTwister<std::uint32_t>>);
+        STATIC_REQUIRE(std::is_same_v<
+                       mylib::random::defaultRandomizer<std::uint64_t>,
+                       mylib::random::MersenneTwister<std::uint64_t>>);
+    }
+
+    SECTION("constructibility")
+    {
+        using M32 = mylib::random::MersenneTwister<std::uint32_t>;
+        using M64 = mylib::random::MersenneTwister<std::uint64_t>;
+
+        STATIC_REQUIRE(std::is_default_constructible_v<M32>);
+        STATIC_REQUIRE(std::is_default_constructible_v<M64>);
+        STATIC_REQUIRE(std::is_constructible_v<M32, std::uint32_t>);
+        STATIC_REQUIRE(std::is_constructible_v<M64, std::uint64_t>);
+
+        // explicit seed ctor — неявной конверсии быть не должно
+        STATIC_REQUIRE_FALSE(std::is_convertible_v<std::uint32_t, M32>);
+        STATIC_REQUIRE_FALSE(std::is_convertible_v<std::uint64_t, M64>);
+
+        STATIC_REQUIRE(std::is_copy_constructible_v<M64>);
+        STATIC_REQUIRE(std::is_copy_assignable_v<M64>);
+        STATIC_REQUIRE(std::is_move_constructible_v<M64>);
+        STATIC_REQUIRE(std::is_move_assignable_v<M64>);
+    }
+}
+
+
+// ============================================================================
+//  MersenneTwister: noexcept
+// ============================================================================
+TEST_CASE("MersenneTwister noexcept contract", "[rng][mt][noexcept]")
+{
+    using M32 = mylib::random::MersenneTwister<std::uint32_t>;
+    using M64 = mylib::random::MersenneTwister<std::uint64_t>;
+
+    // Explicit seed ctor — noexcept (по доку)
+    STATIC_REQUIRE(noexcept(M32{ std::uint32_t{ 42 } }));
+    STATIC_REQUIRE(noexcept(M64{ std::uint64_t{ 42 } }));
+
+    // operator() — noexcept
+    STATIC_REQUIRE(noexcept(std::declval<M32&>()()));
+    STATIC_REQUIRE(noexcept(std::declval<M64&>()()));
+
+    // Default ctor использует random_device + время — потенциально не noexcept.
+    // Фиксируем контракт через REQUIRE_NOTHROW в рантайме.
+    SECTION("default ctor does not throw in practice")
+    {
+        REQUIRE_NOTHROW(M32{});
+        REQUIRE_NOTHROW(M64{});
+    }
+}
+
+
+// ============================================================================
+//  MersenneTwister: min/max, детерминизм
+// ============================================================================
+TEMPLATE_TEST_CASE("MersenneTwister shared behavior", "[rng][mt][template]",
+                   std::uint32_t, std::uint64_t)
+{
+    using T = TestType;
+    using M = mylib::random::MersenneTwister<T>;
+
+    // ------------------------------------------------------------------------
+    // 1. min() / max()
+    // ------------------------------------------------------------------------
+    SECTION("min() == 0, max() == numeric_limits<T>::max()")
+    {
+        REQUIRE(M::min() == T{ 0 });
+        REQUIRE(M::max() == std::numeric_limits<T>::max());
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. same seed -> same sequence
+    // ------------------------------------------------------------------------
+    SECTION("same seed -> identical stream")
+    {
+        M a{ T{ 42 } };
+        M b{ T{ 42 } };
+        for (int i = 0; i < 1000; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(a() == b());
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. different seeds -> different sequences
+    // ------------------------------------------------------------------------
+    SECTION("different seeds -> different sequences")
+    {
+        std::vector<T> seeds{ T{ 1 }, T{ 2 }, T{ 3 }, T{ 42 },
+                             T{ 1000 }, T{ 0xDEADBEEF } };
+        std::vector<std::vector<T>> seqs;
+        for (T s : seeds)
+        {
+            M rng{ s };
+            std::vector<T> seq(50);
+            for (auto& x : seq) x = rng();
+            seqs.push_back(std::move(seq));
+        }
+        for (size_t i = 0; i < seqs.size(); ++i)
+            for (size_t j = i + 1; j < seqs.size(); ++j)
+            {
+                INFO("i = " << i << ", j = " << j);
+                REQUIRE(seqs[i] != seqs[j]);
+            }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. copy/assign semantics
+    // ------------------------------------------------------------------------
+    SECTION("copy produces identical stream")
+    {
+        M a{ T{ 0xDEADBEEF } };
+        for (int i = 0; i < 10; ++i) (void)a();
+        M copy{ a };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(a() == copy());
+    }
+
+    SECTION("copy assignment")
+    {
+        M a{ T{ 12345 } };
+        M b{ T{ 98765 } };
+        for (int i = 0; i < 5; ++i) (void)a();
+        b = a;
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(a() == b());
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. seed 0 does not degenerate (unlike xorshift)
+    // ------------------------------------------------------------------------
+    SECTION("seed 0 is a valid, non-degenerate seed")
+    {
+        M rng{ T{ 0 } };
+        std::vector<T> v(1000);
+        for (auto& x : v) x = rng();
+
+        // Не все значения одинаковые
+        REQUIRE(std::adjacent_find(v.begin(), v.end(),
+                                   std::not_equal_to<>{}) != v.end());
+        // Не все нули
+        REQUIRE(std::any_of(v.begin(), v.end(),
+                            [](T x){ return x != T{ 0 }; }));
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Outputs span full UIntType range
+    // ------------------------------------------------------------------------
+    SECTION("outputs span the full bit range")
+    {
+        M rng{ T{ 42 } };
+        T orMask{ 0 };
+        T andMask = std::numeric_limits<T>::max();
+        for (int i = 0; i < 1000; ++i)
+        {
+            T v = rng();
+            orMask  |= v;
+            andMask &= v;
+        }
+        // Хотя бы раз встретились все единицы (в OR) — проверим старшую половину
+        const T highHalf = static_cast<T>(~T{ 0 } >> (sizeof(T) * 4));
+        REQUIRE((orMask & highHalf) == highHalf);
+        // Хотя бы раз встретились все нули (в AND) — проверим старший бит
+        REQUIRE((andMask & (T{ 1 } << (sizeof(T) * 8 - 1))) == 0);
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Statistical: bit balance
+    // ------------------------------------------------------------------------
+    SECTION("each bit position is ~50% set")
+    {
+        M rng{ T{ 0xBADC0DE } };
+        constexpr int N{ 100'000 };
+        constexpr int BITS{ sizeof(T) * 8 };
+        std::array<int, BITS> bitCounts{};
+
+        for (int i = 0; i < N; ++i)
+        {
+            T v = rng();
+            for (int b = 0; b < BITS; ++b)
+                if ((v >> b) & T{ 1 }) ++bitCounts[b];
+        }
+
+        for (int b = 0; b < BITS; ++b)
+        {
+            INFO("bit = " << b << ", count = " << bitCounts[b]);
+            REQUIRE(bitCounts[b] > 45'000);
+            REQUIRE(bitCounts[b] < 55'000);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Statistical: no duplicates in a reasonable sample
+    // ------------------------------------------------------------------------
+    SECTION("no duplicates in 50k sample")
+    {
+        M rng{ T{ 0xFEED } };
+        std::vector<T> samples(50'000);
+        for (auto& x : samples) x = rng();
+        std::sort(samples.begin(), samples.end());
+        REQUIRE(std::adjacent_find(samples.begin(), samples.end())
+                == samples.end());
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. <random> integration
+    // ------------------------------------------------------------------------
+    SECTION("uniform_int_distribution works")
+    {
+        M rng{ T{ 42 } };
+        std::uniform_int_distribution<int> dist{ 1, 6 };
+        std::array<int, 7> freq{};
+        for (int i = 0; i < 60'000; ++i) ++freq[dist(rng)];
+        REQUIRE(freq[0] == 0);
+        for (int face = 1; face <= 6; ++face)
+        {
+            INFO("face = " << face);
+            REQUIRE(freq[face] > 9'000);
+            REQUIRE(freq[face] < 11'000);
+        }
+    }
+
+    SECTION("std::shuffle produces a permutation")
+    {
+        M rng{ T{ 42 } };
+        std::vector<int> v(100);
+        std::iota(v.begin(), v.end(), 0);
+        std::vector<int> sorted = v;
+
+        std::shuffle(v.begin(), v.end(), rng);
+
+        std::vector<int> after = v;
+        std::sort(after.begin(), after.end());
+        REQUIRE(after == sorted);
+        REQUIRE(v != sorted);   // перемешано
+    }
+}
+
+
+// ============================================================================
+//  MersenneTwister: соответствие стандартному MT
+// ============================================================================
+TEST_CASE("MersenneTwister matches std reference implementation",
+          "[rng][mt][reference]")
+{
+    SECTION("MersenneTwister<uint32_t> matches std::mt19937")
+    {
+        // seed 5489 — стандартный default для std::mt19937
+        mylib::random::MersenneTwister<std::uint32_t> mine{ 5489u };
+        std::mt19937 std_ref{ 5489u };
+
+        for (int i = 0; i < 1000; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(mine() == std_ref());
+        }
+    }
+
+    SECTION("MersenneTwister<uint64_t> matches std::mt19937_64")
+    {
+        // seed 5489 — стандартный default для std::mt19937_64
+        mylib::random::MersenneTwister<std::uint64_t> mine{ 5489u };
+        std::mt19937_64 std_ref{ 5489u };
+
+        for (int i = 0; i < 1000; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(mine() == std_ref());
+        }
+    }
+
+    SECTION("known reference value: 10000th output from seed 5489")
+    {
+        // Для std::mt19937 (seed 5489) 10000-й выход == 4123659995
+        // (значение из стандарта / N3337)
+        mylib::random::MersenneTwister<std::uint32_t> rng{ 5489u };
+        std::uint32_t v = 0;
+        for (int i = 0; i < 10'000; ++i) v = rng();
+        REQUIRE(v == 4123659995u);
+    }
+
+    SECTION("cross-check with std for different seeds")
+    {
+        for (std::uint32_t seed : { 0u, 1u, 42u, 12345u, 0xDEADBEEFu })
+        {
+            INFO("seed = " << seed);
+            mylib::random::MersenneTwister<std::uint32_t> mine{ seed };
+            std::mt19937 std_ref{ seed };
+            for (int i = 0; i < 100; ++i)
+                REQUIRE(mine() == std_ref());
+        }
+    }
+
+    SECTION("uint32_t and uint64_t variants differ for the same seed")
+    {
+        mylib::random::MersenneTwister<std::uint32_t> m32{ 42u };
+        mylib::random::MersenneTwister<std::uint64_t> m64{ 42u };
+
+        // Первые значения почти наверняка отличаются
+        bool anyDiff = false;
+        for (int i = 0; i < 10; ++i)
+        {
+            const std::uint32_t v32 = m32();
+            const std::uint64_t v64 = m64();
+            // Сравниваем «младшие 32 бита» — не обязаны совпадать
+            if (static_cast<std::uint64_t>(v32) != (v64 & 0xFFFFFFFFULL))
+            {
+                anyDiff = true;
+                break;
+            }
+        }
+        INFO("anyDiff = " << anyDiff);
+        REQUIRE(anyDiff);
+    }
+}
+
+
+// ============================================================================
+//  MersenneTwister: SeedSequence constructor
+// ============================================================================
+TEST_CASE("MersenneTwister SeedSequence constructor",
+          "[rng][mt][seedseq]")
+{
+    SECTION("std::seed_seq produces deterministic sequence")
+    {
+        std::seed_seq seq1{ 1, 2, 3, 4, 5 };
+        std::seed_seq seq2{ 1, 2, 3, 4, 5 };
+
+        mylib::random::MersenneTwister<std::uint64_t> a{ seq1 };
+        mylib::random::MersenneTwister<std::uint64_t> b{ seq2 };
+
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(a() == b());
+    }
+
+    SECTION("different seed_seq -> different sequences")
+    {
+        std::seed_seq seqA{ 1, 2, 3 };
+        std::seed_seq seqB{ 4, 5, 6 };
+
+        mylib::random::MersenneTwister<std::uint64_t> a{ seqA };
+        mylib::random::MersenneTwister<std::uint64_t> b{ seqB };
+
+        bool anyDiff = false;
+        for (int i = 0; i < 10; ++i)
+            if (a() != b()) { anyDiff = true; break; }
+        REQUIRE(anyDiff);
+    }
+
+    SECTION("seed_seq matches std::mt19937_64 for the same seed_seq")
+    {
+        std::seed_seq seq1{ 1, 2, 3, 4, 5 };
+        std::seed_seq seq2{ 1, 2, 3, 4, 5 };
+
+        mylib::random::MersenneTwister<std::uint64_t> mine{ seq1 };
+        std::mt19937_64 std_ref{ seq2 };
+
+        for (int i = 0; i < 100; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(mine() == std_ref());
+        }
+    }
+
+    SECTION("seed_seq works for uint32_t variant too")
+    {
+        std::seed_seq seq1{ 10, 20, 30 };
+        std::seed_seq seq2{ 10, 20, 30 };
+
+        mylib::random::MersenneTwister<std::uint32_t> mine{ seq1 };
+        std::mt19937 std_ref{ seq2 };
+
+        for (int i = 0; i < 100; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(mine() == std_ref());
+        }
+    }
+}
+
+
+// ============================================================================
+//  MersenneTwister: defaultRandomizer
+// ============================================================================
+TEST_CASE("MersenneTwister defaultRandomizer alias",
+          "[rng][mt][default]")
+{
+    SECTION("is a URBG")
+    {
+        STATIC_REQUIRE(std::uniform_random_bit_generator<
+                       mylib::random::defaultRandomizer<>>);
+    }
+
+    SECTION("usable with distributions")
+    {
+        mylib::random::defaultRandomizer<> rng{};
+        std::uniform_int_distribution<int> dist{ 1, 100 };
+        for (int i = 0; i < 1000; ++i)
+        {
+            int v = dist(rng);
+            REQUIRE(v >= 1);
+            REQUIRE(v <= 100);
+        }
+    }
+
+    SECTION("result_type is uint64_t")
+    {
+        STATIC_REQUIRE(std::is_same_v<
+                       mylib::random::defaultRandomizer<>::result_type,
+                       std::uint64_t>);
+    }
+}
+
+
+// ============================================================================
+//  MersenneTwister: smoke / долгий прогон
+// ============================================================================
+TEST_CASE("MersenneTwister long run smoke test", "[rng][mt][smoke]")
+{
+    SECTION("500k outputs, no obvious short cycle")
+    {
+        mylib::random::MersenneTwister<std::uint64_t> rng{ 0xDEADBEEFCAFEBABEULL };
+        std::uint64_t prev = rng();
+        for (int i = 1; i < 500'000; ++i)
+        {
+            std::uint64_t curr = rng();
+            if (curr == prev)
+                FAIL("immediate repeat at i = " << i);
+            prev = curr;
+        }
+    }
+
+    SECTION("default ctor produces two different streams")
+    {
+        mylib::random::MersenneTwister<std::uint64_t> a;
+        mylib::random::MersenneTwister<std::uint64_t> b;
+
+        // Маловероятно, что два default-сгенерированных потока совпадут
+        bool anyDiff = false;
+        for (int i = 0; i < 10; ++i)
+            if (a() != b()) { anyDiff = true; break; }
+        REQUIRE(anyDiff);
     }
 }
