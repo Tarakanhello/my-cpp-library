@@ -681,7 +681,7 @@ namespace random
     {
     private:
         using Vector = mylib::Vector<RealType>;
-        using Stack = mylib::Stack<RealType>;
+        using Stack = mylib::Stack<size_t>;
         using Alias = mylib::Vector<size_t>;
 
     private:
