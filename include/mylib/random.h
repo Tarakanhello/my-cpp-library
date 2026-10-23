@@ -9,6 +9,8 @@
 
 #include "concepts.h"
 #include "mylib/bit_operations.h"
+#include "mylib/vector.h"
+#include "mylib/stack.h"
 
 namespace mylib
 {
@@ -537,16 +539,27 @@ namespace random
          */
         static GENERATOR createDefault()
         {
-            std::random_device rd{};
-            std::seed_seq seq{ rd(),
-                               rd(),
-                               rd(),
-                               rd(),
-                               rd(),
-                               rd(),
-                               rd(),
-                               static_cast<std::uint32_t>(std::chrono::system_clock::now().time_since_epoch().count()) };
-            return GENERATOR{ seq };
+            if constexpr(std::is_convertible_v<GENERATOR, std::seed_seq&>)
+            {
+                std::random_device rd{};
+                std::seed_seq seq{ rd(),
+                                   rd(),
+                                   rd(),
+                                   rd(),
+                                   rd(),
+                                   rd(),
+                                   rd(),
+                                   static_cast<std::uint32_t>(std::chrono::system_clock::now().time_since_epoch().count()) };
+                return GENERATOR{ seq };
+            }
+            else if constexpr(std::is_default_constructible_v<GENERATOR>)
+            {
+                return GENERATOR{};
+            }
+            else
+            {
+                throw std::invalid_argument("GENERATOR must be constructible from std::seed_seq or default-constructible");
+            }
         }
 
     public:
@@ -606,7 +619,7 @@ namespace random
         {
             assert(n > 0);
 
-            std::uniform_int_distribution<result_type> numbers{ 0, n - 1 };
+            std::uniform_int_distribution<result_type> numbers{ 0, static_cast<result_type>(n - 1) };
 
             return numbers(m_g);
         }
@@ -642,18 +655,194 @@ namespace random
         }
 
         /**
-         * @brief Generates a uniformly distributed `double` in the half-open interval [0, 1).
+         * @brief Generates a uniformly distributed floating-point number in the half-open interval [0, 1).
          *
-         * Converts the raw integer to a double and divides by 2^N (where N is the bit width
-         * of the generator). Computed via `std::ldexp` to avoid intermediate overflow and
-         * to ensure exact power-of-two division.
+         * @tparam RealType The floating-point type to generate (e.g., float, double, long double).
+         * @return A random number in [0, 1).
+         *
+         * @note Not marked `noexcept` because `std::uniform_real_distribution::operator()`
+         *       is not guaranteed to be `noexcept` by the C++ standard.
          */
-        double uniform01() noexcept
+        template<std::floating_point RealType = double>
+        RealType uniform01()
         {
-            return static_cast<double>(next()) / std::ldexp(1.0, sizeof(result_type) * 8);
+            static std::uniform_real_distribution<RealType> dist{ RealType{ 0.0 }, RealType{ 1.0 } };
+
+            return dist(m_g);
         }
 
     };
+
+
+
+    template<std::floating_point RealType,
+             std::uniform_random_bit_generator GENERATOR = defaultRandomizer<size_t>>
+    class AliasMethod final
+    {
+    private:
+        using Vector = mylib::Vector<RealType>;
+        using Stack = mylib::Stack<RealType>;
+        using Alias = mylib::Vector<size_t>;
+
+    private:
+        static Randomizer<GENERATOR> m_randomizer{};
+
+        Vector m_prob{};
+        Alias  m_alias{};
+
+        void checkAndConstruct(auto begin, auto end, size_t size)
+        {
+            if(size == 0)
+            {
+                throw std::invalid_argument("Empty vector");
+            }
+
+            Vector scaled{};
+            scaled.reserve(size);
+            Stack small{};
+            Stack large{};
+
+            RealType sum{ 0 };
+
+            for(auto it{ begin }; it != end; ++it)
+            {
+                if(!std::isfinite(*it))
+                {
+                    scaled.clear();
+                    throw std::invalid_argument("NaN or inf value in vector");
+                }
+                if(*it < 0)
+                {
+                    scaled.clear();
+                    throw std::invalid_argument("Negative weight");
+                }
+                sum += *it;
+                scaled.emplace_back(*it * size);
+
+                if(scaled.back() < RealType{ 1.0 })
+                {
+                    small.push(scaled.size() - 1);
+                }
+                else
+                {
+                    large.push(scaled.size() - 1);
+                }
+            }
+
+            if(sum == 0)
+            {
+                scaled.clear();
+                large.clear();
+                small.clear();
+                throw std::invalid_argument("Zero weight");
+            }
+
+            if(!std::isfinite(sum))
+            {
+                scaled.clear();
+                large.clear();
+                small.clear();
+                throw std::invalid_argument("Sum overflow");
+            }
+
+            m_prob.resize(size);
+            m_alias.resize(size);
+
+            while(!small.empty() && !large.empty())
+            {
+                auto s{ small.top() };
+                small.pop();
+
+                auto l{ large.top() };
+                large.pop();
+
+                m_prob[s] = scaled[s];
+                m_alias[s] = l;
+
+                scaled[l] -= (RealType{ 1.0 } - scaled[s]);
+                if(scaled[l] < 1.0)
+                {
+                    small.push(l);
+                }
+                else
+                {
+                    large.push(l);
+                }
+            }
+
+            while(!large.empty())
+            {
+                m_prob[large.top()] = RealType{ 1.0 };
+                large.pop();
+            }
+
+            while(!small.empty())
+            {
+                m_prob[small.top()] = RealType{ 1.0 };
+                small.pop();
+            }
+
+            }
+
+
+    public:
+        AliasMethod() = delete;
+
+        template<std::forward_iterator ITERATOR>
+            requires std::same_as<std::iter_value_t<ITERATOR>, RealType>
+        AliasMethod(ITERATOR begin, ITERATOR end)
+        {
+            checkAndConstruct(begin, end, std::distance(begin, end));
+        }
+
+        AliasMethod(std::initializer_list<RealType> list)
+        {
+            checkAndConstruct(list.begin(), list.end(), list.size());
+        }
+
+        template<typename CONTAINER>
+            requires std::ranges::sized_range<CONTAINER> &&
+                     std::same_as<std::ranges::range_value_t<CONTAINER>, RealType>
+        explicit AliasMethod(const CONTAINER& c)
+        {
+            checkAndConstruct(c.begin(), c.end(), c.size());
+        }
+
+        size_t size() const noexcept
+        {
+            return m_prob.size();
+        }
+
+        size_t sample()
+        {
+            size_t i{ m_randomizer.mod(size()) };
+
+            RealType u{ m_randomizer.uniform01() };
+
+            return (u < m_prob[i]) ? i : m_alias[i];
+
+        }
+
+        template<std::uniform_random_bit_generator GEN>
+        size_t sample(GEN& gen) const noexcept(std::is_nothrow_invocable_v<GEN&>)
+        {
+            std::uniform_int_distribution<size_t> ints{0, size() - 1};
+            std::uniform_real_distribution<RealType> real{ 0, 1 };
+
+            size_t i{ ints(gen) };
+            RealType u{ real(gen) };
+
+            return (u < m_prob[i]) ? i : m_alias[i];
+        }
+    };
+
+    template<std::ranges::sized_range CONTAINER>
+        requires std::floating_point<std::ranges::range_value_t<CONTAINER>>
+    AliasMethod(const CONTAINER& c) -> AliasMethod<std::ranges::range_value_t<CONTAINER>>;
+
+    template<std::forward_iterator ITERATOR>
+        requires std::floating_point<std::iter_value_t<ITERATOR>>
+    AliasMethod(ITERATOR, ITERATOR) -> AliasMethod<std::iter_value_t<ITERATOR>>;
 
 
 

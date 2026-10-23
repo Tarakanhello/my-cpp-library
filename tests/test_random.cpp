@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <random>
+#include <set>
 #include <type_traits>
 #include <unordered_set>
 #include <vector>
@@ -17,6 +18,23 @@ namespace
 {
 using Rng = mylib::random::QualityXorshift64;
 using R   = Rng::result_type;
+
+struct TinyURBG
+{
+    using result_type = std::uint8_t;
+
+    static constexpr result_type min() noexcept { return 0; }
+    static constexpr result_type max() noexcept { return 255; }
+
+    result_type operator()() noexcept { return s++; }
+
+    TinyURBG() = default;
+    explicit TinyURBG(result_type seed) noexcept : s(seed) {}
+
+    result_type s = 0;
+};
+
+static_assert(std::uniform_random_bit_generator<TinyURBG>);
 } // namespace
 
 // ============================================================================
@@ -1020,5 +1038,700 @@ TEST_CASE("MersenneTwister long run smoke test", "[rng][mt][smoke]")
         for (int i = 0; i < 10; ++i)
             if (a() != b()) { anyDiff = true; break; }
         REQUIRE(anyDiff);
+    }
+}
+
+// ============================================================================
+//  Randomizer: type traits, concepts, aliases
+// ============================================================================
+TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
+{
+    using namespace mylib::random;
+
+    SECTION("default template argument is defaultRandomizer")
+    {
+        STATIC_REQUIRE(std::is_same_v<
+                       Randomizer<>,
+                       Randomizer<defaultRandomizer<>>>);
+        STATIC_REQUIRE(std::is_same_v<
+                       Randomizer<>::result_type,
+                       std::uint64_t>);
+    }
+
+    SECTION("satisfies uniform_random_bit_generator for default")
+    {
+        STATIC_REQUIRE(std::uniform_random_bit_generator<Randomizer<>>);
+    }
+
+    SECTION("satisfies URBG for QualityXorshift64")
+    {
+        STATIC_REQUIRE(std::uniform_random_bit_generator<
+                       Randomizer<QualityXorshift64>>);
+    }
+
+    SECTION("satisfies URBG for MersenneTwister<uint32_t>")
+    {
+        STATIC_REQUIRE(std::uniform_random_bit_generator<
+                       Randomizer<MersenneTwister<std::uint32_t>>>);
+    }
+
+    SECTION("satisfies URBG for TinyURBG")
+    {
+        STATIC_REQUIRE(std::uniform_random_bit_generator<
+                       Randomizer<TinyURBG>>);
+    }
+
+    SECTION("result_type matches GENERATOR::result_type")
+    {
+        STATIC_REQUIRE(std::is_same_v<
+                       Randomizer<QualityXorshift64>::result_type,
+                       QualityXorshift64::result_type>);
+        STATIC_REQUIRE(std::is_same_v<
+                       Randomizer<MersenneTwister<std::uint32_t>>::result_type,
+                       std::uint32_t>);
+        STATIC_REQUIRE(std::is_same_v<
+                       Randomizer<TinyURBG>::result_type,
+                       std::uint8_t>);
+    }
+
+    SECTION("min/max proxy through to GENERATOR")
+    {
+        STATIC_REQUIRE(Randomizer<>::min() == Randomizer<>::max() - Randomizer<>::max());
+        STATIC_REQUIRE(Randomizer<TinyURBG>::min() == std::uint8_t{ 0 });
+        STATIC_REQUIRE(Randomizer<TinyURBG>::max() == std::uint8_t{ 255 });
+        STATIC_REQUIRE(Randomizer<MersenneTwister<std::uint32_t>>::max()
+                       == std::numeric_limits<std::uint32_t>::max());
+    }
+
+    SECTION("constructibility")
+    {
+        using R = Randomizer<>;
+        STATIC_REQUIRE(std::is_default_constructible_v<R>);
+        STATIC_REQUIRE(std::is_constructible_v<R, R::result_type>);
+        // explicit seed ctor — implicit conversion запрещён
+        STATIC_REQUIRE_FALSE(std::is_convertible_v<R::result_type, R>);
+        // SeedSequence ctor
+        STATIC_REQUIRE(std::is_constructible_v<R, std::seed_seq&>);
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: noexcept contract
+// ============================================================================
+TEST_CASE("Randomizer noexcept contract", "[rng][randomizer][noexcept]")
+{
+    using namespace mylib::random;
+    using R = Randomizer<>;
+
+    STATIC_REQUIRE(noexcept(std::declval<R&>()()));
+    STATIC_REQUIRE(noexcept(std::declval<R&>().next()));
+
+    // mod / sign / inRange — не noexcept (используют distributions)
+    STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().mod(R::result_type{ 10 })));
+    STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().sign()));
+    STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().inRange(0, 6)));
+}
+
+
+// ============================================================================
+//  Randomizer: конструкторы
+// ============================================================================
+TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
+{
+    using namespace mylib::random;
+
+    SECTION("default ctor does not throw")
+    {
+        REQUIRE_NOTHROW(Randomizer<>{});
+        REQUIRE_NOTHROW(Randomizer<QualityXorshift64>{});
+        REQUIRE_NOTHROW(Randomizer<TinyURBG>{});
+    }
+
+    SECTION("default ctor produces distinct streams (high entropy)")
+    {
+        Randomizer<> a;
+        Randomizer<> b;
+
+        bool anyDiff = false;
+        for (int i = 0; i < 10; ++i)
+            if (a() != b()) { anyDiff = true; break; }
+        REQUIRE(anyDiff);
+    }
+
+    SECTION("explicit seed ctor is deterministic")
+    {
+        Randomizer<> a{ 42 };
+        Randomizer<> b{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(a() == b());
+    }
+
+    SECTION("explicit seed ctor matches wrapped generator")
+    {
+        // Randomizer должен быть прозрачной обёрткой: последовательность
+        // от seed == последовательность самого GENERATOR'а от того же seed.
+        Randomizer<MersenneTwister<std::uint64_t>> wrapped{ 42ull };
+        MersenneTwister<std::uint64_t> raw{ 42ull };
+
+        for (int i = 0; i < 500; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(wrapped() == raw());
+        }
+    }
+
+    SECTION("explicit seed ctor matches wrapped QualityXorshift64")
+    {
+        Randomizer<QualityXorshift64> wrapped{ 0xC0FFEEull };
+        QualityXorshift64 raw{ 0xC0FFEEull };
+        for (int i = 0; i < 500; ++i)
+            REQUIRE(wrapped() == raw());
+    }
+
+    SECTION("SeedSequence ctor matches wrapped generator")
+    {
+        std::seed_seq seq1{ 1, 2, 3, 4, 5 };
+        std::seed_seq seq2{ 1, 2, 3, 4, 5 };
+
+        Randomizer<MersenneTwister<std::uint64_t>> wrapped{ seq1 };
+        MersenneTwister<std::uint64_t> raw{ seq2 };
+
+        for (int i = 0; i < 500; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(wrapped() == raw());
+        }
+    }
+
+    SECTION("different seeds -> different streams")
+    {
+        Randomizer<> a{ 1 };
+        Randomizer<> b{ 2 };
+
+        bool anyDiff = false;
+        for (int i = 0; i < 10; ++i)
+            if (a() != b()) { anyDiff = true; break; }
+        REQUIRE(anyDiff);
+    }
+
+    SECTION("TinyURBG seed ctor takes uint8_t")
+    {
+        Randomizer<TinyURBG> r{ std::uint8_t{ 100 } };
+        // TinyURBG начинает счёт с seed, поэтому первые 5 значений — 100..104
+        for (std::uint8_t expected = 100; expected < 105; ++expected)
+        {
+            INFO("expected = " << static_cast<int>(expected));
+            REQUIRE(r() == expected);
+        }
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: operator() и next()
+// ============================================================================
+TEST_CASE("Randomizer operator() and next()", "[rng][randomizer][output]")
+{
+    using namespace mylib::random;
+
+    SECTION("next() == operator() (same state, same value)")
+    {
+        Randomizer<> a{ 42 };
+        Randomizer<> b{ 42 };
+
+        for (int i = 0; i < 200; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(a.next() == b());
+        }
+    }
+
+    SECTION("calling next() advances state, like operator()")
+    {
+        Randomizer<> viaNext{ 42 };
+        Randomizer<> viaCall{ 42 };
+
+        for (int i = 0; i < 10; ++i) { (void)viaNext.next(); (void)viaCall(); }
+
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(viaNext() == viaCall());
+    }
+
+    SECTION("operator() matches wrapped generator stream")
+    {
+        Randomizer<> wrapped{ 0xDEADBEEFCAFEULL };
+        defaultRandomizer<> raw{ 0xDEADBEEFCAFEULL };
+
+        for (int i = 0; i < 500; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(wrapped() == raw());
+        }
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: mod(n)
+// ============================================================================
+TEST_CASE("Randomizer::mod", "[rng][randomizer][mod]")
+{
+    using namespace mylib::random;
+
+    SECTION("returns values in [0, n-1]")
+    {
+        Randomizer<> r{ 42 };
+        for (Randomizer<>::result_type n : {
+                                            Randomizer<>::result_type{ 1 },
+                                            Randomizer<>::result_type{ 2 },
+                                            Randomizer<>::result_type{ 3 },
+                                            Randomizer<>::result_type{ 6 },
+                                            Randomizer<>::result_type{ 100 },
+                                            Randomizer<>::result_type{ 1000 } })
+        {
+            for (int i = 0; i < 2000; ++i)
+            {
+                auto v = r.mod(n);
+                INFO("n = " << n << ", v = " << v);
+                REQUIRE(v < n);
+            }
+        }
+    }
+
+    SECTION("mod(1) is always 0")
+    {
+        Randomizer<> r{ 0xDEAD };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(r.mod(1) == 0);
+    }
+
+    SECTION("mod(6) covers all 6 values (basic uniformity)")
+    {
+        Randomizer<> r{ 42 };
+        std::array<int, 6> freq{};
+        constexpr int N{ 60'000 };
+        for (int i = 0; i < N; ++i) ++freq[r.mod(6)];
+
+        for (int face = 0; face < 6; ++face)
+        {
+            INFO("face = " << face << ", count = " << freq[face]);
+            REQUIRE(freq[face] > 9'000);
+            REQUIRE(freq[face] < 11'000);
+        }
+    }
+
+    SECTION("mod(100) covers all 100 values")
+    {
+        Randomizer<> r{ 123 };
+        std::set<Randomizer<>::result_type> seen;
+        for (int i = 0; i < 10'000; ++i) seen.insert(r.mod(100));
+        REQUIRE(seen.size() == 100);
+        REQUIRE(*seen.begin() == 0);
+        REQUIRE(*seen.rbegin() == 99);
+    }
+
+    SECTION("works with TinyURBG (result_type = uint8_t)")
+    {
+        Randomizer<TinyURBG> r{};
+        for (std::uint8_t n : { std::uint8_t{ 1 }, std::uint8_t{ 3 },
+             std::uint8_t{ 100 }, std::uint8_t{ 200 } })
+        {
+            for (int i = 0; i < 1000; ++i)
+            {
+                auto v = r.mod(n);
+                INFO("n = " << static_cast<int>(n)
+                            << ", v = " << static_cast<int>(v));
+                REQUIRE(v < n);
+            }
+        }
+    }
+
+    SECTION("no modulo bias — high values reachable for n = max/2 + 1")
+    {
+        // При наивной реализации через % верхняя половина значений
+        // встречалась бы вдвое реже. Статистически это трудно поймать,
+        // но проверим, что верхние значения достижимы.
+        Randomizer<> r{ 42 };
+        const auto n = (Randomizer<>::max() / 2) + 1;
+        bool sawHigh = false;
+        for (int i = 0; i < 10'000; ++i)
+            if (r.mod(n) >= n / 2) { sawHigh = true; break; }
+        REQUIRE(sawHigh);
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: sign()
+// ============================================================================
+TEST_CASE("Randomizer::sign", "[rng][randomizer][sign]")
+{
+    using namespace mylib::random;
+
+    SECTION("only returns +1 or -1")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            int s = r.sign();
+            INFO("i = " << i << ", s = " << s);
+            REQUIRE((s == 1 || s == -1));
+        }
+    }
+
+    SECTION("approximately 50/50 distribution")
+    {
+        Randomizer<> r{ 42 };
+        int pos = 0, neg = 0;
+        constexpr int N{ 100'000 };
+        for (int i = 0; i < N; ++i)
+        {
+            if (r.sign() == 1) ++pos; else ++neg;
+        }
+        INFO("pos = " << pos << ", neg = " << neg);
+        REQUIRE(pos > 49'000);
+        REQUIRE(pos < 51'000);
+        REQUIRE(pos + neg == N);
+    }
+
+    SECTION("works with TinyURBG")
+    {
+        Randomizer<TinyURBG> r{};
+        for (int i = 0; i < 1000; ++i)
+        {
+            int s = r.sign();
+            REQUIRE((s == 1 || s == -1));
+        }
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: inRange(a, b)
+// ============================================================================
+TEST_CASE("Randomizer::inRange", "[rng][randomizer][inRange]")
+{
+    using namespace mylib::random;
+
+    SECTION("returns values in [a, b] inclusive")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 5000; ++i)
+        {
+            int v = r.inRange(1, 6);
+            INFO("v = " << v);
+            REQUIRE(v >= 1);
+            REQUIRE(v <= 6);
+        }
+    }
+
+    SECTION("a == b always returns a")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(r.inRange(7, 7) == 7);
+    }
+
+    SECTION("covers all values for small range")
+    {
+        Randomizer<> r{ 42 };
+        std::array<int, 6> freq{};
+        constexpr int N{ 60'000 };
+        for (int i = 0; i < N; ++i) ++freq[r.inRange(1, 6) - 1];
+        for (int face = 0; face < 6; ++face)
+        {
+            INFO("face = " << face + 1 << ", count = " << freq[face]);
+            REQUIRE(freq[face] > 9'000);
+            REQUIRE(freq[face] < 11'000);
+        }
+    }
+
+    SECTION("handles negative bounds")
+    {
+        Randomizer<> r{ 42 };
+        int mn = 0, mx = 0;
+        for (int i = 0; i < 5000; ++i)
+        {
+            int v = r.inRange(-5, 5);
+            REQUIRE(v >= -5);
+            REQUIRE(v <= 5);
+            mn = std::min(mn, v);
+            mx = std::max(mx, v);
+        }
+        REQUIRE(mn == -5);
+        REQUIRE(mx == 5);
+    }
+
+    SECTION("IntType defaults to int")
+    {
+        Randomizer<> r{ 42 };
+        STATIC_REQUIRE(std::is_same_v<
+                       decltype(r.inRange(0, 10)),
+                       int>);
+        STATIC_REQUIRE(std::is_same_v<
+                       decltype(r.inRange<long long>(-100, 100)),
+                       long long>);
+        STATIC_REQUIRE(std::is_same_v<
+                       decltype(r.inRange<std::uint32_t>(0u, 10u)),
+                       std::uint32_t>);
+    }
+
+    SECTION("works with long long and large negative bounds")
+    {
+        // Документация явно предупреждает про underflow при result_type unsigned.
+        // Проверяем, что inRange<long long> с отрицательными значениями работает.
+        Randomizer<> r{ 42 };
+        constexpr long long lo{ -1000 };
+        constexpr long long hi{ 1000 };
+        for (int i = 0; i < 5000; ++i)
+        {
+            long long v = r.inRange<long long>(lo, hi);
+            INFO("v = " << v);
+            REQUIRE(v >= lo);
+            REQUIRE(v <= hi);
+        }
+    }
+
+    SECTION("works for full int64 range without UB")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 1000; ++i)
+        {
+            std::int64_t v = r.inRange<std::int64_t>(
+                std::numeric_limits<std::int64_t>::min(),
+                std::numeric_limits<std::int64_t>::max());
+            // Тип гарантирует попадание в диапазон; проверяем что хотя бы раз
+            // встретились отрицательные и неотрицательные
+            (void)v;
+        }
+        // Прицельно: 1000 сэмплов из 2^64 — почти наверняка есть оба знака
+        bool sawNeg = false, sawPos = false;
+        for (int i = 0; i < 1000; ++i)
+        {
+            auto v = r.inRange<std::int64_t>(
+                std::numeric_limits<std::int64_t>::min(),
+                std::numeric_limits<std::int64_t>::max());
+            if (v < 0) sawNeg = true;
+            else if (v > 0) sawPos = true;
+            if (sawNeg && sawPos) break;
+        }
+        INFO("sawNeg = " << sawNeg << ", sawPos = " << sawPos);
+        REQUIRE(sawNeg);
+        REQUIRE(sawPos);
+    }
+
+    SECTION("works with TinyURBG")
+    {
+        Randomizer<TinyURBG> r{};
+        for (int i = 0; i < 1000; ++i)
+        {
+            int v = r.inRange(0, 100);
+            REQUIRE(v >= 0);
+            REQUIRE(v <= 100);
+        }
+    }
+
+    SECTION("does not throw for normal inputs")
+    {
+        Randomizer<> r{ 42 };
+        REQUIRE_NOTHROW(r.inRange(0, 1));
+        REQUIRE_NOTHROW(r.inRange(-100, 100));
+        REQUIRE_NOTHROW(r.inRange(0, 1'000'000));
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: uniform01()
+// ============================================================================
+TEST_CASE("Randomizer::uniform01", "[rng][randomizer][uniform01]")
+{
+    using namespace mylib::random;
+
+    SECTION("returns values in [0, 1)")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            double v = r.uniform01();
+            INFO("i = " << i << ", v = " << v);
+            REQUIRE(v >= 0.0);
+            REQUIRE(v <  1.0);
+        }
+    }
+
+    SECTION("mean is close to 0.5")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.uniform01();
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 0.5) < 0.01);
+    }
+
+    SECTION("covers the [0, 1) range broadly")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double mn = 1.0, mx = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            double v = r.uniform01();
+            mn = std::min(mn, v);
+            mx = std::max(mx, v);
+        }
+        INFO("min = " << mn << ", max = " << mx);
+        REQUIRE(mn < 0.001);
+        REQUIRE(mx > 0.999);
+    }
+
+    SECTION("is deterministic for same seed")
+    {
+        Randomizer<> a{ 42 };
+        Randomizer<> b{ 42 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(a.uniform01() == b.uniform01());
+    }
+
+    SECTION("works with TinyURBG (result_type = uint8_t)")
+    {
+        Randomizer<TinyURBG> r{};
+        for (int i = 0; i < 1000; ++i)
+        {
+            double v = r.uniform01();
+            INFO("v = " << v);
+            REQUIRE(v >= 0.0);
+            REQUIRE(v <  1.0);
+        }
+    }
+
+    SECTION("uniform01 advances state (deterministic sequence preserved)")
+    {
+        Randomizer<> a{ 42 };
+        Randomizer<> b{ 42 };
+
+        // Продвигаем a через uniform01, b через operator() — затем
+        // следующие значения должны совпасть
+        (void)a.uniform01();
+        (void)b();
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(a() == b());
+    }
+
+    SECTION("uniform01 handles UINT64_MAX without returning 1.0")
+    {
+        // custom URBG, всегда возвращающий max()
+        struct MaxURBG {
+            using result_type = std::uint64_t;
+            static constexpr result_type min() noexcept { return 0; }
+            static constexpr result_type max() noexcept { return std::numeric_limits<result_type>::max(); }
+            result_type operator()() noexcept { return max(); }
+        };
+        mylib::random::Randomizer<MaxURBG> r;
+        double v = r.uniform01();
+        REQUIRE(v >= 0.0);
+        REQUIRE(v < 1.0);   // падает, если не исправлено
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: интеграция с <random> и STL
+// ============================================================================
+TEST_CASE("Randomizer integration with STL", "[rng][randomizer][stl]")
+{
+    using namespace mylib::random;
+
+    SECTION("works as URBG for std::uniform_int_distribution")
+    {
+        Randomizer<> r{ 42 };
+        std::uniform_int_distribution<int> dist{ 1, 6 };
+        std::array<int, 7> freq{};
+        for (int i = 0; i < 60'000; ++i) ++freq[dist(r)];
+        REQUIRE(freq[0] == 0);
+        for (int face = 1; face <= 6; ++face)
+        {
+            INFO("face = " << face);
+            REQUIRE(freq[face] > 9'000);
+            REQUIRE(freq[face] < 11'000);
+        }
+    }
+
+    SECTION("works as URBG for std::shuffle")
+    {
+        Randomizer<> r{ 42 };
+        std::vector<int> v(100);
+        std::iota(v.begin(), v.end(), 0);
+        std::vector<int> original = v;
+        std::shuffle(v.begin(), v.end(), r);
+        REQUIRE(v != original);
+
+        std::vector<int> check = v;
+        std::sort(check.begin(), check.end());
+        REQUIRE(check == original);
+    }
+
+    SECTION("works with std::generate_n")
+    {
+        Randomizer<> r{ 42 };
+        std::vector<Randomizer<>::result_type> v(100);
+        std::generate_n(v.begin(), 100, r);
+        // Не все нули
+        REQUIRE(std::any_of(v.begin(), v.end(),
+                            [](auto x){ return x != 0; }));
+    }
+}
+
+
+// ============================================================================
+//  Randomizer: template-параметризация по GENERATOR
+// ============================================================================
+TEMPLATE_TEST_CASE("Randomizer works with different GENERATORs",
+                   "[rng][randomizer][template]",
+                   mylib::random::QualityXorshift64,
+                   mylib::random::MersenneTwister<std::uint32_t>,
+                   mylib::random::MersenneTwister<std::uint64_t>,
+                   TinyURBG)
+{
+    using R = mylib::random::Randomizer<TestType>;
+
+    SECTION("default ctor does not throw")
+    {
+        REQUIRE_NOTHROW(R{});
+    }
+
+    SECTION("explicit seed ctor + determinism")
+    {
+        // Для TinyURBG result_type = uint8_t — seed приводим
+        using S = typename R::result_type;
+        R a{ S{ 42 } };
+        R b{ S{ 42 } };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(a() == b());
+    }
+
+    SECTION("mod, sign, inRange, uniform01 работают")
+    {
+        R r{ typename R::result_type{ 42 } };
+
+        for (int i = 0; i < 200; ++i)
+        {
+            REQUIRE(r.mod(typename R::result_type{ 5 }) < 5);
+            int s{ r.sign() };
+
+            INFO("i = " << i << ", s = " << s);
+            REQUIRE((s == 1 || s == -1));
+
+            int v = r.inRange(1, 6);
+            REQUIRE(v >= 1);
+            REQUIRE(v <= 6);
+
+            double u = r.uniform01();
+            REQUIRE(u >= 0.0);
+            REQUIRE(u <  1.0);
+        }
     }
 }
