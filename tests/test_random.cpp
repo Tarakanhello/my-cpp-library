@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include <algorithm>
 #include <array>
@@ -1732,6 +1733,570 @@ TEMPLATE_TEST_CASE("Randomizer works with different GENERATORs",
             double u = r.uniform01();
             REQUIRE(u >= 0.0);
             REQUIRE(u <  1.0);
+        }
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: type traits, concepts, deduction guides
+// ============================================================================
+TEST_CASE("AliasMethod type traits and deduction guides",
+          "[rng][alias][traits]")
+{
+    using mylib::random::AliasMethod;
+
+    SECTION("default ctor is deleted")
+    {
+        STATIC_REQUIRE_FALSE(std::is_default_constructible_v<AliasMethod<double>>);
+        STATIC_REQUIRE_FALSE(std::is_default_constructible_v<AliasMethod<float>>);
+    }
+
+    SECTION("initializer_list ctor constrained to exact RealType")
+    {
+        STATIC_REQUIRE(std::is_constructible_v<AliasMethod<double>,
+                                               std::initializer_list<double>>);
+        STATIC_REQUIRE(std::is_constructible_v<AliasMethod<float>,
+                                               std::initializer_list<float>>);
+        // initializer_list<int> не конвертируется в initializer_list<double>
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<AliasMethod<double>,
+                                                     std::initializer_list<int>>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<AliasMethod<double>,
+                                                     std::initializer_list<float>>);
+    }
+
+    SECTION("iterator ctor requires same_as value_type")
+    {
+        using ItD = std::vector<double>::iterator;
+        using ItI = std::vector<int>::iterator;
+        STATIC_REQUIRE(std::is_constructible_v<AliasMethod<double>, ItD, ItD>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<AliasMethod<double>, ItI, ItI>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<AliasMethod<double>, ItD, ItI>);
+    }
+
+    SECTION("container ctor requires sized_range + exact value_type")
+    {
+        STATIC_REQUIRE(std::is_constructible_v<AliasMethod<double>,
+                                               const std::vector<double>&>);
+        STATIC_REQUIRE(std::is_constructible_v<AliasMethod<double>,
+                                               const std::array<double, 3>&>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<AliasMethod<double>,
+                                                     const std::vector<int>&>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<AliasMethod<double>,
+                                                     const std::vector<float>&>);
+    }
+
+    SECTION("deduction guide: from container")
+    {
+        std::vector<double> v{ 1.0, 2.0, 3.0 };
+        auto am = AliasMethod{ v };
+        STATIC_REQUIRE(std::is_same_v<decltype(am), AliasMethod<double>>);
+        REQUIRE(am.size() == 3);
+
+        std::vector<float> vf{ 1.0f, 2.0f };
+        auto amf = AliasMethod{ vf };
+        STATIC_REQUIRE(std::is_same_v<decltype(amf), AliasMethod<float>>);
+    }
+
+    SECTION("deduction guide: from iterator pair")
+    {
+        std::vector<double> v{ 1.0, 2.0, 3.0 };
+        auto am = AliasMethod{ v.begin(), v.end() };
+        STATIC_REQUIRE(std::is_same_v<decltype(am), AliasMethod<double>>);
+        REQUIRE(am.size() == 3);
+    }
+
+    SECTION("explicit container ctor blocks implicit conversion")
+    {
+        // static_cast — ok, но не implicit
+        std::vector<double> v{ 1.0, 2.0 };
+        STATIC_REQUIRE_FALSE(
+            (std::is_convertible_v<const std::vector<double>&, AliasMethod<double>>));
+        REQUIRE_NOTHROW(static_cast<AliasMethod<double>>(v));
+    }
+
+    SECTION("size() is noexcept, sample() is not")
+    {
+        STATIC_REQUIRE(noexcept(std::declval<const AliasMethod<double>&>().size()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<const AliasMethod<double>&>().sample()));
+        STATIC_REQUIRE_FALSE(
+            noexcept(std::declval<const AliasMethod<double>&>()
+                         .sample(std::declval<mylib::random::QualityXorshift64&>())));
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: конструкторы
+// ============================================================================
+TEST_CASE("AliasMethod construction", "[rng][alias][construction]")
+{
+    using mylib::random::AliasMethod;
+
+    SECTION("from initializer_list")
+    {
+        AliasMethod<double> am{ 1.0, 2.0, 3.0 };
+        REQUIRE(am.size() == 3);
+    }
+
+    SECTION("from iterator pair")
+    {
+        std::vector<double> v{ 0.5, 0.5 };
+        AliasMethod<double> am{ v.begin(), v.end() };
+        REQUIRE(am.size() == 2);
+    }
+
+    SECTION("from container")
+    {
+        std::vector<double> v{ 1.0, 2.0, 3.0, 4.0 };
+        AliasMethod<double> am{ v };
+        REQUIRE(am.size() == 4);
+    }
+
+    SECTION("from std::array")
+    {
+        std::array<double, 5> arr{ 1.0, 1.0, 1.0, 1.0, 1.0 };
+        AliasMethod<double> am{ arr };
+        REQUIRE(am.size() == 5);
+    }
+
+    SECTION("works with float and long double")
+    {
+        AliasMethod<float> amf{ 1.0f, 2.0f, 3.0f };
+        REQUIRE(amf.size() == 3);
+        AliasMethod<long double> aml{ 1.0L, 2.0L, 3.0L };
+        REQUIRE(aml.size() == 3);
+    }
+
+    SECTION("single-element table")
+    {
+        AliasMethod<double> am{ 5.0 };
+        REQUIRE(am.size() == 1);
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: валидация входных данных
+// ============================================================================
+TEST_CASE("AliasMethod input validation", "[rng][alias][validation]")
+{
+    using mylib::random::AliasMethod;
+
+    SECTION("empty range -> invalid_argument")
+    {
+        STATIC_REQUIRE_FALSE(std::is_default_constructible_v<AliasMethod<double>>);
+
+        std::vector<double> empty;
+        REQUIRE_THROWS_AS(AliasMethod<double>(empty.begin(), empty.end()),
+                          std::invalid_argument);
+        REQUIRE_THROWS_AS((AliasMethod<double>(empty)), std::invalid_argument);
+
+        std::array<double, 0> emptyArr{};
+        REQUIRE_THROWS_AS(AliasMethod<double>(emptyArr.begin(), emptyArr.end()),
+                          std::invalid_argument);
+        REQUIRE_THROWS_AS((AliasMethod<double>(emptyArr)), std::invalid_argument);
+    }
+
+    SECTION("negative weight -> invalid_argument")
+    {
+        REQUIRE_THROWS_AS((AliasMethod<double>{ -1.0, 2.0 }),
+                          std::invalid_argument);
+        REQUIRE_THROWS_AS((AliasMethod<double>{ 1.0, 2.0, -0.001 }),
+                          std::invalid_argument);
+    }
+
+    SECTION("NaN weight -> invalid_argument")
+    {
+        const double nan = std::nan("");
+        REQUIRE_THROWS_AS((AliasMethod<double>{ nan, 1.0 }),
+                          std::invalid_argument);
+    }
+
+    SECTION("infinite weight -> invalid_argument")
+    {
+        const double inf = std::numeric_limits<double>::infinity();
+        REQUIRE_THROWS_AS((AliasMethod<double>{ inf, 1.0 }),
+                          std::invalid_argument);
+        REQUIRE_THROWS_AS((AliasMethod<double>{ -inf, 1.0 }),
+                          std::invalid_argument);
+    }
+
+    SECTION("all-zero weights -> invalid_argument")
+    {
+        REQUIRE_THROWS_AS((AliasMethod<double>{ 0.0 }), std::invalid_argument);
+        REQUIRE_THROWS_AS((AliasMethod<double>{ 0.0, 0.0, 0.0 }),
+                          std::invalid_argument);
+    }
+
+    SECTION("overflowing sum -> invalid_argument")
+    {
+        const double big = std::numeric_limits<double>::max();
+        // big + big == inf, sum не finite
+        REQUIRE_THROWS_AS((AliasMethod<double>{ big, big }),
+                          std::invalid_argument);
+        REQUIRE_THROWS_AS((AliasMethod<double>{ big, big, big }),
+                          std::invalid_argument);
+    }
+
+    SECTION("zero alongside positive is OK")
+    {
+        REQUIRE_NOTHROW((AliasMethod<double>{ 0.0, 1.0 }));
+        REQUIRE_NOTHROW((AliasMethod<double>{ 1.0, 0.0, 0.0 }));
+    }
+
+    SECTION("very small positive weights are OK (no underflow to zero sum)")
+    {
+        REQUIRE_NOTHROW((AliasMethod<double>{ 1e-300, 2e-300 }));
+        REQUIRE_NOTHROW((AliasMethod<double>{ 1e-30, 1e-30 }));
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: sample(gen) — детерминизм и корректность
+// ============================================================================
+TEST_CASE("AliasMethod::sample(gen) determinism and range",
+          "[rng][alias][sample]")
+{
+    using mylib::random::AliasMethod;
+    using mylib::random::QualityXorshift64;
+
+    SECTION("same seed -> identical stream")
+    {
+        AliasMethod<double> am{ 1.0, 2.0, 3.0 };
+        QualityXorshift64 a{ 42 };
+        QualityXorshift64 b{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(am.sample(a) == am.sample(b));
+    }
+
+    SECTION("all outputs in [0, size())")
+    {
+        AliasMethod<double> am{ 1.0, 2.0, 3.0, 4.0, 5.0 };
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            const size_t idx = am.sample(gen);
+            INFO("idx = " << idx);
+            REQUIRE(idx < am.size());
+        }
+    }
+
+    SECTION("sample is callable on const AliasMethod&")
+    {
+        const AliasMethod<double> am{ 1.0, 1.0 };
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(am.sample(gen) < 2);
+    }
+
+    SECTION("works with different GENERATOR types")
+    {
+        AliasMethod<double> am{ 1.0, 2.0, 3.0 };
+
+        QualityXorshift64 xs{ 42 };
+        mylib::random::MersenneTwister<std::uint64_t> mt{ 42 };
+        mylib::random::Randomizer<> rnd{ 42 };
+
+        for (int i = 0; i < 200; ++i)
+        {
+            REQUIRE(am.sample(xs) < 3);
+            REQUIRE(am.sample(mt) < 3);
+            REQUIRE(am.sample(rnd) < 3);
+        }
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: статистические проверки
+// ============================================================================
+TEST_CASE("AliasMethod statistical distribution", "[rng][alias][statistics]")
+{
+    using mylib::random::AliasMethod;
+    using mylib::random::QualityXorshift64;
+
+    auto sampleCounts = [](const auto& am, size_t N, std::uint64_t seed = 42)
+    {
+        QualityXorshift64 gen{ seed };
+        std::vector<size_t> counts(am.size(), 0);
+        for (size_t i = 0; i < N; ++i)
+            ++counts[am.sample(gen)];
+        return counts;
+    };
+
+    SECTION("weights {1, 2, 3} -> {1/6, 2/6, 3/6}")
+    {
+        AliasMethod<double> am{ 1.0, 2.0, 3.0 };
+        constexpr size_t N{ 100'000 };
+        auto counts = sampleCounts(am, N);
+
+        const std::array<double, 3> expected{ 1.0 / 6, 2.0 / 6, 3.0 / 6 };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq
+                        << ", expected = " << expected[k]);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+
+    SECTION("uniform weights {1, 1, 1, 1, 1}")
+    {
+        AliasMethod<double> am{ 1.0, 1.0, 1.0, 1.0, 1.0 };
+        constexpr size_t N{ 100'000 };
+        auto counts = sampleCounts(am, N);
+        for (size_t k = 0; k < 5; ++k)
+        {
+            INFO("k = " << k << ", count = " << counts[k]);
+            REQUIRE(counts[k] > 18'000);
+            REQUIRE(counts[k] < 22'000);
+        }
+    }
+
+    SECTION("weights {10, 1, 1} -> ~{10/12, 1/12, 1/12}")
+    {
+        AliasMethod<double> am{ 10.0, 1.0, 1.0 };
+        constexpr size_t N{ 100'000 };
+        auto counts = sampleCounts(am, N);
+
+        const std::array<double, 3> expected{ 10.0 / 12, 1.0 / 12, 1.0 / 12 };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+
+    SECTION("single-element table always returns 0")
+    {
+        AliasMethod<double> am{ 7.5 };
+        constexpr size_t N{ 1000 };
+        auto counts = sampleCounts(am, N);
+        REQUIRE(counts[0] == N);
+    }
+
+    SECTION("zero weights are never sampled")
+    {
+        AliasMethod<double> am{ 0.0, 1.0, 0.0, 1.0, 0.0 };
+        constexpr size_t N{ 20'000 };
+        auto counts = sampleCounts(am, N);
+
+        REQUIRE(counts[0] == 0);
+        REQUIRE(counts[2] == 0);
+        REQUIRE(counts[4] == 0);
+        // Только 1 и 3, примерно 50/50
+        REQUIRE(counts[1] > 9'000);
+        REQUIRE(counts[1] < 11'000);
+        REQUIRE(counts[3] > 9'000);
+        REQUIRE(counts[3] < 11'000);
+    }
+
+    SECTION("extreme weights: one dominant")
+    {
+        AliasMethod<double> am{ 1.0, 1e-6, 1e-6 };
+        constexpr size_t N{ 20'000 };
+        auto counts = sampleCounts(am, N);
+        // Почти всё на индекс 0
+        REQUIRE(counts[0] > static_cast<size_t>(N * 0.99));
+        REQUIRE(counts[0] + counts[1] + counts[2] == N);
+    }
+
+    SECTION("float RealType also distributes correctly")
+    {
+        AliasMethod<float> am{ 1.0f, 2.0f, 3.0f };
+        constexpr size_t N{ 50'000 };
+        auto counts = sampleCounts(am, N);
+
+        const std::array<double, 3> expected{ 1.0 / 6, 2.0 / 6, 3.0 / 6 };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: sample() без аргументов (thread_local RNG)
+// ============================================================================
+TEST_CASE("AliasMethod::sample() no-arg overload",
+          "[rng][alias][sample][thread_local]")
+{
+    using mylib::random::AliasMethod;
+
+    SECTION("returns values in [0, size())")
+    {
+        AliasMethod<double> am{ 1.0, 2.0, 3.0, 4.0 };
+        for (int i = 0; i < 5000; ++i)
+        {
+            const size_t idx = am.sample();
+            INFO("idx = " << idx);
+            REQUIRE(idx < am.size());
+        }
+    }
+
+    SECTION("callable on const AliasMethod&")
+    {
+        const AliasMethod<double> am{ 1.0, 2.0, 3.0 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(am.sample() < 3);
+    }
+
+    SECTION("statistical check on weights {1, 2, 3}")
+    {
+        AliasMethod<double> am{ 1.0, 2.0, 3.0 };
+        constexpr size_t N{ 100'000 };
+        std::vector<size_t> counts(3, 0);
+        for (size_t i = 0; i < N; ++i)
+            ++counts[am.sample()];
+
+        const std::array<double, 3> expected{ 1.0 / 6, 2.0 / 6, 3.0 / 6 };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+
+    SECTION("single element always returns 0")
+    {
+        AliasMethod<double> am{ 5.0 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(am.sample() == 0);
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: инварианты / дополнительные граничные случаи
+// ============================================================================
+TEST_CASE("AliasMethod edge cases", "[rng][alias][edge]")
+{
+    using mylib::random::AliasMethod;
+    using mylib::random::QualityXorshift64;
+
+    SECTION("very large table (size 1000) works")
+    {
+        std::vector<double> weights(1000, 1.0);
+        AliasMethod<double> am{ weights };
+        REQUIRE(am.size() == 1000);
+
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 5000; ++i)
+            REQUIRE(am.sample(gen) < 1000);
+    }
+
+    SECTION("weights with tiny differences")
+    {
+        // Веса, различающиеся на 1 ULP — должны всё равно работать
+        AliasMethod<double> am{
+            std::nextafter(1.0, 2.0),
+            std::nextafter(1.0, 0.0),
+            1.0
+        };
+        REQUIRE(am.size() == 3);
+
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(am.sample(gen) < 3);
+    }
+
+    SECTION("integer-typed vector does not compile")
+    {
+        STATIC_REQUIRE_FALSE(
+            std::is_constructible_v<AliasMethod<double>,
+                                    const std::vector<int>&>);
+        STATIC_REQUIRE_FALSE(
+            std::is_constructible_v<AliasMethod<float>,
+                                    const std::vector<double>&>);
+    }
+
+    SECTION("copy / move semantics")
+    {
+        AliasMethod<double> a{ 1.0, 2.0, 3.0 };
+        AliasMethod<double> b{ a };        // copy
+        REQUIRE(b.size() == 3);
+
+        AliasMethod<double> c{ std::move(a) };
+        REQUIRE(c.size() == 3);
+
+        QualityXorshift64 gen1{ 42 };
+        QualityXorshift64 gen2{ 42 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(b.sample(gen1) == c.sample(gen2));
+    }
+
+    SECTION("all-equal weights -> uniform")
+    {
+        AliasMethod<double> am{ 7.0, 7.0, 7.0, 7.0, 7.0 };
+        QualityXorshift64 gen{ 42 };
+        std::array<int, 5> counts{};
+        constexpr int N{ 50'000 };
+        for (int i = 0; i < N; ++i) ++counts[am.sample(gen)];
+        for (int k = 0; k < 5; ++k)
+        {
+            INFO("k = " << k << ", count = " << counts[k]);
+            REQUIRE(counts[k] > 9'000);
+            REQUIRE(counts[k] < 11'000);
+        }
+    }
+
+    SECTION("one weight = 1, rest = 0")
+    {
+        AliasMethod<double> am{ 0.0, 0.0, 1.0, 0.0 };
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(am.sample(gen) == 2);
+    }
+}
+
+
+// ============================================================================
+//  AliasMethod: TEMPLATE_TEST_CASE по RealType
+// ============================================================================
+TEMPLATE_TEST_CASE("AliasMethod works for all floating-point types",
+                   "[rng][alias][template]",
+                   float, double, long double)
+{
+    using T = TestType;
+    using AM = mylib::random::AliasMethod<T>;
+    using Gen = mylib::random::QualityXorshift64;
+
+    SECTION("construction and size")
+    {
+        AM am{ T{ 1 }, T{ 2 }, T{ 3 } };
+        REQUIRE(am.size() == 3);
+    }
+
+    SECTION("sampling stays in range")
+    {
+        AM am{ T{ 1 }, T{ 2 }, T{ 3 }, T{ 4 } };
+        Gen gen{ 42 };
+        for (int i = 0; i < 5000; ++i)
+            REQUIRE(am.sample(gen) < 4);
+    }
+
+    SECTION("statistical correctness on weights {1, 2, 3}")
+    {
+        AM am{ T{ 1 }, T{ 2 }, T{ 3 } };
+        Gen gen{ 42 };
+        constexpr size_t N{ 50'000 };
+        std::vector<size_t> counts(3, 0);
+        for (size_t i = 0; i < N; ++i)
+            ++counts[am.sample(gen)];
+
+        const std::array<double, 3> expected{ 1.0 / 6, 2.0 / 6, 3.0 / 6 };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
         }
     }
 }

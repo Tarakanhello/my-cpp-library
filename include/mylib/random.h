@@ -539,7 +539,7 @@ namespace random
          */
         static GENERATOR createDefault()
         {
-            if constexpr(std::is_convertible_v<GENERATOR, std::seed_seq&>)
+            if constexpr(std::is_constructible_v<GENERATOR, std::seed_seq&>)
             {
                 std::random_device rd{};
                 std::seed_seq seq{ rd(),
@@ -666,7 +666,7 @@ namespace random
         template<std::floating_point RealType = double>
         RealType uniform01()
         {
-            static std::uniform_real_distribution<RealType> dist{ RealType{ 0.0 }, RealType{ 1.0 } };
+            std::uniform_real_distribution<RealType> dist{ RealType{ 0.0 }, RealType{ 1.0 } };
 
             return dist(m_g);
         }
@@ -675,21 +675,78 @@ namespace random
 
 
 
+    /**
+     * @brief A weighted random sampler using the Walker–Vose alias method.
+     *
+     * Preprocesses a list of non-negative weights into two parallel tables
+     * (`m_prob` and `m_alias`) of size `n`, after which every call to
+     * `sample()` runs in strict O(1) time, regardless of `n`. This makes the
+     * alias method the standard choice when the same weighted distribution
+     * must be sampled many times.
+     *
+     * The weights do not need to sum to 1 — they are normalized internally.
+     * They do, however, need to be finite, non-negative, and not all zero.
+     *
+     * @tparam RealType The floating-point type used for weights and for the
+     *                  internal probability table. Must satisfy
+     *                  `std::floating_point`.
+     * @tparam GENERATOR The underlying URBG used by the no-argument
+     *                   `sample()`. Must satisfy
+     *                   `std::uniform_random_bit_generator`.
+     *
+     * @note Construction is O(n) in both time and memory; sampling is O(1).
+     * @note Objects of this class are immutable after construction and may be
+     *       shared across threads for concurrent reads. The no-argument
+     *       `sample()` uses a `thread_local` RNG, so it is safe to call from
+     *       multiple threads without external synchronization.
+     */
     template<std::floating_point RealType,
              std::uniform_random_bit_generator GENERATOR = defaultRandomizer<size_t>>
     class AliasMethod final
     {
     private:
+        /// @brief Storage for the probability table. Owns its data.
         using Vector = mylib::Vector<RealType>;
+        /// @brief Storage for the "small" / "large" work lists during construction.
         using Stack = mylib::Stack<size_t>;
+        // @brief Storage for the alias table. Owns its data.
         using Alias = mylib::Vector<size_t>;
 
     private:
-        static Randomizer<GENERATOR> m_randomizer{};
-
+        /// @brief Probability of keeping the sampled index `i` (range [0, 1]).
         Vector m_prob{};
+        /// @brief Index to fall back to when the coin flip against `m_prob[i]` fails.
         Alias  m_alias{};
 
+        /**
+         * @brief Validates the input weights and builds the alias table.
+         *
+         * Performs the classic Walker–Vose preprocessing:
+         *   1. Validate every weight (finite, non-negative) and the total sum.
+         *   2. Scale each weight by `n / sum`, so the average scaled weight is 1.
+         *   3. Partition indices into `small` (scaled < 1) and `large` (scaled >= 1).
+         *   4. Repeatedly pair a `small` with a `large`, "borrowing" probability
+         *      mass from the latter, until one of the two lists is empty.
+         *   5. Fill the remaining entries with `prob = 1.0` (their alias is never
+         *      consulted, because `u < 1.0` always holds for `u ∈ [0, 1)`).
+         *
+         * @param begin Iterator to the first weight.
+         * @param end   Iterator one past the last weight.
+         * @param size  Number of elements in `[begin, end)`.
+         *
+         * @throws std::invalid_argument if the range is empty, contains a
+         *         non-finite or negative weight, or if the sum is zero or
+         *         non-finite (overflow).
+         *
+         * @note `size` is passed explicitly to avoid recomputing
+         *       `std::distance(begin, end)` for forward iterators.
+         * @note The scaling `(*it / sum) * size` is done in that order to
+         *       avoid overflow of `*it * size` when weights are large.
+         * @note Due to floating-point rounding, some entries may end up with
+         *       `m_prob[i]` slightly outside [0, 1] (e.g. 1 + 1e-16). This
+         *       does not break correctness — it only shifts probability mass
+         *       by one ULP.
+         */
         void checkAndConstruct(auto begin, auto end, size_t size)
         {
             if(size == 0)
@@ -697,52 +754,43 @@ namespace random
                 throw std::invalid_argument("Empty vector");
             }
 
-            Vector scaled{};
-            scaled.reserve(size);
-            Stack small{};
-            Stack large{};
-
             RealType sum{ 0 };
 
             for(auto it{ begin }; it != end; ++it)
             {
                 if(!std::isfinite(*it))
                 {
-                    scaled.clear();
                     throw std::invalid_argument("NaN or inf value in vector");
                 }
                 if(*it < 0)
                 {
-                    scaled.clear();
                     throw std::invalid_argument("Negative weight");
                 }
                 sum += *it;
-                scaled.emplace_back(*it * size);
-
-                if(scaled.back() < RealType{ 1.0 })
-                {
-                    small.push(scaled.size() - 1);
-                }
-                else
-                {
-                    large.push(scaled.size() - 1);
-                }
             }
 
             if(sum == 0)
             {
-                scaled.clear();
-                large.clear();
-                small.clear();
                 throw std::invalid_argument("Zero weight");
             }
-
             if(!std::isfinite(sum))
             {
-                scaled.clear();
-                large.clear();
-                small.clear();
                 throw std::invalid_argument("Sum overflow");
+            }
+
+            Vector scaled{};
+            scaled.reserve(size);
+
+            Stack small{};
+            Stack large{};
+
+            for(auto it{ begin }; it != end; ++it)
+            {
+                RealType s{ (*it / sum) * static_cast<RealType>(size) };
+                scaled.emplace_back(s);
+
+                s < RealType{ 1.0 } ? small.push(scaled.size() - 1)
+                                    : large.push(scaled.size() - 1);
             }
 
             m_prob.resize(size);
@@ -781,13 +829,31 @@ namespace random
                 m_prob[small.top()] = RealType{ 1.0 };
                 small.pop();
             }
-
-            }
+        }
 
 
     public:
+        /**
+         * @brief Deleted: an alias table requires at least one weight.
+         */
         AliasMethod() = delete;
 
+        /**
+         * @brief Constructs an alias table from an iterator range of weights.
+         *
+         * @tparam ITERATOR A forward iterator whose value type is exactly
+         *                  `RealType` (not merely convertible to it).
+         * @param begin Iterator to the first weight.
+         * @param end   Iterator one past the last weight.
+         *
+         * @throws std::invalid_argument (see `checkAndConstruct`).
+         *
+         * @note The `same_as` constraint (rather than `convertible_to`)
+         *       prevents accidental construction from `std::vector<int>`
+         *       or `std::vector<float>` when `RealType` is `double`, which
+         *       would silently lose precision or trigger implicit
+         *       conversions the caller did not intend.
+         */
         template<std::forward_iterator ITERATOR>
             requires std::same_as<std::iter_value_t<ITERATOR>, RealType>
         AliasMethod(ITERATOR begin, ITERATOR end)
@@ -795,11 +861,38 @@ namespace random
             checkAndConstruct(begin, end, std::distance(begin, end));
         }
 
+        /**
+         * @brief Constructs an alias table from an initializer list.
+         *
+         * Allows the convenient syntax:
+         * @code
+         * AliasMethod<double> dist{ 1.0, 2.0, 3.0 };
+         * @endcode
+         *
+         * @param list The weights to normalize.
+         * @throws std::invalid_argument (see `checkAndConstruct`).
+         */
         AliasMethod(std::initializer_list<RealType> list)
         {
             checkAndConstruct(list.begin(), list.end(), list.size());
         }
 
+        /**
+         * @brief Constructs an alias table from an arbitrary sized range.
+         *
+         * @tparam CONTAINER A sized range whose value type is exactly
+         *                   `RealType`.
+         * @param c The container of weights.
+         *
+         * @throws std::invalid_argument (see `checkAndConstruct`).
+         *
+         * @note Marked `explicit` to prevent accidental implicit conversion
+         *       from a `std::vector<RealType>`, which would otherwise let
+         *       a container silently bind to a function expecting an
+         *       `AliasMethod`.
+         * @note The `sized_range` constraint is required because
+         *       `checkAndConstruct` needs `n` up front for the scaling step.
+         */
         template<typename CONTAINER>
             requires std::ranges::sized_range<CONTAINER> &&
                      std::same_as<std::ranges::range_value_t<CONTAINER>, RealType>
@@ -808,24 +901,72 @@ namespace random
             checkAndConstruct(c.begin(), c.end(), c.size());
         }
 
+        /**
+         * @brief Returns the number of outcomes (the size of the probability table).
+         */
         size_t size() const noexcept
         {
             return m_prob.size();
         }
 
-        size_t sample()
+        /**
+         * @brief Draws a single sample using a per-thread default RNG.
+         *
+         * The index `i` is drawn uniformly from [0, n), and the result is
+         * `i` with probability `m_prob[i]`, or `m_alias[i]` otherwise.
+         * This is the classic O(1) alias-method decision.
+         *
+         * @return An index in [0, n), distributed according to the
+         *         normalized input weights.
+         *
+         * @note The `Randomizer` is `thread_local`, so this overload is safe
+         *       to call concurrently from multiple threads without
+         *       synchronization. The first call in each thread pays the cost
+         *       of `Randomizer`'s default construction, which seeds from
+         *       `std::random_device` — potentially noticeable.
+         * @note Not marked `noexcept`: `std::uniform_int_distribution` and
+         *       `std::uniform_real_distribution` do not guarantee `noexcept`
+         *       `operator()`.
+         * @note The two distributions are constructed locally on each call
+         *       rather than stored as `static`. `static` would turn this
+         *       into a data race across threads (function-local statics are
+         *       shared, not per-thread), which is exactly the bug this
+         *       overload exists to avoid.
+         */
+        size_t sample() const
         {
-            size_t i{ m_randomizer.mod(size()) };
+            assert(size() > 0);
+            thread_local Randomizer<GENERATOR> rng{};
 
-            RealType u{ m_randomizer.uniform01() };
+            std::uniform_int_distribution<size_t> ints{ 0, size() - 1 };
+            std::uniform_real_distribution<RealType> real{ RealType{0.0}, RealType{1.0} };
+
+            const size_t i{ ints(rng) };
+            const RealType u{ real(rng) };
 
             return (u < m_prob[i]) ? i : m_alias[i];
-
         }
 
+        /**
+         * @brief Draws a single sample using a caller-supplied URBG.
+         *
+         * Use this overload when reproducibility matters (tests, simulations
+         * with a fixed seed) or when you want to avoid the `thread_local`
+         * RNG and its default-construction cost.
+         *
+         * @tparam GEN A URBG; see `std::uniform_random_bit_generator`.
+         * @param gen The generator to draw from. Advanced by this call.
+         * @return An index in [0, n), distributed according to the
+         *         normalized input weights.
+         *
+         * @note `gen` is taken by non-const reference because every call
+         *       mutates its internal state.
+         * @note Not marked `noexcept` (same reason as the no-argument overload).
+         */
         template<std::uniform_random_bit_generator GEN>
-        size_t sample(GEN& gen) const noexcept(std::is_nothrow_invocable_v<GEN&>)
+        size_t sample(GEN& gen) const
         {
+            assert(size() > 0);
             std::uniform_int_distribution<size_t> ints{0, size() - 1};
             std::uniform_real_distribution<RealType> real{ 0, 1 };
 
@@ -836,10 +977,20 @@ namespace random
         }
     };
 
+    /**
+     * @brief Deduction guide: deduce `RealType` from a sized range of weights.
+     *
+     * Enables `AliasMethod dist{ std::vector<double>{...} };`.
+     */
     template<std::ranges::sized_range CONTAINER>
         requires std::floating_point<std::ranges::range_value_t<CONTAINER>>
     AliasMethod(const CONTAINER& c) -> AliasMethod<std::ranges::range_value_t<CONTAINER>>;
 
+    /**
+     * @brief Deduction guide: deduce `RealType` from an iterator pair.
+     *
+     * Enables `AliasMethod dist{ v.begin(), v.end() };`.
+     */
     template<std::forward_iterator ITERATOR>
         requires std::floating_point<std::iter_value_t<ITERATOR>>
     AliasMethod(ITERATOR, ITERATOR) -> AliasMethod<std::iter_value_t<ITERATOR>>;
