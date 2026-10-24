@@ -17,6 +17,7 @@
 #include "mylib/bit_operations.h"
 #include "mylib/concepts.h"
 #include "mylib/math.h"
+#include "mylib/overflow.h"
 #include "mylib/vector.h"
 
 namespace mylib
@@ -42,9 +43,6 @@ class Bitset final
 {
 private:
     using Container = Vector<WORD>;
-
-    /** @brief Tag selecting the kind of overflow check. */
-    enum class Op{ Add, Mul };
 
 public:
     class BitReference;
@@ -123,32 +121,6 @@ private:
      * @brief Computes the number of words needed to store m_bitSize bits.
      */
     size_t wordsNeeded() const noexcept;
-
-    /**
-     * @brief Throws std::length_error if a + b (or a * b) would overflow size_t.
-     * @tparam op Either Op::Add or Op::Mul.
-     * @param a First operand.
-     * @param b Second operand.
-     * @param source Name of the caller for the diagnostic message.
-     */
-    template<Op op>
-    static void overflowCheck(size_t a, size_t b, std::string_view source = "")
-    {
-        if constexpr(op == Op::Add)
-        {
-            if (a > std::numeric_limits<size_t>::max() - b)
-            {
-                throw std::length_error(std::format("Bitset::{}: size overflow", source));
-            }
-        }
-        else if constexpr(op == Op::Mul)
-        {
-            if(b != 0 && a > std::numeric_limits<size_t>::max() / b)
-            {
-                throw std::length_error(std::format("Bitset::{}: size overflow", source));
-            }
-        }
-    }
 
     // ================================================================
     //  String helpers
@@ -1100,7 +1072,7 @@ void Bitset<WORD>::appendLSB(std::string_view str)
     }
     validateBinaryString(str);
 
-    overflowCheck<Op::Add>(m_bitSize, str.size(), "appendLSB(std::string_view)");
+    checkAddOverflow(m_bitSize, str.size(), "Bitset::appendLSB(std::string_view)");
     resize(m_bitSize + str.size());
     *this <<= str.size();
     setFromStringUnchecked(str, 0);
@@ -1139,7 +1111,7 @@ void Bitset<WORD>::appendLSB(const Bitset& other)
         return;
     }
 
-    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendLSB(const Bitset&)");
+    checkAddOverflow(m_bitSize, other.size(), "Bitset::appendLSB(const Bitset&)");
     resize(m_bitSize + other.size());
     *this <<= other.size();
 
@@ -1154,7 +1126,7 @@ template<typename WORD>
     requires std::unsigned_integral<WORD>
 void Bitset<WORD>::appendMSB(std::same_as<bool> auto value)
 {
-    overflowCheck<Op::Add>(m_bitSize, 1, "appendMSB(std::same_as<bool> auto)");
+    checkAddOverflow(m_bitSize, size_t{ 1 }, "Bitset::appendMSB(std::same_as<bool> auto)");
     ++m_bitSize;
     if(wordsSize() < wordsNeeded())
     {
@@ -1188,7 +1160,7 @@ void Bitset<WORD>::appendMSB(WORD value, size_t size)
 
     size_t start{ m_bitSize };
 
-    overflowCheck<Op::Add>(m_bitSize, size, "appendMSB(WORD, size_t)");
+    checkAddOverflow(m_bitSize, size, "Bitset::appendMSB(WORD, size_t)");
     resize(m_bitSize + size);
 
     setValue(value, start, size);
@@ -1219,7 +1191,7 @@ void Bitset<WORD>::appendMSB(const Bitset& other)
     size_t srcBits{ other.size() };
 
     // Grow and allocate.
-    overflowCheck<Op::Add>(m_bitSize, other.size(), "appendMSB(const Bitset&)");
+    checkAddOverflow(m_bitSize, other.size(), "Bitset::appendMSB(const Bitset&)");
     resize(m_bitSize + other.size());
 
     while(srcPos < srcBits)
@@ -1282,9 +1254,9 @@ template<typename CONTAINER>
                  && std::unsigned_integral<typename CONTAINER::value_type>
                  && std::same_as<typename CONTAINER::value_type, WORD>
 Bitset<WORD>::Bitset(const CONTAINER& container)
-    : m_bitSize{ (overflowCheck<Op::Mul>(container.size(), // throws on overflow
-                                        numberOfDigits,
-                                        "Bitset(const CONTAINER&)"),
+    : m_bitSize{ (checkMulOverflow(container.size(), // throws on overflow
+                                   numberOfDigits,
+                                   "Bitset::Bitset(const CONTAINER&)"),
                  container.size() * numberOfDigits) }   // computed only if safe
     , m_words(container.size())
 {
@@ -1803,7 +1775,7 @@ void Bitset<WORD>::setFromString(std::string_view str, size_t position)
     }
     // Validate characters.
     validateBinaryString(str);
-    overflowCheck<Op::Add>(position, str.length(), "setFromString");
+    checkAddOverflow(position, str.length(), "Bitset::setFromString");
 
     if(position + str.length() > m_bitSize)
     {

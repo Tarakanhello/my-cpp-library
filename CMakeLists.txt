@@ -46,6 +46,7 @@ add_library(mylib STATIC
     src/union_find.cpp
     include/mylib/concepts.h
     include/mylib/random.h
+    include/mylib/overflow.h
 
 )
 target_include_directories(mylib PUBLIC include)
