@@ -9,6 +9,7 @@
 
 #include "concepts.h"
 #include "mylib/bit_operations.h"
+#include "mylib/overflow.h"
 #include "mylib/vector.h"
 #include "mylib/stack.h"
 
@@ -673,7 +674,11 @@ namespace random
 
     };
 
-
+    inline Randomizer<>& GlobalRNG()
+    {
+        static Randomizer<> r;
+        return r;
+    }
 
     /**
      * @brief A weighted random sampler using the Walker–Vose alias method.
@@ -996,7 +1001,153 @@ namespace random
     AliasMethod(ITERATOR, ITERATOR) -> AliasMethod<std::iter_value_t<ITERATOR>>;
 
 
+    template<typename T>
+    class SumHeap final
+    {
+    private:
+        using Vector = mylib::Vector<T>;
 
+    private:
+        Vector m_heap{};
+
+        size_t parent(size_t i) const noexcept
+        {
+            if(i == 0)
+            {
+                return i;
+            }
+
+            return (i - 1) / 2;
+        }
+
+        size_t leftChild(size_t i) const
+        {
+            checkMulOverflow(size_t{ 2 }, i, "mylib::random::SunHeap::leftChild(size_t)");
+            return 2 * i + 1;
+        }
+
+        size_t rightChild(size_t i) const
+        {
+            checkMulOverflow(size_t{ 2 }, i, "mylib::random::SunHeap::rightChild(size_t)");
+            return 2 * i + 2;
+        }
+
+        size_t find(T value) const
+        {
+            assert(value <= total());
+
+            size_t currentIndex{ 0 };
+
+            while(true)
+            {
+                size_t leftIndex{ leftChild(currentIndex) };
+
+                // 1. Проверка на выход за границы
+                if(leftIndex >= m_heap.size())
+                {
+                    break; // Детей нет, возвращаем текущий узел
+                }
+
+                // 2. Проверяем левого ребенка
+                if(value < m_heap[leftIndex])
+                {
+                    currentIndex = leftIndex;
+                    continue; // Уходим в левую ветку
+                }
+
+                // Если не попали в левого, "отрезаем" его вес от value
+                value -= m_heap[leftIndex];
+
+                // 3. Проверяем правого ребенка
+                size_t rightIndex{ rightChild(currentIndex) };
+
+                if(rightIndex < m_heap.size() &&
+                    value < m_heap[rightIndex])
+                {
+                    currentIndex = rightIndex;
+                    continue; // Уходим в правую ветку
+                }
+
+                // 4. Если не попали ни в левого, ни в правого — это ТОЧНО Родитель!
+                break;
+            }
+
+            return currentIndex;
+        }
+
+
+    public:
+        T total() const noexcept { return m_heap.empty() ? T{ 0 } : m_heap[0]; }
+
+        T get(size_t i) const noexcept
+        {
+            T result{ m_heap[i] };
+            size_t c{ leftChild(i) };
+            if(c < m_heap.size())
+            {
+                result -= m_heap[c];
+                c = rightChild(i);
+                if(c < m_heap.size())
+                {
+                    result -= m_heap[c];
+                }
+            }
+
+            return result;
+        }
+
+        void add(T value)
+        {
+            m_heap.emplace_back(0);
+            add(value, m_heap.size() - 1);
+        }
+
+        void add(T value, size_t i) noexcept
+        {
+            for(;; i = parent(i))
+            {
+                m_heap[i] += value;
+                if(i < 1)
+                {
+                    break;
+                }
+            }
+        }
+
+        size_t next() const
+        {
+            if(total() == 0)
+            {
+                return 0;
+            }
+
+            return find(GlobalRNG().uniform01() * total());
+        }
+
+        template<std::uniform_random_bit_generator GEN>
+        size_t next(GEN& rng) const noexcept
+        {
+            std::uniform_real_distribution<> real{ 0, 1 };
+            return find(real(rng) * total());
+        }
+
+        T cumulative(size_t i) const noexcept
+        {
+            T sum{ m_heap[i] };
+            while(i > 0)
+            {
+                size_t last{ i };
+                i = parent(i);
+                size_t l{ leftChild(i) };
+                if(l != last)
+                {
+                    sum += m_heap[l];
+                }
+            }
+
+            return sum;
+        }
+    };
 } // endnamespace random
 
 } // end namespace mylib
