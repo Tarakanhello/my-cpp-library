@@ -1002,15 +1002,59 @@ namespace random
 
 
 
+    /**
+     * @brief A weighted random sampler using a segment-tree-like structure (Sum Heap).
+     *
+     * Preprocesses a list of weights into a binary tree stored in an array (vector),
+     * where each parent node stores the sum of its own weight and its children's weights.
+     * This enables two key operations:
+     *   - O(log n) weighted sampling (`next`).
+     *   - O(log n) weight updates (`add`, `subtract`, `remove`).
+     *
+     * Unlike the `AliasMethod` (which is O(1) for sampling but O(n) for updates),
+     * `SumHeap` is the standard choice when weights change frequently (e.g., loot
+     * tables with dynamic drop rates, load balancing).
+     *
+     * @tparam T The unsigned integer type used for weights and sums. Must satisfy
+     *           `std::unsigned_integral`. Floating-point types are intentionally
+     *           rejected to prevent rounding errors during weight updates.
+     *
+     * @note Construction from a range is O(n log n) time and O(n) space.
+     * @note `next()` and `find()` are `const` and safe to call concurrently
+     *       on the same instance, provided the underlying `GlobalRNG()` is thread-safe.
+     */
     template<std::unsigned_integral T>
     class SumHeap final
     {
     private:
+        /// @brief Storage for the heap. `m_heap[0]` is the total sum of all weights.
         using Vector = mylib::Vector<T>;
 
     private:
+        /// @brief The underlying array representing the binary tree.
         Vector m_heap{};
 
+        // =========================================================================
+        // Private Helpers: Tree Navigation
+        // =========================================================================
+
+        /**
+         * @brief Calculates the index of the left child in the array.
+         * @param i The index of the parent.
+         * @return The index `2 * i + 1`.
+         * @throws std::overflow_error via `checkMulOverflow` if `2 * i` overflows.
+         */
+        size_t leftChild(size_t i) const
+        {
+            checkMulOverflow(size_t{ 2 }, i, "mylib::random::SumHeap::leftChild(size_t)");
+            return 2 * i + 1;
+        }
+
+        /**
+         * @brief Calculates the index of the parent in the array.
+         * @param i The index of the child.
+         * @return The index `(i - 1) / 2`. Returns 0 if `i == 0`.
+         */
         size_t parent(size_t i) const noexcept
         {
             if(i == 0)
@@ -1021,21 +1065,75 @@ namespace random
             return (i - 1) / 2;
         }
 
-        size_t leftChild(size_t i) const
-        {
-            checkMulOverflow(size_t{ 2 }, i, "mylib::random::SunHeap::leftChild(size_t)");
-            return 2 * i + 1;
-        }
-
+        /**
+         * @brief Calculates the index of the right child in the array.
+         * @param i The index of the parent.
+         * @return The index `2 * i + 2`.
+         * @throws std::overflow_error via `checkMulOverflow` if `2 * i` overflows.
+         */
         size_t rightChild(size_t i) const
         {
-            checkMulOverflow(size_t{ 2 }, i, "mylib::random::SunHeap::rightChild(size_t)");
+            checkMulOverflow(size_t{ 2 }, i, "mylib::random::SumHeap::rightChild(size_t)");
             return 2 * i + 2;
         }
 
+        // =========================================================================
+        // Private Helpers: Internal Logic
+        // =========================================================================
+
+        /**
+         * @brief Validates a range of weights, checks for overflow, and builds the tree.
+         *
+         * Calculates the total sum of the range to ensure no overflow occurs,
+         * then appends each weight one by one using `add()`.
+         *
+         * @param begin Iterator to the first weight.
+         * @param end   Iterator one past the last weight.
+         * @param size  Number of elements in the range.
+         *
+         * @throws std::invalid_argument if the range is empty.
+         * @throws std::overflow_error if the sum of all weights exceeds `T`'s limit.
+         *
+         * @note Construction is O(n log n) because `add()` performs an O(log n)
+         *       traversal up the tree for each element.
+         */
+        void createFromRange(auto begin, auto end, size_t size)
+        {
+            if(size == 0)
+            {
+                throw std::invalid_argument("Empty vector");
+            }
+
+            T sum{ 0 };
+
+            for(auto it{ begin }; it != end; ++it)
+            {
+                checkAddOverflow(sum, *it, "mylib::random::SumHeap::createFromRange");
+                sum += *it;
+            }
+
+            m_heap.reserve(size);
+
+            for(auto it{ begin }; it != end; ++it)
+            {
+                add(*it);
+            }
+        }
+
+        /**
+         * @brief Traverses the tree to find the index corresponding to the given value.
+         *
+         * This uses the Post-order layout: Left Child -> Right Child -> Parent.
+         * At each node, it subtracts the left child's sum from `value`. If `value`
+         * drops below the left child's sum, it goes left. Otherwise, it checks the
+         * right child. If neither matches, the value must belong to the parent.
+         *
+         * @param value The random value in the range `[0, total())`.
+         * @return The index of the selected weight.
+         */
         size_t find(T value) const
         {
-            assert(value <= total());
+            assert(value < total() && "value must be in [0, total())");
 
             size_t currentIndex{ 0 };
 
@@ -1076,9 +1174,14 @@ namespace random
             return currentIndex;
         }
 
+        /**
+         * @brief Subtracts a value from a node and all its ancestors up to the root.
+         * @param value The amount to subtract.
+         * @param i The starting node index.
+         */
         void subtractFromAncestors(T value, size_t i) noexcept
         {
-            for(;; parent(i) = i)
+            for(;; i = parent(i))
             {
                 m_heap[i] -= value;
                 if(i < 1)
@@ -1088,38 +1191,40 @@ namespace random
             }
         }
 
-        void createFromRange(auto begin, auto end, size_t size)
-        {
-            if(size == 0)
-            {
-                throw std::invalid_argument("Empty vector");
-            }
-
-            m_heap.reserve(size);
-
-            for(auto it{ begin }; it != end; ++it)
-            {
-
-            }
-        }
-
-
     public:
+        // =========================================================================
+        // Constructors & Assignment
+        // =========================================================================
+
+        /**
+         * @brief Default constructor. Creates an empty heap.
+         */
         SumHeap() = default;
 
-        SumHeap(std::initializer_list<T> list)
-        {
-            createFromRange(list.begin(), list.end(), list.size());
-        }
-
+        /**
+         * @brief Constructs the heap from an arbitrary sized range.
+         * @tparam CONTAINER A sized range whose value type is exactly `T`.
+         * @param c The container of weights.
+         * @throws std::invalid_argument if the range is empty.
+         * @throws std::overflow_error if the total sum overflows `T`.
+         * @note Marked `explicit` to prevent accidental implicit conversions.
+         */
         template<typename CONTAINER>
             requires std::ranges::sized_range<CONTAINER> &&
                      std::same_as<std::ranges::range_value_t<CONTAINER>, T>
         SumHeap(const CONTAINER& c)
         {
-            createFromRannge(c.begin(), c.end(), c.size());
+            createFromRange(c.begin(), c.end(), c.size());
         }
 
+        /**
+         * @brief Constructs the heap from an iterator range.
+         * @tparam IT A forward iterator whose value type is exactly `T`.
+         * @param begin Iterator to the first weight.
+         * @param end   Iterator one past the last weight.
+         * @throws std::invalid_argument if the range is empty.
+         * @throws std::overflow_error if the total sum overflows `T`.
+         */
         template<std::forward_iterator IT>
             requires std::same_as<std::iter_value_t<IT>, T>
         SumHeap(IT begin, IT end)
@@ -1127,9 +1232,55 @@ namespace random
             createFromRange(begin, end, std::distance(begin, end));
         }
 
+        /**
+         * @brief Constructs the heap from an initializer list.
+         * @param list The weights to initialize with.
+         * @throws std::invalid_argument if the list is empty.
+         * @throws std::overflow_error if the total sum overflows `T`.
+         */
+        SumHeap(std::initializer_list<T> list)
+        {
+            createFromRange(list.begin(), list.end(), list.size());
+        }
 
-        T total() const noexcept { return m_heap.empty() ? T{ 0 } : m_heap[0]; }
+        // =========================================================================
+        // Public Readers (Queries)
+        // =========================================================================
 
+        /**
+         * @brief Calculates the cumulative weight up to and including node `i`.
+         *
+         * Returns the end boundary of node `i` on the numerical line `[0, total())`.
+         *
+         * @param i The node index.
+         * @return The cumulative sum.
+         */
+        T cumulative(size_t i) const noexcept
+        {
+            T sum{ m_heap[i] };
+            while(i > 0)
+            {
+                size_t last{ i };
+                i = parent(i);
+                size_t l{ leftChild(i) };
+                if(l != last)
+                {
+                    sum += m_heap[l];
+                }
+            }
+
+            return sum;
+        }
+
+        /**
+         * @brief Retrieves the original (clean) weight of a specific node.
+         *
+         * Because the tree stores subtree sums, this calculates the node's own
+         * weight by subtracting the sums of its left and right children.
+         *
+         * @param i The node index.
+         * @return The original weight of the node.
+         */
         T get(size_t i) const noexcept
         {
             T result{ m_heap[i] };
@@ -1147,12 +1298,34 @@ namespace random
             return result;
         }
 
+        /**
+         * @brief Returns the total sum of all weights in the heap.
+         * @return The total sum, or `0` if the heap is empty.
+         */
+        T total() const noexcept { return m_heap.empty() ? T{ 0 } : m_heap[0]; }
+
+        // =========================================================================
+        // Public Modifiers (Updates)
+        // =========================================================================
+
+        /**
+         * @brief Appends a new node with the given weight to the end of the heap.
+         * @param value The weight of the new node.
+         */
         void add(T value)
         {
             m_heap.emplace_back(0);
             add(value, m_heap.size() - 1);
         }
 
+        /**
+         * @brief Increases the weight of an existing node by `value`.
+         *
+         * Propagates the addition up to the root to maintain subtree sums.
+         *
+         * @param value The amount to add (must be positive or zero).
+         * @param i The node index.
+         */
         void add(T value, size_t i) noexcept
         {
             for(;; i = parent(i))
@@ -1165,6 +1338,50 @@ namespace random
             }
         }
 
+        /**
+         * @brief Completely removes a node by setting its weight to zero.
+         *
+         * This is equivalent to calling `subtract(get(i), i)`.
+         *
+         * @param i The node index.
+         */
+        void remove(size_t i) noexcept
+        {
+            T value{ get(i) };
+            if(value > 0)
+            {
+                subtractFromAncestors(value, i);
+            }
+        }
+
+        /**
+         * @brief Decreases the weight of an existing node by `value`.
+         *
+         * Propagates the subtraction up to the root.
+         *
+         * @param value The amount to subtract.
+         * @param i The node index.
+         * @note In debug builds, asserts that `value` does not exceed the node's
+         *       current weight.
+         */
+        void subtract(T value, size_t i) noexcept
+        {
+            assert(value <= get(i) && "Cannot subtract more than current weight!");
+            subtractFromAncestors(value, i);
+        }
+
+        // =========================================================================
+        // Public Generation (Sampling)
+        // =========================================================================
+
+        /**
+         * @brief Draws a random index using the global thread-local RNG.
+         *
+         * Generates a random integer in `[0, total() - 1]` and finds the
+         * corresponding node.
+         *
+         * @return The index of the selected node, or `0` if the heap is empty.
+         */
         size_t next() const
         {
             if(total() == 0)
@@ -1172,33 +1389,48 @@ namespace random
                 return 0;
             }
 
-            return find(GlobalRNG().inRange(0, total() - 1));
+            return find(GlobalRNG().inRange(T{ 0 }, total() - 1));
         }
 
+        /**
+         * @brief Draws a random index using a caller-supplied URBG.
+         *
+         * Use this overload for reproducibility (e.g., in tests).
+         *
+         * @tparam GEN A URBG; see `std::uniform_random_bit_generator`.
+         * @param rng The generator to draw from.
+         * @return The index of the selected node, or `0` if the heap is empty.
+         */
         template<std::uniform_random_bit_generator GEN>
-        size_t next(GEN& rng) const noexcept
+        size_t next(GEN& rng) const
         {
-            std::uniform_int_distribution<> real{ 0, total() - 1 };
-            return find(real(rng));
-        }
-
-        T cumulative(size_t i) const noexcept
-        {
-            T sum{ m_heap[i] };
-            while(i > 0)
+            if(total() == 0)
             {
-                size_t last{ i };
-                i = parent(i);
-                size_t l{ leftChild(i) };
-                if(l != last)
-                {
-                    sum += m_heap[l];
-                }
+                return 0;
             }
 
-            return sum;
+            std::uniform_int_distribution<T> real{ 0, total() - 1 };
+            return find(real(rng));
         }
     };
+
+    // =============================================================================
+    // Deduction Guides
+    // =============================================================================
+
+    /**
+     * @brief Deduction guide: deduce `T` from a sized range of weights.
+     */
+    template<std::ranges::sized_range CONTAINER>
+        requires std::unsigned_integral<std::ranges::range_value_t<CONTAINER>>
+    SumHeap(const CONTAINER& c) -> SumHeap<std::ranges::range_value_t<CONTAINER>>;
+
+    /**
+     * @brief Deduction guide: deduce `T` from an iterator pair.
+     */
+    template<std::forward_iterator IT>
+        requires std::unsigned_integral<std::iter_value_t<IT>>
+    SumHeap(IT begin, IT end) -> SumHeap<std::iter_value_t<IT>>;
 } // endnamespace random
 
 } // end namespace mylib
