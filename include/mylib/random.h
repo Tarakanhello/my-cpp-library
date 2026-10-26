@@ -1001,7 +1001,8 @@ namespace random
     AliasMethod(ITERATOR, ITERATOR) -> AliasMethod<std::iter_value_t<ITERATOR>>;
 
 
-    template<typename T>
+
+    template<std::unsigned_integral T>
     class SumHeap final
     {
     private:
@@ -1075,8 +1076,58 @@ namespace random
             return currentIndex;
         }
 
+        void subtractFromAncestors(T value, size_t i) noexcept
+        {
+            for(;; parent(i) = i)
+            {
+                m_heap[i] -= value;
+                if(i < 1)
+                {
+                    break;
+                }
+            }
+        }
+
+        void createFromRange(auto begin, auto end, size_t size)
+        {
+            if(size == 0)
+            {
+                throw std::invalid_argument("Empty vector");
+            }
+
+            m_heap.reserve(size);
+
+            for(auto it{ begin }; it != end; ++it)
+            {
+
+            }
+        }
+
 
     public:
+        SumHeap() = default;
+
+        SumHeap(std::initializer_list<T> list)
+        {
+            createFromRange(list.begin(), list.end(), list.size());
+        }
+
+        template<typename CONTAINER>
+            requires std::ranges::sized_range<CONTAINER> &&
+                     std::same_as<std::ranges::range_value_t<CONTAINER>, T>
+        SumHeap(const CONTAINER& c)
+        {
+            createFromRannge(c.begin(), c.end(), c.size());
+        }
+
+        template<std::forward_iterator IT>
+            requires std::same_as<std::iter_value_t<IT>, T>
+        SumHeap(IT begin, IT end)
+        {
+            createFromRange(begin, end, std::distance(begin, end));
+        }
+
+
         T total() const noexcept { return m_heap.empty() ? T{ 0 } : m_heap[0]; }
 
         T get(size_t i) const noexcept
@@ -1121,14 +1172,14 @@ namespace random
                 return 0;
             }
 
-            return find(GlobalRNG().uniform01() * total());
+            return find(GlobalRNG().inRange(0, total() - 1));
         }
 
         template<std::uniform_random_bit_generator GEN>
         size_t next(GEN& rng) const noexcept
         {
-            std::uniform_real_distribution<> real{ 0, 1 };
-            return find(real(rng) * total());
+            std::uniform_int_distribution<> real{ 0, total() - 1 };
+            return find(real(rng));
         }
 
         T cumulative(size_t i) const noexcept
