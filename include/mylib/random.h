@@ -1042,7 +1042,7 @@ namespace random
          * @brief Calculates the index of the left child in the array.
          * @param i The index of the parent.
          * @return The index `2 * i + 1`.
-         * @throws std::overflow_error via `checkMulOverflow` if `2 * i` overflows.
+         * @throws std::std::length_error via `checkMulOverflow` if `2 * i` overflows.
          */
         size_t leftChild(size_t i) const
         {
@@ -1069,7 +1069,7 @@ namespace random
          * @brief Calculates the index of the right child in the array.
          * @param i The index of the parent.
          * @return The index `2 * i + 2`.
-         * @throws std::overflow_error via `checkMulOverflow` if `2 * i` overflows.
+         * @throws std::std::length_error via `checkMulOverflow` if `2 * i` overflows.
          */
         size_t rightChild(size_t i) const
         {
@@ -1092,7 +1092,7 @@ namespace random
          * @param size  Number of elements in the range.
          *
          * @throws std::invalid_argument if the range is empty.
-         * @throws std::overflow_error if the sum of all weights exceeds `T`'s limit.
+         * @throws std::std::length_error if the sum of all weights exceeds `T`'s limit.
          *
          * @note Construction is O(n log n) because `add()` performs an O(log n)
          *       traversal up the tree for each element.
@@ -1206,7 +1206,7 @@ namespace random
          * @tparam CONTAINER A sized range whose value type is exactly `T`.
          * @param c The container of weights.
          * @throws std::invalid_argument if the range is empty.
-         * @throws std::overflow_error if the total sum overflows `T`.
+         * @throws std::std::length_error if the total sum overflows `T`.
          * @note Marked `explicit` to prevent accidental implicit conversions.
          */
         template<typename CONTAINER>
@@ -1223,7 +1223,7 @@ namespace random
          * @param begin Iterator to the first weight.
          * @param end   Iterator one past the last weight.
          * @throws std::invalid_argument if the range is empty.
-         * @throws std::overflow_error if the total sum overflows `T`.
+         * @throws std::std::length_error if the total sum overflows `T`.
          */
         template<std::forward_iterator IT>
             requires std::same_as<std::iter_value_t<IT>, T>
@@ -1236,7 +1236,7 @@ namespace random
          * @brief Constructs the heap from an initializer list.
          * @param list The weights to initialize with.
          * @throws std::invalid_argument if the list is empty.
-         * @throws std::overflow_error if the total sum overflows `T`.
+         * @throws std::std::length_error if the total sum overflows `T`.
          */
         SumHeap(std::initializer_list<T> list)
         {
@@ -1257,6 +1257,11 @@ namespace random
          */
         T cumulative(size_t i) const noexcept
         {
+            if (i >= m_heap.size())
+            {
+                return T{ 0 };
+            }
+
             T sum{ m_heap[i] };
             while(i > 0)
             {
@@ -1283,6 +1288,11 @@ namespace random
          */
         T get(size_t i) const noexcept
         {
+            if (i >= m_heap.size())
+            {
+                return T{ 0 };
+            }
+
             T result{ m_heap[i] };
             size_t c{ leftChild(i) };
             if(c < m_heap.size())
@@ -1314,7 +1324,7 @@ namespace random
          */
         void add(T value)
         {
-            m_heap.emplace_back(0);
+            m_heap.push_back(0);
             add(value, m_heap.size() - 1);
         }
 
@@ -1389,7 +1399,7 @@ namespace random
                 return 0;
             }
 
-            return find(GlobalRNG().inRange(T{ 0 }, total() - 1));
+            return find(static_cast<T>(GlobalRNG().inRange(uint64_t{ 0 }, static_cast<uint64_t>(total()) - 1)));
         }
 
         /**
@@ -1409,8 +1419,8 @@ namespace random
                 return 0;
             }
 
-            std::uniform_int_distribution<T> real{ 0, total() - 1 };
-            return find(real(rng));
+            std::uniform_int_distribution<std::uint64_t> real{ 0, static_cast<uint64_t>(total()) - 1 };
+            return find(static_cast<T>(real(rng)));
         }
     };
 

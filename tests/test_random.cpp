@@ -2300,3 +2300,839 @@ TEMPLATE_TEST_CASE("AliasMethod works for all floating-point types",
         }
     }
 }
+
+
+
+// ============================================================================
+//  SumHeap: type traits, concepts, deduction
+// ============================================================================
+TEST_CASE("SumHeap type traits", "[rng][sumheap][traits]")
+{
+    using mylib::random::SumHeap;
+
+    SECTION("requires unsigned integral T")
+    {
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint8_t>>);
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint16_t>>);
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint32_t>>);
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint64_t>>);
+
+        // signed / non-integral должны отвергаться concept'ом
+    }
+
+    SECTION("default ctor is available")
+    {
+        STATIC_REQUIRE(std::is_default_constructible_v<SumHeap<std::uint32_t>>);
+    }
+
+    SECTION("initializer_list ctor constrained to exact T")
+    {
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint32_t>,
+                                               std::initializer_list<std::uint32_t>>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<SumHeap<std::uint32_t>,
+                                                     std::initializer_list<int>>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<SumHeap<std::uint32_t>,
+                                                     std::initializer_list<std::uint8_t>>);
+    }
+
+    SECTION("iterator ctor requires same_as<T>")
+    {
+        using It = std::vector<std::uint32_t>::iterator;
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint32_t>, It, It>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<
+                             SumHeap<std::uint32_t>,
+                             std::vector<int>::iterator, std::vector<int>::iterator>);
+    }
+
+    SECTION("container ctor requires sized_range + same_as<T>")
+    {
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint32_t>,
+                                               const std::vector<std::uint32_t>&>);
+        STATIC_REQUIRE(std::is_constructible_v<SumHeap<std::uint32_t>,
+                                               const std::array<std::uint32_t, 3>&>);
+        STATIC_REQUIRE_FALSE(std::is_constructible_v<SumHeap<std::uint32_t>,
+                                                     const std::vector<int>&>);
+    }
+
+    SECTION("noexcept queries")
+    {
+        using S = SumHeap<std::uint32_t>;
+        STATIC_REQUIRE(noexcept(std::declval<const S&>().total()));
+        STATIC_REQUIRE(noexcept(std::declval<const S&>().get(0)));
+        STATIC_REQUIRE(noexcept(std::declval<const S&>().cumulative(0)));
+        STATIC_REQUIRE(noexcept(std::declval<S&>().add(std::uint32_t{}, 0)));
+        STATIC_REQUIRE(noexcept(std::declval<S&>().subtract(std::uint32_t{}, 0)));
+        STATIC_REQUIRE(noexcept(std::declval<S&>().remove(0)));
+    }
+
+    SECTION("mutators/append/next are not noexcept")
+    {
+        using S = SumHeap<std::uint32_t>;
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<S&>().add(std::uint32_t{})));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<const S&>().next()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<const S&>().next(
+            std::declval<mylib::random::QualityXorshift64&>())));
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: конструкторы
+// ============================================================================
+TEST_CASE("SumHeap construction", "[rng][sumheap][construction]")
+{
+    using mylib::random::SumHeap;
+    using S = SumHeap<std::uint32_t>;
+
+    SECTION("default ctor produces empty collection")
+    {
+        S sh;
+        REQUIRE(sh.total() == 0);
+        REQUIRE(sh.get(0) == 0);        // out-of-range may return 0 by doc
+        REQUIRE(sh.next() == 0);        // total == 0 -> 0
+    }
+
+    SECTION("initializer_list")
+    {
+        S sh{ 1u, 2u, 3u, 4u };
+        REQUIRE(sh.total() == 10);
+        for (size_t i = 0; i < 4; ++i)
+            REQUIRE(sh.get(i) == i + 1);
+    }
+
+    SECTION("iterator pair")
+    {
+        std::vector<std::uint32_t> v{ 5u, 10u, 15u };
+        S sh{ v.begin(), v.end() };
+        REQUIRE(sh.total() == 30);
+        REQUIRE(sh.get(0) == 5);
+        REQUIRE(sh.get(1) == 10);
+        REQUIRE(sh.get(2) == 15);
+    }
+
+    SECTION("container")
+    {
+        std::vector<std::uint32_t> v{ 7u, 8u, 9u };
+        S sh{ v };
+        REQUIRE(sh.total() == 24);
+    }
+
+    SECTION("std::array")
+    {
+        std::array<std::uint32_t, 4> arr{ 1u, 1u, 1u, 1u };
+        S sh{ arr };
+        REQUIRE(sh.total() == 4);
+    }
+
+    SECTION("zeros-only is allowed by ctor")
+    {
+        S sh{ 0u, 0u, 0u };
+        REQUIRE(sh.total() == 0);
+        REQUIRE(sh.next() == 0);
+    }
+
+    SECTION("works with uint8_t, uint16_t, uint64_t")
+    {
+        REQUIRE(SumHeap<std::uint8_t>{ std::uint8_t{ 1 }, std::uint8_t{ 2 } }.total() == 3);
+        REQUIRE(SumHeap<std::uint16_t>{ std::uint16_t{ 100 }, std::uint16_t{ 200 } }.total() == 300);
+        REQUIRE(SumHeap<std::uint64_t>{ std::uint64_t{ 1'000'000'000ULL },
+                                       std::uint64_t{ 2'000'000'000ULL } }.total()
+                == 3'000'000'000ULL);
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: валидация входных данных
+// ============================================================================
+TEST_CASE("SumHeap input validation", "[rng][sumheap][validation]")
+{
+    using mylib::random::SumHeap;
+
+    SECTION("empty range -> invalid_argument")
+    {
+        std::vector<std::uint32_t> empty;
+        REQUIRE_THROWS_AS(
+            SumHeap<std::uint32_t>(empty.begin(), empty.end()),
+            std::invalid_argument);
+        REQUIRE_THROWS_AS((SumHeap<std::uint32_t>(empty)),
+                          std::invalid_argument);
+    }
+
+    SECTION("sum overflow -> overflow_error")
+    {
+        // uint8_t: 200 + 100 = 300 > 255
+        REQUIRE_THROWS_AS(
+            (SumHeap<std::uint8_t>{ std::uint8_t{ 200 }, std::uint8_t{ 100 } }),
+            std::length_error);
+        REQUIRE_THROWS_AS(
+            (SumHeap<std::uint8_t>{ std::uint8_t{ 255 }, std::uint8_t{ 1 } }),
+            std::length_error);
+
+        // uint32_t: max + 1
+        const auto mx = std::numeric_limits<std::uint32_t>::max();
+        REQUIRE_THROWS_AS(
+            (SumHeap<std::uint32_t>{ mx, std::uint32_t{ 1 } }),
+            std::length_error);
+        REQUIRE_THROWS_AS(
+            (SumHeap<std::uint32_t>{ mx, mx }),
+            std::length_error);
+
+        // uint64_t: max + 1
+        const auto mx64 = std::numeric_limits<std::uint64_t>::max();
+        REQUIRE_THROWS_AS(
+            (SumHeap<std::uint64_t>{ mx64, std::uint64_t{ 1 } }),
+            std::length_error);
+    }
+
+    SECTION("exactly max is OK")
+    {
+        const auto mx = std::numeric_limits<std::uint8_t>::max();
+        REQUIRE_NOTHROW(
+            (SumHeap<std::uint8_t>{ std::uint8_t{ 100 }, std::uint8_t{ 155 } }));
+        REQUIRE(SumHeap<std::uint8_t>{
+                    std::uint8_t{ 100 }, std::uint8_t{ 155 }
+                }.total() == static_cast<std::uint8_t>(mx));
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: total / get / cumulative
+// ============================================================================
+TEST_CASE("SumHeap queries", "[rng][sumheap][queries]")
+{
+    using mylib::random::SumHeap;
+    using S = SumHeap<std::uint32_t>;
+
+    SECTION("total() == sum of get(i)")
+    {
+        S sh{ 1u, 2u, 3u, 4u, 5u };
+        std::uint32_t sum = 0;
+        for (size_t i = 0; i < 5; ++i) sum += sh.get(i);
+        REQUIRE(sh.total() == sum);
+        REQUIRE(sh.total() == 15);
+    }
+
+    SECTION("get(i) returns exact weight")
+    {
+        S sh{ 10u, 20u, 30u };
+        REQUIRE(sh.get(0) == 10);
+        REQUIRE(sh.get(1) == 20);
+        REQUIRE(sh.get(2) == 30);
+    }
+}
+
+TEST_CASE("SumHeap::cumulative — right-boundary invariants",
+          "[rng][sumheap][cumulative]")
+{
+    using mylib::random::SumHeap;
+    using S = SumHeap<std::uint32_t>;
+
+    SECTION("cumulative(0) == total() (root covers [0, total()))")
+    {
+        for (auto w : { std::vector<std::uint32_t>{1},
+                       std::vector<std::uint32_t>{1, 2},
+                       std::vector<std::uint32_t>{1, 2, 3},
+                       std::vector<std::uint32_t>{3, 1, 4, 1, 5},
+                       std::vector<std::uint32_t>{10, 20, 30, 40} })
+        {
+            S sh{ w };
+            INFO("size = " << w.size());
+            REQUIRE(sh.cumulative(0) == sh.total());
+        }
+    }
+
+    SECTION("cumulative(i) <= total() for all i")
+    {
+        S sh{ 3u, 1u, 4u, 1u, 5u };
+        for (size_t i = 0; i < 5; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(sh.cumulative(i) <= sh.total());
+        }
+    }
+
+    SECTION("cumulative(i) >= get(i) for all i")
+    {
+        S sh{ 3u, 1u, 4u, 1u, 5u };
+        for (size_t i = 0; i < 5; ++i)
+        {
+            INFO("i = " << i << ", cum = " << sh.cumulative(i)
+                 << ", own = " << sh.get(i));
+            REQUIRE(sh.cumulative(i) >= sh.get(i));
+        }
+    }
+
+    SECTION("cumulative(child) <= cumulative(parent) for all non-root i")
+    {
+        // Поддерево ребёнка — подмножество поддерева родителя,
+        // значит правый конец не может быть больше.
+        S sh{ 3u, 1u, 4u, 1u, 5u };
+        for (size_t i = 1; i < 5; ++i)
+        {
+            const size_t p = (i - 1) / 2;
+            INFO("i = " << i << ", parent = " << p
+                        << ", cum(i) = " << sh.cumulative(i)
+                        << ", cum(p) = " << sh.cumulative(p));
+            REQUIRE(sh.cumulative(i) <= sh.cumulative(p));
+        }
+    }
+
+    SECTION("single-element: cum(0) == total == get(0)")
+    {
+        S sh{ 42u };
+        REQUIRE(sh.cumulative(0) == 42u);
+        REQUIRE(sh.cumulative(0) == sh.total());
+        REQUIRE(sh.cumulative(0) == sh.get(0));
+    }
+
+    SECTION("two-element tree {2, 3}: root own=2, left child own=3")
+    {
+        // m_heap = [5, 3]: total=5, own(0)=2, own(1)=3
+        S sh{ 2u, 3u };
+        REQUIRE(sh.total() == 5u);
+        REQUIRE(sh.get(0) == 2u);
+        REQUIRE(sh.get(1) == 3u);
+
+        REQUIRE(sh.cumulative(0) == 5u);   // whole range
+        REQUIRE(sh.cumulative(1) == 3u);   // left child interval [0, 3)
+    }
+
+    SECTION("cumulative(0) tracks total after mutations")
+    {
+        S sh{ 1u, 2u, 3u };
+        REQUIRE(sh.cumulative(0) == 6u);
+        REQUIRE(sh.total() == 6u);
+
+        sh.add(10u);                        // total 16
+        REQUIRE(sh.cumulative(0) == 16u);
+        REQUIRE(sh.total() == 16u);
+
+        sh.remove(0);                       // remove root's own weight (1)
+        REQUIRE(sh.cumulative(0) == 15u);
+        REQUIRE(sh.total() == 15u);
+
+        sh.subtract(1u, 1);   // get(1) == 2, subtract 1 → own(1) == 1
+        REQUIRE(sh.get(1) == 1u);
+        REQUIRE(sh.total() == 14u);
+    }
+}
+
+TEST_CASE("SumHeap::cumulative is noexcept", "[rng][sumheap][cumulative]")
+{
+    using mylib::random::SumHeap;
+    using S = SumHeap<std::uint32_t>;
+    S sh{ 1u, 2u, 3u };
+    STATIC_REQUIRE(noexcept(sh.cumulative(0)));
+}
+
+
+// ============================================================================
+//  SumHeap: модификаторы
+// ============================================================================
+TEST_CASE("SumHeap modifiers", "[rng][sumheap][modifiers]")
+{
+    using mylib::random::SumHeap;
+    using S = SumHeap<std::uint32_t>;
+
+    SECTION("add(value) appends a new element")
+    {
+        S sh{ 1u, 2u };
+        REQUIRE(sh.total() == 3);
+
+        sh.add(10u);
+        REQUIRE(sh.total() == 13);
+        REQUIRE(sh.get(2) == 10);
+
+        sh.add(0u);                     // нулевой вес тоже допустим
+        REQUIRE(sh.total() == 13);
+        REQUIRE(sh.get(3) == 0);
+    }
+
+    SECTION("add(value, i) increases weight")
+    {
+        S sh{ 1u, 2u, 3u };
+        REQUIRE(sh.total() == 6);
+
+        sh.add(10u, 0);
+        REQUIRE(sh.get(0) == 11);
+        REQUIRE(sh.total() == 16);
+
+        sh.add(5u, 2);
+        REQUIRE(sh.get(2) == 8);
+        REQUIRE(sh.total() == 21);
+    }
+
+    SECTION("subtract(value, i) decreases weight")
+    {
+        S sh{ 10u, 20u, 30u };
+        sh.subtract(5u, 0);
+        REQUIRE(sh.get(0) == 5);
+        REQUIRE(sh.total() == 55);
+
+        sh.subtract(20u, 1);
+        REQUIRE(sh.get(1) == 0);
+        REQUIRE(sh.total() == 35);
+    }
+
+    SECTION("subtract to zero")
+    {
+        S sh{ 5u, 5u };
+        sh.subtract(5u, 0);
+        REQUIRE(sh.get(0) == 0);
+        REQUIRE(sh.total() == 5);
+    }
+
+    SECTION("remove(i) sets weight to zero")
+    {
+        S sh{ 1u, 2u, 3u };
+        REQUIRE(sh.total() == 6);
+
+        sh.remove(1);
+        REQUIRE(sh.get(1) == 0);
+        REQUIRE(sh.total() == 4);
+
+        sh.remove(0);
+        REQUIRE(sh.get(0) == 0);
+        REQUIRE(sh.total() == 3);
+    }
+
+    SECTION("remove is idempotent")
+    {
+        S sh{ 1u, 2u };
+        sh.remove(0);
+        sh.remove(0);
+        REQUIRE(sh.get(0) == 0);
+        REQUIRE(sh.total() == 2);
+    }
+
+    SECTION("removed then re-added via add(value, i)")
+    {
+        S sh{ 1u, 2u, 3u };
+        sh.remove(1);
+        REQUIRE(sh.get(1) == 0);
+
+        sh.add(7u, 1);
+        REQUIRE(sh.get(1) == 7);
+        REQUIRE(sh.total() == 11);
+    }
+
+    SECTION("total() tracks all mutations")
+    {
+        S sh{ 5u, 5u, 5u };
+        REQUIRE(sh.total() == 15);
+
+        sh.add(10u);
+        REQUIRE(sh.total() == 25);
+
+        sh.add(100u, 0);
+        REQUIRE(sh.total() == 125);
+
+        sh.subtract(50u, 0);
+        REQUIRE(sh.total() == 75);
+
+        sh.remove(1);
+        REQUIRE(sh.total() == 70);
+
+        sh.remove(2);
+        REQUIRE(sh.total() == 65);
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: sample(gen) — детерминизм и диапазон
+// ============================================================================
+TEST_CASE("SumHeap sampling with explicit generator",
+          "[rng][sumheap][sample]")
+{
+    using mylib::random::SumHeap;
+    using mylib::random::QualityXorshift64;
+    using S = SumHeap<std::uint32_t>;
+
+    SECTION("same seed -> identical stream")
+    {
+        S sh{ 1u, 2u, 3u, 4u };
+        QualityXorshift64 a{ 42 };
+        QualityXorshift64 b{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(sh.next(a) == sh.next(b));
+    }
+
+    SECTION("all outputs in [0, size)")
+    {
+        S sh{ 1u, 2u, 3u, 4u, 5u };
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            const auto idx = sh.next(gen);
+            INFO("idx = " << idx);
+            REQUIRE(idx < 5);
+        }
+    }
+
+    SECTION("callable on const SumHeap&")
+    {
+        const S sh{ 1u, 2u, 3u };
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(sh.next(gen) < 3);
+    }
+
+    SECTION("empty -> returns 0")
+    {
+        S sh;
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(sh.next(gen) == 0);
+    }
+
+    SECTION("all-zero weights -> returns 0")
+    {
+        S sh{ 0u, 0u, 0u };
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(sh.next(gen) == 0);
+    }
+
+    SECTION("single element with positive weight -> returns its index")
+    {
+        S sh{ 0u, 0u, 5u, 0u };
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(sh.next(gen) == 2);
+    }
+
+    SECTION("works with different URBG types")
+    {
+        S sh{ 1u, 2u, 3u };
+        QualityXorshift64 xs{ 42 };
+        mylib::random::MersenneTwister<std::uint64_t> mt{ 42 };
+        mylib::random::Randomizer<> rnd{ 42 };
+        for (int i = 0; i < 200; ++i)
+        {
+            REQUIRE(sh.next(xs)  < 3);
+            REQUIRE(sh.next(mt)  < 3);
+            REQUIRE(sh.next(rnd) < 3);
+        }
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: next() без аргументов
+// ============================================================================
+TEST_CASE("SumHeap sampling without explicit generator",
+          "[rng][sumheap][sample][thread_local]")
+{
+    using mylib::random::SumHeap;
+    using S = SumHeap<std::uint32_t>;
+
+    SECTION("returns values in [0, size)")
+    {
+        S sh{ 1u, 2u, 3u, 4u };
+        for (int i = 0; i < 5000; ++i)
+        {
+            const auto idx = sh.next();
+            INFO("idx = " << idx);
+            REQUIRE(idx < 4);
+        }
+    }
+
+    SECTION("callable on const SumHeap&")
+    {
+        const S sh{ 1u, 2u };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(sh.next() < 2);
+    }
+
+    SECTION("empty -> returns 0")
+    {
+        S sh;
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(sh.next() == 0);
+    }
+
+    SECTION("single element -> always that index")
+    {
+        S sh{ 0u, 0u, 7u };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(sh.next() == 2);
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: статистика
+// ============================================================================
+TEST_CASE("SumHeap statistical distribution", "[rng][sumheap][statistics]")
+{
+    using mylib::random::SumHeap;
+    using mylib::random::QualityXorshift64;
+    using S = SumHeap<std::uint32_t>;
+
+    auto sampleCounts = [](const auto& sh, size_t n, size_t N, std::uint64_t seed = 42)
+    {
+        QualityXorshift64 gen{ seed };
+        std::vector<size_t> counts(n, 0);
+        for (size_t k = 0; k < N; ++k)
+            ++counts[sh.next(gen)];
+        return counts;
+    };
+
+    SECTION("weights {1,2,3,4} -> {1/10, 2/10, 3/10, 4/10}")
+    {
+        S sh{ 1u, 2u, 3u, 4u };
+        constexpr size_t N{ 100'000 };
+        auto counts = sampleCounts(sh, 4, N);
+
+        const std::array<double, 4> expected{ 0.1, 0.2, 0.3, 0.4 };
+        for (size_t k = 0; k < 4; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq
+                        << ", expected = " << expected[k]);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+
+    SECTION("uniform weights distribute uniformly")
+    {
+        S sh{ 1u, 1u, 1u, 1u, 1u };
+        constexpr size_t N{ 100'000 };
+        auto counts = sampleCounts(sh, 5, N);
+        for (size_t k = 0; k < 5; ++k)
+        {
+            INFO("k = " << k << ", count = " << counts[k]);
+            REQUIRE(counts[k] > 18'000);
+            REQUIRE(counts[k] < 22'000);
+        }
+    }
+
+    SECTION("zero weights never sampled")
+    {
+        S sh{ 0u, 1u, 0u, 1u, 0u };
+        constexpr size_t N{ 20'000 };
+        auto counts = sampleCounts(sh, 5, N);
+        REQUIRE(counts[0] == 0);
+        REQUIRE(counts[2] == 0);
+        REQUIRE(counts[4] == 0);
+        REQUIRE(counts[1] > 9'000);
+        REQUIRE(counts[3] > 9'000);
+    }
+
+    SECTION("removed elements are never sampled")
+    {
+        S sh{ 1u, 2u, 3u, 4u };
+        sh.remove(1);
+        constexpr size_t N{ 20'000 };
+        auto counts = sampleCounts(sh, 4, N);
+        REQUIRE(counts[1] == 0);
+        // Теперь осталось {1, 0, 3, 4}, сумма 8
+        const std::array<double, 4> expected{ 1.0 / 8, 0.0, 3.0 / 8, 4.0 / 8 };
+        for (size_t k : { size_t{ 0 }, size_t{ 2 }, size_t{ 3 } })
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+
+    SECTION("after add(value, i) the weight is respected")
+    {
+        S sh{ 1u, 2u, 3u, 4u };
+        sh.add(1000u, 0);
+        constexpr size_t N{ 20'000 };
+        auto counts = sampleCounts(sh, 4, N);
+        // total = 1010, index 0 dominates
+        REQUIRE(counts[0] > 19'000);
+        REQUIRE(counts[0] <= N);
+    }
+
+    SECTION("after add(value) appended element participates")
+    {
+        S sh{ 1u, 1u, 1u, 1u, 1u };
+        sh.add(5u);   // {1,1,1,1,1,5}, total 10 -> index 5 gets 50%
+        constexpr size_t N{ 20'000 };
+        auto counts = sampleCounts(sh, 6, N);
+        INFO("count[5] = " << counts[5]);
+        REQUIRE(counts[5] > 9'000);
+        REQUIRE(counts[5] < 11'000);
+    }
+
+    SECTION("thread_local next() also distributes correctly")
+    {
+        S sh{ 1u, 2u, 3u };
+        constexpr size_t N{ 100'000 };
+        std::vector<size_t> counts(3, 0);
+        for (size_t i = 0; i < N; ++i)
+            ++counts[sh.next()];
+
+        const std::array<double, 3> expected{ 1.0 / 6, 2.0 / 6, 3.0 / 6 };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: edge cases
+// ============================================================================
+TEST_CASE("SumHeap edge cases", "[rng][sumheap][edge]")
+{
+    using mylib::random::SumHeap;
+    using mylib::random::QualityXorshift64;
+    using S = SumHeap<std::uint32_t>;
+
+    SECTION("large table")
+    {
+        std::vector<std::uint32_t> v(1000, 1u);
+        S sh{ v };
+        REQUIRE(sh.total() == 1000);
+
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 5000; ++i)
+            REQUIRE(sh.next(gen) < 1000);
+    }
+
+    SECTION("single-element with max weight")
+    {
+        const auto mx = std::numeric_limits<std::uint32_t>::max();
+        S sh{ mx };
+        REQUIRE(sh.total() == mx);
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 100; ++i)
+            REQUIRE(sh.next(gen) == 0);
+    }
+
+    SECTION("adding zero preserves total")
+    {
+        S sh{ 5u, 5u };
+        sh.add(0u);
+        REQUIRE(sh.total() == 10);
+        REQUIRE(sh.get(2) == 0);
+    }
+
+    SECTION("subtract all weight from one element")
+    {
+        S sh{ 100u, 200u, 300u };
+        sh.subtract(100u, 0);
+        REQUIRE(sh.get(0) == 0);
+        REQUIRE(sh.total() == 500);
+    }
+
+    SECTION("many appends preserve total")
+    {
+        S sh{ 1u };
+        std::uint32_t expected = 1;
+        for (int i = 0; i < 100; ++i)
+        {
+            sh.add(static_cast<std::uint32_t>(i + 1));
+            expected += static_cast<std::uint32_t>(i + 1);
+        }
+        REQUIRE(sh.total() == expected);
+    }
+
+    SECTION("copy / move preserve weights")
+    {
+        S sh{ 1u, 2u, 3u, 4u };
+        S copy{ sh };
+        REQUIRE(copy.total() == sh.total());
+        for (size_t i = 0; i < 4; ++i)
+            REQUIRE(copy.get(i) == sh.get(i));
+
+        S moved{ std::move(sh) };
+        REQUIRE(moved.total() == 10);
+    }
+
+    SECTION("uint8_t with weights near max")
+    {
+        using S8 = SumHeap<std::uint8_t>;
+        S8 sh{ std::uint8_t{ 100 }, std::uint8_t{ 100 }, std::uint8_t{ 55 } };
+        REQUIRE(sh.total() == std::uint8_t{ 255 });
+
+        QualityXorshift64 gen{ 42 };
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(sh.next(gen) < 3);
+    }
+}
+
+
+// ============================================================================
+//  SumHeap: TEMPLATE_TEST_CASE по T
+// ============================================================================
+TEMPLATE_TEST_CASE("SumHeap works for all unsigned integral types",
+                   "[rng][sumheap][template]",
+                   std::uint8_t, std::uint16_t, std::uint32_t, std::uint64_t)
+{
+    using T = TestType;
+    using SH = mylib::random::SumHeap<T>;
+    using Gen = mylib::random::QualityXorshift64;
+
+    SECTION("construction and total")
+    {
+        SH sh{ T{ 1 }, T{ 2 }, T{ 3 } };
+        REQUIRE(sh.total() == T{ 6 });
+    }
+
+    SECTION("sampling stays in range")
+    {
+        SH sh{ T{ 1 }, T{ 2 }, T{ 3 }, T{ 4 } };
+        Gen gen{ 42 };
+        for (int i = 0; i < 2000; ++i)
+            REQUIRE(sh.next(gen) < 4);
+    }
+
+    SECTION("statistical correctness on {1,2,3}")
+    {
+        SH sh{ T{ 1 }, T{ 2 }, T{ 3 } };
+        Gen gen{ 42 };
+        constexpr size_t N{ 50'000 };
+        std::vector<size_t> counts(3, 0);
+        for (size_t k = 0; k < N; ++k)
+            ++counts[sh.next(gen)];
+
+        const std::array<double, 3> expected{ 1.0 / 6, 2.0 / 6, 3.0 / 6 };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            const double freq = static_cast<double>(counts[k]) / N;
+            INFO("k = " << k << ", freq = " << freq);
+            REQUIRE(freq == Catch::Approx(expected[k]).epsilon(0.05));
+        }
+    }
+
+    SECTION("add / subtract / remove keep total consistent")
+    {
+        SH sh{ T{ 5 }, T{ 5 }, T{ 5 } };
+        REQUIRE(sh.total() == T{ 15 });
+
+        sh.add(T{ 10 });
+        REQUIRE(sh.total() == T{ 25 });
+
+        sh.add(T{ 3 }, 0);
+        REQUIRE(sh.get(0) == T{ 8 });
+        REQUIRE(sh.total() == T{ 28 });
+
+        sh.subtract(T{ 4 }, 1);
+        REQUIRE(sh.get(1) == T{ 1 });
+        REQUIRE(sh.total() == T{ 24 });
+
+        sh.remove(2);
+        REQUIRE(sh.get(2) == T{ 0 });
+        REQUIRE(sh.total() == T{ 19 });
+    }
+
+    SECTION("empty -> next() returns 0")
+    {
+        SH sh;
+        Gen gen{ 42 };
+        REQUIRE(sh.next(gen) == 0);
+        REQUIRE(sh.next() == 0);
+    }
+}
+
