@@ -53,11 +53,14 @@ add_library(mylib STATIC
 
     include/mylib/memory/memory.h
 
-    include/mylib/random/random.h
+    include/mylib/random/engines.h
     include/mylib/containers.h
     include/mylib/random.h
     include/mylib/core.h
     include/mylib/math.h
+    include/mylib/random/distributions.h
+    include/mylib/random/algorithms.h
+    include/mylib/random/weighted.h
 
 
 )
