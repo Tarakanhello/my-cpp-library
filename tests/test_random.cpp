@@ -1047,13 +1047,13 @@ TEST_CASE("MersenneTwister long run smoke test", "[rng][mt][smoke]")
 // ============================================================================
 TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("default template argument is defaultRandomizer")
     {
         STATIC_REQUIRE(std::is_same_v<
                        Randomizer<>,
-                       Randomizer<defaultRandomizer<>>>);
+                       Randomizer<random::defaultRandomizer<>>>);
         STATIC_REQUIRE(std::is_same_v<
                        Randomizer<>::result_type,
                        std::uint64_t>);
@@ -1067,13 +1067,13 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
     SECTION("satisfies URBG for QualityXorshift64")
     {
         STATIC_REQUIRE(std::uniform_random_bit_generator<
-                       Randomizer<QualityXorshift64>>);
+                       Randomizer<random::QualityXorshift64>>);
     }
 
     SECTION("satisfies URBG for MersenneTwister<uint32_t>")
     {
         STATIC_REQUIRE(std::uniform_random_bit_generator<
-                       Randomizer<MersenneTwister<std::uint32_t>>>);
+                       Randomizer<random::MersenneTwister<std::uint32_t>>>);
     }
 
     SECTION("satisfies URBG for TinyURBG")
@@ -1085,10 +1085,10 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
     SECTION("result_type matches GENERATOR::result_type")
     {
         STATIC_REQUIRE(std::is_same_v<
-                       Randomizer<QualityXorshift64>::result_type,
-                       QualityXorshift64::result_type>);
+                       Randomizer<random::QualityXorshift64>::result_type,
+                       random::QualityXorshift64::result_type>);
         STATIC_REQUIRE(std::is_same_v<
-                       Randomizer<MersenneTwister<std::uint32_t>>::result_type,
+                       Randomizer<random::MersenneTwister<std::uint32_t>>::result_type,
                        std::uint32_t>);
         STATIC_REQUIRE(std::is_same_v<
                        Randomizer<TinyURBG>::result_type,
@@ -1100,7 +1100,7 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
         STATIC_REQUIRE(Randomizer<>::min() == Randomizer<>::max() - Randomizer<>::max());
         STATIC_REQUIRE(Randomizer<TinyURBG>::min() == std::uint8_t{ 0 });
         STATIC_REQUIRE(Randomizer<TinyURBG>::max() == std::uint8_t{ 255 });
-        STATIC_REQUIRE(Randomizer<MersenneTwister<std::uint32_t>>::max()
+        STATIC_REQUIRE(Randomizer<random::MersenneTwister<std::uint32_t>>::max()
                        == std::numeric_limits<std::uint32_t>::max());
     }
 
@@ -1122,7 +1122,7 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
 // ============================================================================
 TEST_CASE("Randomizer noexcept contract", "[rng][randomizer][noexcept]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
     using R = Randomizer<>;
 
     STATIC_REQUIRE(noexcept(std::declval<R&>()()));
@@ -1140,12 +1140,12 @@ TEST_CASE("Randomizer noexcept contract", "[rng][randomizer][noexcept]")
 // ============================================================================
 TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("default ctor does not throw")
     {
         REQUIRE_NOTHROW(Randomizer<>{});
-        REQUIRE_NOTHROW(Randomizer<QualityXorshift64>{});
+        REQUIRE_NOTHROW(Randomizer<random::QualityXorshift64>{});
         REQUIRE_NOTHROW(Randomizer<TinyURBG>{});
     }
 
@@ -1172,8 +1172,8 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
     {
         // Randomizer должен быть прозрачной обёрткой: последовательность
         // от seed == последовательность самого GENERATOR'а от того же seed.
-        Randomizer<MersenneTwister<std::uint64_t>> wrapped{ 42ull };
-        MersenneTwister<std::uint64_t> raw{ 42ull };
+        Randomizer<random::MersenneTwister<std::uint64_t>> wrapped{ 42ull };
+        random::MersenneTwister<std::uint64_t> raw{ 42ull };
 
         for (int i = 0; i < 500; ++i)
         {
@@ -1184,8 +1184,8 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
 
     SECTION("explicit seed ctor matches wrapped QualityXorshift64")
     {
-        Randomizer<QualityXorshift64> wrapped{ 0xC0FFEEull };
-        QualityXorshift64 raw{ 0xC0FFEEull };
+        Randomizer<random::QualityXorshift64> wrapped{ 0xC0FFEEull };
+        random::QualityXorshift64 raw{ 0xC0FFEEull };
         for (int i = 0; i < 500; ++i)
             REQUIRE(wrapped() == raw());
     }
@@ -1195,8 +1195,8 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
         std::seed_seq seq1{ 1, 2, 3, 4, 5 };
         std::seed_seq seq2{ 1, 2, 3, 4, 5 };
 
-        Randomizer<MersenneTwister<std::uint64_t>> wrapped{ seq1 };
-        MersenneTwister<std::uint64_t> raw{ seq2 };
+        Randomizer<random::MersenneTwister<std::uint64_t>> wrapped{ seq1 };
+        random::MersenneTwister<std::uint64_t> raw{ seq2 };
 
         for (int i = 0; i < 500; ++i)
         {
@@ -1234,7 +1234,7 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
 // ============================================================================
 TEST_CASE("Randomizer operator() and next()", "[rng][randomizer][output]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("next() == operator() (same state, same value)")
     {
@@ -1262,7 +1262,7 @@ TEST_CASE("Randomizer operator() and next()", "[rng][randomizer][output]")
     SECTION("operator() matches wrapped generator stream")
     {
         Randomizer<> wrapped{ 0xDEADBEEFCAFEULL };
-        defaultRandomizer<> raw{ 0xDEADBEEFCAFEULL };
+        random::defaultRandomizer<> raw{ 0xDEADBEEFCAFEULL };
 
         for (int i = 0; i < 500; ++i)
         {
@@ -1278,7 +1278,7 @@ TEST_CASE("Randomizer operator() and next()", "[rng][randomizer][output]")
 // ============================================================================
 TEST_CASE("Randomizer::mod", "[rng][randomizer][mod]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("returns values in [0, n-1]")
     {
@@ -1368,7 +1368,7 @@ TEST_CASE("Randomizer::mod", "[rng][randomizer][mod]")
 // ============================================================================
 TEST_CASE("Randomizer::sign", "[rng][randomizer][sign]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("only returns +1 or -1")
     {
@@ -1413,7 +1413,7 @@ TEST_CASE("Randomizer::sign", "[rng][randomizer][sign]")
 // ============================================================================
 TEST_CASE("Randomizer::inRange", "[rng][randomizer][inRange]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("returns values in [a, b] inclusive")
     {
@@ -1548,7 +1548,7 @@ TEST_CASE("Randomizer::inRange", "[rng][randomizer][inRange]")
 // ============================================================================
 TEST_CASE("Randomizer::uniform01", "[rng][randomizer][uniform01]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("returns values in [0, 1)")
     {
@@ -1631,7 +1631,7 @@ TEST_CASE("Randomizer::uniform01", "[rng][randomizer][uniform01]")
             static constexpr result_type max() noexcept { return std::numeric_limits<result_type>::max(); }
             result_type operator()() noexcept { return max(); }
         };
-        mylib::random::Randomizer<MaxURBG> r;
+        mylib::Randomizer<MaxURBG> r;
         double v = r.uniform01();
         REQUIRE(v >= 0.0);
         REQUIRE(v < 1.0);   // падает, если не исправлено
@@ -1644,7 +1644,7 @@ TEST_CASE("Randomizer::uniform01", "[rng][randomizer][uniform01]")
 // ============================================================================
 TEST_CASE("Randomizer integration with STL", "[rng][randomizer][stl]")
 {
-    using namespace mylib::random;
+    using namespace mylib;
 
     SECTION("works as URBG for std::uniform_int_distribution")
     {
@@ -1697,7 +1697,7 @@ TEMPLATE_TEST_CASE("Randomizer works with different GENERATORs",
                    mylib::random::MersenneTwister<std::uint64_t>,
                    TinyURBG)
 {
-    using R = mylib::random::Randomizer<TestType>;
+    using R = mylib::Randomizer<TestType>;
 
     SECTION("default ctor does not throw")
     {
@@ -1733,6 +1733,819 @@ TEMPLATE_TEST_CASE("Randomizer works with different GENERATORs",
             double u = r.uniform01();
             REQUIRE(u >= 0.0);
             REQUIRE(u <  1.0);
+        }
+    }
+}
+
+
+
+// ============================================================================
+//  Randomizer: новые распределения — noexcept, детерминизм
+// ============================================================================
+TEST_CASE("Randomizer new distributions — noexcept / determinism",
+          "[rng][randomizer][distributions]")
+{
+    using namespace mylib;
+    using R = Randomizer<>;
+
+    // Ни один новый метод не noexcept (кроме операторов/next)
+    SECTION("new distribution methods are not noexcept")
+    {
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().exponential()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().cauchy()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().normal01()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().normal(0.0, 1.0)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().gamma()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().chiSquared(2.0)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().studentT(5.0)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().beta(2.0, 3.0)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().fisherF(5.0, 10.0)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().triangular()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().levy()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().symmetrizedLevy()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().bernoulli(0.5)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().binomial(0.5, 10)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().geometric(0.5)));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().geometric05()));
+        STATIC_REQUIRE_FALSE(noexcept(std::declval<R&>().poisson(5.0)));
+    }
+
+    SECTION("each distribution is deterministic for the same seed")
+    {
+        // По одному представителю — все методы идут через m_g, поэтому
+        // детерминизм должен соблюдаться автоматически.
+        for (int i = 0; i < 100; ++i)
+        {
+            R a{ 42 };
+            R b{ 42 };
+            INFO("i = " << i);
+
+            REQUIRE(a.exponential(2.0) == b.exponential(2.0));
+            REQUIRE(a.cauchy(1.0, 2.0) == b.cauchy(1.0, 2.0));
+            REQUIRE(a.normal01() == b.normal01());
+            REQUIRE(a.normal01() == b.normal01());   // cache hit
+            REQUIRE(a.normal(3.0, 2.0) == b.normal(3.0, 2.0));
+            REQUIRE(a.gamma(2.0, 3.0) == b.gamma(2.0, 3.0));
+            REQUIRE(a.chiSquared(5.0) == b.chiSquared(5.0));
+            REQUIRE(a.studentT(5.0) == b.studentT(5.0));
+            REQUIRE(a.beta(2.0, 3.0) == b.beta(2.0, 3.0));
+            REQUIRE(a.fisherF(5.0, 10.0) == b.fisherF(5.0, 10.0));
+            REQUIRE(a.triangular(0.5) == b.triangular(0.5));
+            REQUIRE(a.levy() == b.levy());
+            REQUIRE(a.symmetrizedLevy() == b.symmetrizedLevy());
+            REQUIRE(a.bernoulli(0.3) == b.bernoulli(0.3));
+            REQUIRE(a.binomial(0.3, 100) == b.binomial(0.3, 100));
+            REQUIRE(a.geometric(0.5) == b.geometric(0.5));
+            REQUIRE(a.geometric05() == b.geometric05());
+            REQUIRE(a.poisson(5.0) == b.poisson(5.0));
+        }
+    }
+}
+
+
+// ============================================================================
+//  exponential, cauchy
+// ============================================================================
+TEST_CASE("Randomizer::exponential", "[rng][randomizer][exponential]")
+{
+    using namespace mylib;
+
+    SECTION("values are > 0 and finite")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            double v = r.exponential(1.0);
+            INFO("v = " << v);
+            REQUIRE(v > 0.0);
+            REQUIRE(std::isfinite(v));
+        }
+    }
+
+    SECTION("mean ≈ 1/lambda")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.exponential(2.0);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 0.5) < 0.02);
+    }
+
+    SECTION("small lambda gives large mean")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 50'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.exponential(0.1);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 10.0) < 0.3);
+    }
+}
+
+TEST_CASE("Randomizer::cauchy", "[rng][randomizer][cauchy]")
+{
+    using namespace mylib;
+
+    SECTION("values are finite")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            double v = r.cauchy(0.0, 1.0);
+            INFO("v = " << v);
+            REQUIRE(std::isfinite(v));
+        }
+    }
+
+    SECTION("median ≈ m")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        std::vector<double> v(N);
+        for (int i = 0; i < N; ++i) v[i] = r.cauchy(10.0, 1.0);
+        std::sort(v.begin(), v.end());
+        const double median = v[N / 2];
+        INFO("median = " << median);
+        REQUIRE(std::abs(median - 10.0) < 0.2);
+    }
+
+    SECTION("symmetric around m")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        int left = 0, right = 0;
+        for (int i = 0; i < N; ++i)
+        {
+            double v = r.cauchy(0.0, 1.0);
+            if (v < 0.0) ++left;
+            else if (v > 0.0) ++right;
+        }
+        INFO("left = " << left << ", right = " << right);
+        REQUIRE(std::abs(left - right) < 3'000);
+    }
+}
+
+
+// ============================================================================
+//  normal01 / normal + cache
+// ============================================================================
+TEST_CASE("Randomizer::normal01 — statistics and cache",
+          "[rng][randomizer][normal]")
+{
+    using namespace mylib;
+
+    SECTION("mean ≈ 0, stddev ≈ 1")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 200'000 };
+        double sum = 0.0, sq = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            double v = r.normal01();
+            sum += v;
+            sq += v * v;
+        }
+        const double mean = sum / N;
+        const double var = sq / N - mean * mean;
+        const double sd = std::sqrt(var);
+        INFO("mean = " << mean << ", stddev = " << sd);
+        REQUIRE(std::abs(mean) < 0.02);
+        REQUIRE(std::abs(sd - 1.0) < 0.02);
+    }
+
+    SECTION("consecutive values differ (cache does not repeat)")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 1000; ++i)
+        {
+            double a = r.normal01();
+            double b = r.normal01();
+            INFO("i = " << i << ", a = " << a << ", b = " << b);
+            REQUIRE(a != b);
+        }
+    }
+
+    SECTION("cache consumes exactly 2 uniform draws per pair")
+    {
+        Randomizer<> r1{ 42 };
+        Randomizer<> r2{ 42 };
+
+        // r1: 2 x normal01 → cache hit second time, 2 uniform01 draws total
+        (void)r1.normal01();
+        (void)r1.normal01();
+
+        // r2: 2 x uniform01 → 2 draws
+        (void)r2.uniform01();
+        (void)r2.uniform01();
+
+        // Теперь m_g в одинаковом состоянии
+        for (int i = 0; i < 100; ++i)
+        {
+            INFO("i = " << i);
+            REQUIRE(r1() == r2());
+        }
+    }
+}
+
+TEST_CASE("Randomizer::normal — mean/stddev",
+          "[rng][randomizer][normal]")
+{
+    using namespace mylib;
+
+    SECTION("normal(10, 3) has mean ≈ 10, stddev ≈ 3")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 200'000 };
+        double sum = 0.0, sq = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            double v = r.normal(10.0, 3.0);
+            sum += v;
+            sq += v * v;
+        }
+        const double mean = sum / N;
+        const double var = sq / N - mean * mean;
+        const double sd = std::sqrt(var);
+        INFO("mean = " << mean << ", stddev = " << sd);
+        REQUIRE(std::abs(mean - 10.0) < 0.05);
+        REQUIRE(std::abs(sd - 3.0) < 0.05);
+    }
+
+    SECTION("normal(0, 1) ≈ normal01 statistically")
+    {
+        Randomizer<> r1{ 42 };
+        Randomizer<> r2{ 42 };
+        constexpr int N{ 200'000 };
+        double s1 = 0.0, s2 = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            s1 += r1.normal(0.0, 1.0);
+            s2 += r2.normal01();
+        }
+        INFO("mean1 = " << s1 / N << ", mean2 = " << s2 / N);
+        REQUIRE(std::abs(s1 / N - s2 / N) < 0.01);
+    }
+
+    SECTION("negative mean handled correctly")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.normal(-5.0, 2.0);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - (-5.0)) < 0.05);
+    }
+}
+
+
+// ============================================================================
+//  gamma, chiSquared, studentT, beta, fisherF
+// ============================================================================
+TEST_CASE("Randomizer::gamma", "[rng][randomizer][gamma]")
+{
+    using namespace mylib;
+
+    SECTION("values are positive and finite")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            double v = r.gamma(2.0, 3.0);
+            INFO("v = " << v);
+            REQUIRE(v > 0.0);
+            REQUIRE(std::isfinite(v));
+        }
+    }
+
+    SECTION("mean ≈ shape * scale")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.gamma(2.0, 3.0);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 6.0) < 0.05);
+    }
+
+    SECTION("shape < 1 branch: mean ≈ shape * scale")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.gamma(0.5, 2.0);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 1.0) < 0.03);
+    }
+
+    SECTION("gamma(1, 1) matches exponential(1) mean")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 50'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.gamma(1.0, 1.0);
+        INFO("mean = " << sum / N);
+        REQUIRE(std::abs(sum / N - 1.0) < 0.03);
+    }
+}
+
+TEST_CASE("Randomizer::chiSquared", "[rng][randomizer][chiSquared]")
+{
+    using namespace mylib;
+
+    SECTION("values are positive")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 5'000; ++i)
+        {
+            double v = r.chiSquared(5.0);
+            INFO("v = " << v);
+            REQUIRE(v > 0.0);
+        }
+    }
+
+    SECTION("mean ≈ k")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.chiSquared(5.0);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 5.0) < 0.05);
+    }
+
+    SECTION("chiSquared(2) ≡ exponential(0.5) in mean")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 50'000 };
+        double s1 = 0.0, s2 = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            s1 += r.chiSquared(2.0);
+            s2 += r.exponential(0.5);
+        }
+        INFO("chi2_mean = " << s1 / N << ", exp_mean = " << s2 / N);
+        REQUIRE(std::abs(s1 / N - 2.0) < 0.05);
+        REQUIRE(std::abs(s2 / N - 2.0) < 0.05);
+    }
+}
+
+TEST_CASE("Randomizer::studentT", "[rng][randomizer][studentT]")
+{
+    using namespace mylib;
+
+    SECTION("values are finite")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 5'000; ++i)
+        {
+            double v = r.studentT(5.0);
+            INFO("v = " << v);
+            REQUIRE(std::isfinite(v));
+        }
+    }
+
+    SECTION("symmetric around 0 (v = 5)")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        int left = 0, right = 0;
+        for (int i = 0; i < N; ++i)
+        {
+            double v = r.studentT(5.0);
+            if (v < 0.0) ++left;
+            else if (v > 0.0) ++right;
+        }
+        INFO("left = " << left << ", right = " << right);
+        REQUIRE(std::abs(left - right) < 3'000);
+    }
+}
+
+TEST_CASE("Randomizer::beta", "[rng][randomizer][beta]")
+{
+    using namespace mylib;
+
+    SECTION("values in (0, 1)")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            double v = r.beta(2.0, 3.0);
+            INFO("v = " << v);
+            REQUIRE(v > 0.0);
+            REQUIRE(v < 1.0);
+        }
+    }
+
+    SECTION("mean ≈ alpha / (alpha + beta)")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.beta(2.0, 3.0);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 0.4) < 0.01);
+    }
+
+    SECTION("beta(1, 1) is uniform-ish")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.beta(1.0, 1.0);
+        INFO("mean = " << sum / N);
+        REQUIRE(std::abs(sum / N - 0.5) < 0.01);
+    }
+}
+
+TEST_CASE("Randomizer::fisherF", "[rng][randomizer][fisherF]")
+{
+    using namespace mylib;
+
+    SECTION("values are positive")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 5'000; ++i)
+        {
+            double v = r.fisherF(5.0, 10.0);
+            INFO("v = " << v);
+            REQUIRE(v > 0.0);
+        }
+    }
+
+    SECTION("mean ≈ n / (n - 2) for n > 2")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        double sum = 0.0;
+        for (int i = 0; i < N; ++i) sum += r.fisherF(5.0, 10.0);
+        const double mean = sum / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 1.25) < 0.05);
+    }
+}
+
+
+// ============================================================================
+//  triangular
+// ============================================================================
+TEST_CASE("Randomizer::triangular", "[rng][randomizer][triangular]")
+{
+    using namespace mylib;
+
+    SECTION("triangular(0.5) — values in [0, 1] per doc, finite")
+    {
+        Randomizer<> r{ 42 };
+        double mn = 1.0, mx = 0.0;
+        for (int i = 0; i < 10'000; ++i)
+        {
+            double v = r.triangular(0.5);
+            INFO("v = " << v);
+            REQUIRE(std::isfinite(v));
+            REQUIRE(v >= 0.0);
+            REQUIRE(v <= 1.0);
+            mn = std::min(mn, v);
+            mx = std::max(mx, v);
+        }
+        INFO("min = " << mn << ", max = " << mx);
+    }
+
+    SECTION("triangular(0.5) — BUG EXPOSURE: should reach above 0.5")
+    {
+        // По документации "peak at middle": при middle=0.5 мода должна быть 0.5,
+        // но реализация с sqrt(middle*u) / sqrt((1-middle)*(1-u)) даёт диапазон
+        // [0, 0.5], т.е. upper bound == middle, а не 1.0.
+        // Если тест падает — это реальный баг в triangular, а не в тесте.
+        Randomizer<> r{ 42 };
+        bool sawAbove05 = false;
+        for (int i = 0; i < 10'000; ++i)
+        {
+            if (r.triangular(0.5) > 0.5) { sawAbove05 = true; break; }
+        }
+        INFO("sawAbove05 = " << sawAbove05);
+        REQUIRE(sawAbove05);
+    }
+
+    SECTION("triangular(0, 10, 5) — BUG EXPOSURE: should reach [0, 10]")
+    {
+        // Если upper bound == middle по ошибке — верхняя половина недостижима.
+        // Если тест падает — это реальный баг.
+        Randomizer<> r{ 42 };
+        bool sawAboveMid = false;
+        for (int i = 0; i < 10'000; ++i)
+        {
+            if (r.triangular(0.0, 10.0, 5.0) > 5.0) { sawAboveMid = true; break; }
+        }
+        INFO("sawAboveMid = " << sawAboveMid);
+        REQUIRE(sawAboveMid);
+    }
+}
+
+
+// ============================================================================
+//  levy, symmetrizedLevy
+// ============================================================================
+TEST_CASE("Randomizer::levy", "[rng][randomizer][levy]")
+{
+    using namespace mylib;
+
+    SECTION("levy() values are positive")
+    {
+        Randomizer<> r{ 42 };
+        int finite_count = 0;
+        for (int i = 0; i < 10'000; ++i)
+        {
+            double v = r.levy();
+            INFO("v = " << v);
+            REQUIRE(v >= 0.0);
+            if (std::isfinite(v)) ++finite_count;
+        }
+        // Подавляющее большинство значений — конечные (редкие inf допустимы)
+        REQUIRE(finite_count > 9'900);
+    }
+
+    SECTION("levy is heavy-tailed (some large values)")
+    {
+        Randomizer<> r{ 42 };
+        bool sawLarge = false;
+        for (int i = 0; i < 10'000; ++i)
+        {
+            if (r.levy() > 100.0) { sawLarge = true; break; }
+        }
+        REQUIRE(sawLarge);
+    }
+}
+
+TEST_CASE("Randomizer::symmetrizedLevy", "[rng][randomizer][symmetrizedLevy]")
+{
+    using namespace mylib;
+
+    SECTION("outputs both positive and negative values")
+    {
+        Randomizer<> r{ 42 };
+        int pos = 0, neg = 0;
+        for (int i = 0; i < 20'000; ++i)
+        {
+            double v = r.symmetrizedLevy();
+            if (v > 0.0) ++pos;
+            else if (v < 0.0) ++neg;
+        }
+        INFO("pos = " << pos << ", neg = " << neg);
+        REQUIRE(pos > 0);
+        REQUIRE(neg > 0);
+        // Symmetric sign: ~50/50
+        REQUIRE(std::abs(pos - neg) < 2'000);
+    }
+}
+
+
+// ============================================================================
+//  discrete: bernoulli, binomial, geometric, geometric05, poisson
+// ============================================================================
+TEST_CASE("Randomizer::bernoulli", "[rng][randomizer][bernoulli]")
+{
+    using namespace mylib;
+
+    SECTION("returns only 0 or 1")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            bool b = r.bernoulli(0.5);
+            (void)b;   // bool — тривиально, но проверим через mean
+        }
+    }
+
+    SECTION("mean ≈ p")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        int ones = 0;
+        for (int i = 0; i < N; ++i) ones += r.bernoulli(0.3);
+        const double mean = static_cast<double>(ones) / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 0.3) < 0.01);
+    }
+
+    SECTION("p = 0 always false")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 1'000; ++i)
+            REQUIRE(r.bernoulli(0.0) == false);
+    }
+
+    SECTION("p = 1 always true")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 1'000; ++i)
+            REQUIRE(r.bernoulli(1.0) == true);
+    }
+}
+
+TEST_CASE("Randomizer::binomial", "[rng][randomizer][binomial]")
+{
+    using namespace mylib;
+
+    SECTION("values in [0, n]")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 5'000; ++i)
+        {
+            int v = r.binomial(0.3, 100);
+            INFO("v = " << v);
+            REQUIRE(v >= 0);
+            REQUIRE(v <= 100);
+        }
+    }
+
+    SECTION("mean ≈ n*p")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 50'000 };
+        long long sum = 0;
+        for (int i = 0; i < N; ++i) sum += r.binomial(0.3, 100);
+        const double mean = static_cast<double>(sum) / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 30.0) < 0.5);
+    }
+
+    SECTION("n = 0 always returns 0")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 1'000; ++i)
+            REQUIRE(r.binomial(0.5, 0) == 0);
+    }
+}
+
+TEST_CASE("Randomizer::geometric and geometric05",
+          "[rng][randomizer][geometric]")
+{
+    using namespace mylib;
+
+    SECTION("geometric(p) always >= 1")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            int v = r.geometric(0.5);
+            INFO("v = " << v);
+            REQUIRE(v >= 1);
+        }
+    }
+
+    SECTION("geometric(p) mean ≈ 1/p")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 200'000 };
+        long long sum = 0;
+        for (int i = 0; i < N; ++i) sum += r.geometric(0.5);
+        const double mean = static_cast<double>(sum) / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 2.0) < 0.05);
+    }
+
+    SECTION("geometric(p=0.1) mean ≈ 10")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        long long sum = 0;
+        for (int i = 0; i < N; ++i) sum += r.geometric(0.1);
+        const double mean = static_cast<double>(sum) / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 10.0) < 0.3);
+    }
+
+    SECTION("geometric05 always >= 1")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            int v = r.geometric05();
+            INFO("v = " << v);
+            REQUIRE(v >= 1);
+        }
+    }
+
+    SECTION("geometric05 mean ≈ 2")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 200'000 };
+        long long sum = 0;
+        for (int i = 0; i < N; ++i) sum += r.geometric05();
+        const double mean = static_cast<double>(sum) / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 2.0) < 0.05);
+    }
+}
+
+TEST_CASE("Randomizer::poisson", "[rng][randomizer][poisson]")
+{
+    using namespace mylib;
+
+    SECTION("values are >= 0")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 10'000; ++i)
+        {
+            int v = r.poisson(5.0);
+            INFO("v = " << v);
+            REQUIRE(v >= 0);
+        }
+    }
+
+    SECTION("mean ≈ lambda")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 200'000 };
+        long long sum = 0;
+        for (int i = 0; i < N; ++i) sum += r.poisson(5.0);
+        const double mean = static_cast<double>(sum) / N;
+        INFO("mean = " << mean);
+        REQUIRE(std::abs(mean - 5.0) < 0.05);
+    }
+
+    SECTION("lambda = 1 mean ≈ 1")
+    {
+        Randomizer<> r{ 42 };
+        constexpr int N{ 100'000 };
+        long long sum = 0;
+        for (int i = 0; i < N; ++i) sum += r.poisson(1.0);
+        INFO("mean = " << sum / static_cast<double>(N));
+        REQUIRE(std::abs(sum / static_cast<double>(N) - 1.0) < 0.03);
+    }
+}
+
+
+// ============================================================================
+//  uniform01<RealType> — шаблон
+// ============================================================================
+TEST_CASE("Randomizer::uniform01<RealType>", "[rng][randomizer][uniform01]")
+{
+    using namespace mylib;
+
+    SECTION("return type matches template argument")
+    {
+        Randomizer<> r{ 42 };
+        STATIC_REQUIRE(std::is_same_v<decltype(r.uniform01<float>()), float>);
+        STATIC_REQUIRE(std::is_same_v<decltype(r.uniform01<double>()), double>);
+        STATIC_REQUIRE(std::is_same_v<decltype(r.uniform01<long double>()), long double>);
+        // По умолчанию — double
+        STATIC_REQUIRE(std::is_same_v<decltype(r.uniform01()), double>);
+    }
+
+    SECTION("values in [0, 1) for each type")
+    {
+        Randomizer<> r{ 42 };
+        for (int i = 0; i < 5'000; ++i)
+        {
+            float   f = r.uniform01<float>();
+            double  d = r.uniform01<double>();
+            long double l = r.uniform01<long double>();
+            INFO("f = " << f << ", d = " << d << ", l = " << static_cast<double>(l));
+            REQUIRE(f >= 0.0f); REQUIRE(f < 1.0f);
+            REQUIRE(d >= 0.0);  REQUIRE(d < 1.0);
+            REQUIRE(l >= 0.0L); REQUIRE(l < 1.0L);
+        }
+    }
+}
+
+
+// ============================================================================
+//  GlobalRNG
+// ============================================================================
+TEST_CASE("mylib::GlobalRNG", "[rng][randomizer][global]")
+{
+    SECTION("returns a stable reference")
+    {
+        auto& a = mylib::GlobalRNG();
+        auto& b = mylib::GlobalRNG();
+        REQUIRE(&a == &b);
+    }
+
+    SECTION("advances on each call")
+    {
+        auto& r = mylib::GlobalRNG();
+        auto v1 = r();
+        auto v2 = r();
+        INFO("v1 = " << v1 << ", v2 = " << v2);
+        REQUIRE(v1 != v2);
+    }
+
+    SECTION("usable with distribution helpers")
+    {
+        auto& r = mylib::GlobalRNG();
+        for (int i = 0; i < 1000; ++i)
+        {
+            auto v = r.inRange(1, 6);
+            REQUIRE(v >= 1);
+            REQUIRE(v <= 6);
         }
     }
 }
@@ -1997,7 +2810,7 @@ TEST_CASE("AliasMethod::sample(gen) determinism and range",
 
         QualityXorshift64 xs{ 42 };
         mylib::random::MersenneTwister<std::uint64_t> mt{ 42 };
-        mylib::random::Randomizer<> rnd{ 42 };
+        mylib::Randomizer<> rnd{ 42 };
 
         for (int i = 0; i < 200; ++i)
         {
@@ -2809,7 +3622,7 @@ TEST_CASE("SumHeap sampling with explicit generator",
         S sh{ 1u, 2u, 3u };
         QualityXorshift64 xs{ 42 };
         mylib::random::MersenneTwister<std::uint64_t> mt{ 42 };
-        mylib::random::Randomizer<> rnd{ 42 };
+        mylib::Randomizer<> rnd{ 42 };
         for (int i = 0; i < 200; ++i)
         {
             REQUIRE(sh.next(xs)  < 3);
