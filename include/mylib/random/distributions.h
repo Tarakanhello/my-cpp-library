@@ -16,6 +16,18 @@
 
 namespace mylib::random
 {
+    /**
+     * @brief Generates either 1 or -1 with a 50/50 probability.
+     *
+     * @param RNG The Uniform Random Bit Generator to use.
+     * Useful for random walks or physics simulations.
+     */
+    int sign(std::uniform_random_bit_generator auto& RNG)
+    {
+        std::uniform_int_distribution coin{ 0, 1 };
+
+        return coin(RNG) ? -1 : 1;
+    }
 
     /**
      * @brief Generates a uniformly distributed real number in [0, 1).
@@ -315,8 +327,7 @@ namespace mylib::random
      */
     double symmetrizedLevy(std::uniform_random_bit_generator auto& RNG, double scale = 0.455)
     {
-        std::uniform_int_distribution ints{ 0, 1 };
-        return (ints(RNG) ? -1 : 1) * levy(RNG, scale);
+        return sign(RNG) * levy(RNG, scale);
     }
 
     /**
