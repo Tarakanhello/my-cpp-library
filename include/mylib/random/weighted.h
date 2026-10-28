@@ -8,7 +8,7 @@
 #include "mylib/random/engines.h"
 
 #include "mylib/core/overflow.h"
-#include "mylib//containers/vector.h"
+#include "mylib/containers/vector.h"
 #include "mylib/containers/stack.h"
 
 namespace mylib::random
