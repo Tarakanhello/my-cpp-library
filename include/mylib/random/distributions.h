@@ -15,7 +15,10 @@
 namespace mylib::random
 {
 
+}
 
+namespace mylib
+{
 
 /**
      * @brief A high-level convenience wrapper around a Uniform Random Bit Generator (URBG).
@@ -30,7 +33,7 @@ namespace mylib::random
      *
      * @tparam GENERATOR The underlying random number engine.
      */
-template<std::uniform_random_bit_generator GENERATOR = defaultRandomizer<>>
+template<std::uniform_random_bit_generator GENERATOR = random::defaultRandomizer<>>
 class Randomizer final
 {
 public:
@@ -422,7 +425,7 @@ public:
     {
         assert(middle > 0.0 && middle < 1.0);
         double u = uniform01();
-        return std::sqrt(u <= middle ? middle * u : (1.0 - middle) * (1.0 - u));
+        return u <= middle ? std::sqrt(middle * u) : 1.0 - std::sqrt((1.0 - middle) * (1.0 - u));
     }
 
     /**
