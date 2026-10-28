@@ -14,11 +14,13 @@
 #include <string_view>
 #include <utility>
 
-#include "mylib/bit_operations.h"
-#include "mylib/concepts.h"
-#include "mylib/math.h"
-#include "mylib/overflow.h"
-#include "mylib/vector.h"
+#include "mylib/core/concepts.h"
+#include "mylib/core/overflow.h"
+
+#include "mylib/math/math.h"
+#include "mylib/math/bit_operations.h"
+
+#include "mylib/containers/vector.h"
 
 namespace mylib
 {

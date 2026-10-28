@@ -2,8 +2,8 @@
 // Модульные тесты для класса FreeList с использованием Catch2
 
 #include <catch2/catch_all.hpp>
-#include "mylib/free_list.h"
-#include "mylib/memory.h" // для TestObject и аллокаторов
+
+#include "mylib/mylib.h"
 
 namespace {
 

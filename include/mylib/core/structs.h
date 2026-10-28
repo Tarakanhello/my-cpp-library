@@ -9,7 +9,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include "mylib/memory.h"
 
 namespace mylib
 {

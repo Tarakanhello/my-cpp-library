@@ -6,8 +6,8 @@
 #include <stdexcept>
 #include <utility>
 
-#include "mylib/memory.h"
-#include "mylib/structs.h"
+#include "mylib/memory/memory.h"
+#include "mylib/core/structs.h"
 
 
 namespace mylib

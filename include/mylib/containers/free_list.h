@@ -4,9 +4,10 @@
 #include <algorithm>
 #include <cstddef>
 
-#include "mylib/list.h"
-#include "mylib/memory.h"
-#include "mylib/static_free_list.h"
+#include "mylib/containers/list.h"
+#include "mylib/containers/static_free_list.h"
+
+#include "mylib/memory/memory.h"
 
 
 

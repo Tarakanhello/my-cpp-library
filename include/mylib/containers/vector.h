@@ -13,9 +13,9 @@
 #include <vector>
 #include <utility>
 
-#include "mylib/concepts.h"
-#include "mylib/memory.h"
-#include "mylib/structs.h"
+#include "mylib/core/concepts.h"
+#include "mylib/memory/memory.h"
+#include "mylib/core/structs.h"
 
 
 namespace mylib

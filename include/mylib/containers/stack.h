@@ -5,8 +5,8 @@
 #include <cstddef>
 #include <utility>
 
-#include "mylib/memory.h"
-#include "mylib/vector.h"
+#include "mylib/memory/memory.h"
+#include "mylib/containers/vector.h"
 
 
 namespace mylib

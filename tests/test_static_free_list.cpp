@@ -1,6 +1,6 @@
 #include <catch2/catch_all.hpp>
 
-#include "mylib/static_free_list.h"
+#include "mylib/mylib.h"
 
 namespace
 {

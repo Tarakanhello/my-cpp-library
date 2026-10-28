@@ -1,8 +1,9 @@
 #ifndef FLAG_SET_H
 #define FLAG_SET_H
 
-#include "mylib/bit_operations.h"
 #include <format>
+
+#include "mylib/math/bit_operations.h"
 
 namespace mylib
 {

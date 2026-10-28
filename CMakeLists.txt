@@ -30,34 +30,44 @@ endif()
 # Библиотека mylib
 add_library(mylib STATIC
     src/mylib.cpp
-    include/mylib/structs.h
-    include/mylib/vector.h
-    include/mylib/chunked_array.h
-    include/mylib/list.h
-    include/mylib/free_list.h
-    include/mylib/static_free_list.h
-
-    include/mylib/stack.h
-    include/mylib/queue.h
-    include/mylib/bit_operations.h
-    include/mylib/flag_set.h
-    include/mylib/bitset.h
-    include/mylib/union_find.h
     src/union_find.cpp
-    include/mylib/concepts.h
+
+    include/mylib/core/structs.h
+    include/mylib/core/concepts.h
+    include/mylib/core/overflow.h
+    include/mylib/core/show_debug_log_info.h
+
+    include/mylib/containers/vector.h
+    include/mylib/containers/chunked_array.h
+    include/mylib/containers/list.h
+    include/mylib/containers/free_list.h
+    include/mylib/containers/static_free_list.h
+    include/mylib/containers/stack.h
+    include/mylib/containers/queue.h
+    include/mylib/containers/flag_set.h
+    include/mylib/containers/bitset.h
+    include/mylib/containers/union_find.h
+
+    include/mylib/math/bit_operations.h
+    include/mylib/math/math.h
+
+    include/mylib/memory/memory.h
+
+    include/mylib/random/random.h
+    include/mylib/containers.h
     include/mylib/random.h
-    include/mylib/overflow.h
+    include/mylib/core.h
+    include/mylib/math.h
+
 
 )
 target_include_directories(mylib PUBLIC include)
+
 target_sources(mylib PUBLIC
     FILE_SET HEADERS
     BASE_DIRS include
     FILES
         include/mylib/mylib.h
-        include/mylib/show_debug_log_info.h
-        include/mylib/math.h
-        include/mylib/memory.h
 )
 
 target_set_warnings(mylib)

@@ -7,8 +7,8 @@
 #include <memory>
 #include <utility>
 
-#include "mylib/bitset.h"
-#include "mylib/memory.h"
+#include "mylib/containers/bitset.h"
+#include "mylib/memory/memory.h"
 
 namespace mylib
 {
