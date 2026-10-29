@@ -1,9 +1,12 @@
 #ifndef ALGORITHMS_H
 #define ALGORITHMS_H
 
+#include <concepts>
 #include <mutex>
 #include <random>
 #include <ranges>
+#include <shared_mutex>
+#include <utility>
 
 #include "mylib/containers/vector.h"
 #include "mylib/random/distributions.h"
@@ -184,46 +187,48 @@ class ReservoirSampler
 {
 private:
     size_t m_size{};
-    size_t m_processed{};
+    size_t m_processed{ 0 };
     Vector<T> m_reservoir;
     GEN& m_gen{};
 
-    mutable std::mutex m_mutex;
+    mutable std::shared_mutex m_mutex;
 
 public:
     ReservoirSampler() = delete;
     ReservoirSampler(const ReservoirSampler&) = delete;
     ReservoirSampler& operator=(const ReservoirSampler&) = delete;
+    ReservoirSampler(ReservoirSampler&&) = delete;
+    ReservoirSampler& operator=(ReservoirSampler&&) = delete;
 
     ReservoirSampler(size_t size, GEN& gen)
         : m_size{ size }
-        , m_processed{ 0 }
         , m_gen{ gen }
     {
         m_reservoir.reserve(size);
     }
 
     size_t size() const noexcept { return m_size; }
-    size_t processed() const noexcept
+    size_t processed() const
     {
-        std::lock_guard<std::mutex> lock{ m_mutex };
+        std::shared_lock<std::shared_mutex> lock(m_mutex);
         return m_processed;
     }
 
     Vector<T> getSelectedItems() const
     {
-        std::lock_guard<std::mutex> lock{ m_mutex };
+        std::shared_lock<std::shared_lock> lock(m_mutex);
         return m_reservoir;
     }
 
-    void processItem(T item)
+    template<typename U>
+        requres std::same_as<T, std::remove_cvref_t<U>>
+    void processItem(U&& item)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-
+        std::unique_lock<std::shared_mutex> lock{ m_mutex };
         ++m_processed;
         if(m_reservoir.size() < m_size)
         {
-            m_reservoir.push_back(std::move(item));
+            m_reservoir.push_back(std::forward<U>(item));
         }
         else
         {
@@ -231,10 +236,9 @@ public:
             size_t kickedOut{ index(m_gen) };
             if(kickedOut < m_size)
             {
-                m_reservoir[kickedOut] = std::move(item);
+                m_reservoir[kickedOut] = std::forward<U>(item);
             }
         }
-
     }
 };
 
