@@ -10,50 +10,44 @@ namespace mylib::algorithms
 template< typename T>
 using Vector = mylib::Vector<T>;
 
-inline Vector<double> randomInitVector(int n)
+/**
+ * @brief Generates a random unit vector in n-dimensional space.
+ *
+ * @tparam RNG The Uniform Random Bit Generator to use.
+ * @param n The dimension of the vector.
+ * @param rng The random number generator.
+ * @return mylib::Vector<double> A vector of size n with Euclidean length 1.0.
+ */
+inline Vector<double> randomInitVector(size_t n)
 {
     Vector<double> result(n);
+    std::uniform_real_distribution<double> dist{ -1.0, 1.0 };
+
+    double sumSq{};
+
     while(true)
     {
-        double sum{};
-        for(size_t i{}; i < static_cast<size_t>(n); ++i)
+        sumSq = 0.0;
+
+        for(size_t i{}; i < n; ++i)
         {
-            result[i] = mylib::GlobalRNG().uniform01() * mylib::random::sign(mylib::GlobalRNG());
-            sum += result[i];
+            result[i] = dist(mylib::random::GlobalRNG());
+            sumSq += result[i] * result[i];
         }
 
-        if(sum != 0)
+        if(sumSq != 0.0)
         {
             break;
         }
     }
 
+    double norm = std::sqrt(sumSq);
 
-    auto normalization{ []<typename T>(T& vec)
+    for (std::size_t i = 0; i < n; ++i)
     {
-        double normLength{};
+        result[i] /= norm;
+    }
 
-        if constexpr(requires { vec.norm(); })
-        {
-            normLength = vec.norm();
-        }
-        else
-        {
-            double result{};
-            for(const auto& element : vec)
-            {
-                result += element * element;
-            }
-            normLength = std::sqrt(result);
-        }
-
-        for(auto& elem : vec)
-        {
-            elem *= (1 / normLength);
-        }
-    } };
-
-    normalization(result);
 
 
     return result;
