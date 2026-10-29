@@ -421,7 +421,7 @@ namespace mylib::random
 
 }
 
-namespace mylib
+namespace mylib::random
 {
 
 /**

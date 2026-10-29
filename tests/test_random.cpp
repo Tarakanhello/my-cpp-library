@@ -1047,13 +1047,13 @@ TEST_CASE("MersenneTwister long run smoke test", "[rng][mt][smoke]")
 // ============================================================================
 TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("default template argument is defaultRandomizer")
     {
         STATIC_REQUIRE(std::is_same_v<
                        Randomizer<>,
-                       Randomizer<random::defaultRandomizer<>>>);
+                       Randomizer<defaultRandomizer<>>>);
         STATIC_REQUIRE(std::is_same_v<
                        Randomizer<>::result_type,
                        std::uint64_t>);
@@ -1067,13 +1067,13 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
     SECTION("satisfies URBG for QualityXorshift64")
     {
         STATIC_REQUIRE(std::uniform_random_bit_generator<
-                       Randomizer<random::QualityXorshift64>>);
+                       Randomizer<QualityXorshift64>>);
     }
 
     SECTION("satisfies URBG for MersenneTwister<uint32_t>")
     {
         STATIC_REQUIRE(std::uniform_random_bit_generator<
-                       Randomizer<random::MersenneTwister<std::uint32_t>>>);
+                       Randomizer<MersenneTwister<std::uint32_t>>>);
     }
 
     SECTION("satisfies URBG for TinyURBG")
@@ -1085,10 +1085,10 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
     SECTION("result_type matches GENERATOR::result_type")
     {
         STATIC_REQUIRE(std::is_same_v<
-                       Randomizer<random::QualityXorshift64>::result_type,
-                       random::QualityXorshift64::result_type>);
+                       Randomizer<QualityXorshift64>::result_type,
+                       QualityXorshift64::result_type>);
         STATIC_REQUIRE(std::is_same_v<
-                       Randomizer<random::MersenneTwister<std::uint32_t>>::result_type,
+                       Randomizer<MersenneTwister<std::uint32_t>>::result_type,
                        std::uint32_t>);
         STATIC_REQUIRE(std::is_same_v<
                        Randomizer<TinyURBG>::result_type,
@@ -1100,7 +1100,7 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
         STATIC_REQUIRE(Randomizer<>::min() == Randomizer<>::max() - Randomizer<>::max());
         STATIC_REQUIRE(Randomizer<TinyURBG>::min() == std::uint8_t{ 0 });
         STATIC_REQUIRE(Randomizer<TinyURBG>::max() == std::uint8_t{ 255 });
-        STATIC_REQUIRE(Randomizer<random::MersenneTwister<std::uint32_t>>::max()
+        STATIC_REQUIRE(Randomizer<MersenneTwister<std::uint32_t>>::max()
                        == std::numeric_limits<std::uint32_t>::max());
     }
 
@@ -1122,7 +1122,7 @@ TEST_CASE("Randomizer type traits and concepts", "[rng][randomizer][traits]")
 // ============================================================================
 TEST_CASE("Randomizer noexcept contract", "[rng][randomizer][noexcept]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
     using R = Randomizer<>;
 
     STATIC_REQUIRE(noexcept(std::declval<R&>()()));
@@ -1140,12 +1140,12 @@ TEST_CASE("Randomizer noexcept contract", "[rng][randomizer][noexcept]")
 // ============================================================================
 TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("default ctor does not throw")
     {
         REQUIRE_NOTHROW(Randomizer<>{});
-        REQUIRE_NOTHROW(Randomizer<random::QualityXorshift64>{});
+        REQUIRE_NOTHROW(Randomizer<QualityXorshift64>{});
         REQUIRE_NOTHROW(Randomizer<TinyURBG>{});
     }
 
@@ -1172,8 +1172,8 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
     {
         // Randomizer должен быть прозрачной обёрткой: последовательность
         // от seed == последовательность самого GENERATOR'а от того же seed.
-        Randomizer<random::MersenneTwister<std::uint64_t>> wrapped{ 42ull };
-        random::MersenneTwister<std::uint64_t> raw{ 42ull };
+        Randomizer<MersenneTwister<std::uint64_t>> wrapped{ 42ull };
+        MersenneTwister<std::uint64_t> raw{ 42ull };
 
         for (int i = 0; i < 500; ++i)
         {
@@ -1184,8 +1184,8 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
 
     SECTION("explicit seed ctor matches wrapped QualityXorshift64")
     {
-        Randomizer<random::QualityXorshift64> wrapped{ 0xC0FFEEull };
-        random::QualityXorshift64 raw{ 0xC0FFEEull };
+        Randomizer<QualityXorshift64> wrapped{ 0xC0FFEEull };
+        QualityXorshift64 raw{ 0xC0FFEEull };
         for (int i = 0; i < 500; ++i)
             REQUIRE(wrapped() == raw());
     }
@@ -1195,8 +1195,8 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
         std::seed_seq seq1{ 1, 2, 3, 4, 5 };
         std::seed_seq seq2{ 1, 2, 3, 4, 5 };
 
-        Randomizer<random::MersenneTwister<std::uint64_t>> wrapped{ seq1 };
-        random::MersenneTwister<std::uint64_t> raw{ seq2 };
+        Randomizer<MersenneTwister<std::uint64_t>> wrapped{ seq1 };
+        MersenneTwister<std::uint64_t> raw{ seq2 };
 
         for (int i = 0; i < 500; ++i)
         {
@@ -1234,7 +1234,7 @@ TEST_CASE("Randomizer constructors", "[rng][randomizer][construction]")
 // ============================================================================
 TEST_CASE("Randomizer operator() and next()", "[rng][randomizer][output]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("next() == operator() (same state, same value)")
     {
@@ -1262,7 +1262,7 @@ TEST_CASE("Randomizer operator() and next()", "[rng][randomizer][output]")
     SECTION("operator() matches wrapped generator stream")
     {
         Randomizer<> wrapped{ 0xDEADBEEFCAFEULL };
-        random::defaultRandomizer<> raw{ 0xDEADBEEFCAFEULL };
+        defaultRandomizer<> raw{ 0xDEADBEEFCAFEULL };
 
         for (int i = 0; i < 500; ++i)
         {
@@ -1278,7 +1278,7 @@ TEST_CASE("Randomizer operator() and next()", "[rng][randomizer][output]")
 // ============================================================================
 TEST_CASE("Randomizer::mod", "[rng][randomizer][mod]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("returns values in [0, n-1]")
     {
@@ -1368,7 +1368,7 @@ TEST_CASE("Randomizer::mod", "[rng][randomizer][mod]")
 // ============================================================================
 TEST_CASE("Randomizer::sign", "[rng][randomizer][sign]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("only returns +1 or -1")
     {
@@ -1413,7 +1413,7 @@ TEST_CASE("Randomizer::sign", "[rng][randomizer][sign]")
 // ============================================================================
 TEST_CASE("Randomizer::inRange", "[rng][randomizer][inRange]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("returns values in [a, b] inclusive")
     {
@@ -1548,7 +1548,7 @@ TEST_CASE("Randomizer::inRange", "[rng][randomizer][inRange]")
 // ============================================================================
 TEST_CASE("Randomizer::uniform01", "[rng][randomizer][uniform01]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("returns values in [0, 1)")
     {
@@ -1631,7 +1631,7 @@ TEST_CASE("Randomizer::uniform01", "[rng][randomizer][uniform01]")
             static constexpr result_type max() noexcept { return std::numeric_limits<result_type>::max(); }
             result_type operator()() noexcept { return max(); }
         };
-        mylib::Randomizer<MaxURBG> r;
+        Randomizer<MaxURBG> r;
         double v = r.uniform01();
         REQUIRE(v >= 0.0);
         REQUIRE(v < 1.0);   // падает, если не исправлено
@@ -1644,7 +1644,7 @@ TEST_CASE("Randomizer::uniform01", "[rng][randomizer][uniform01]")
 // ============================================================================
 TEST_CASE("Randomizer integration with STL", "[rng][randomizer][stl]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("works as URBG for std::uniform_int_distribution")
     {
@@ -1697,7 +1697,7 @@ TEMPLATE_TEST_CASE("Randomizer works with different GENERATORs",
                    mylib::random::MersenneTwister<std::uint64_t>,
                    TinyURBG)
 {
-    using R = mylib::Randomizer<TestType>;
+    using R = mylib::random::Randomizer<TestType>;
 
     SECTION("default ctor does not throw")
     {
@@ -1745,7 +1745,7 @@ TEMPLATE_TEST_CASE("Randomizer works with different GENERATORs",
 TEST_CASE("Randomizer new distributions — noexcept / determinism",
           "[rng][randomizer][distributions]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
     using R = Randomizer<>;
 
     // Ни один новый метод не noexcept (кроме операторов/next)
@@ -1808,7 +1808,7 @@ TEST_CASE("Randomizer new distributions — noexcept / determinism",
 // ============================================================================
 TEST_CASE("Randomizer::exponential", "[rng][randomizer][exponential]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values are > 0 and finite")
     {
@@ -1847,7 +1847,7 @@ TEST_CASE("Randomizer::exponential", "[rng][randomizer][exponential]")
 
 TEST_CASE("Randomizer::cauchy", "[rng][randomizer][cauchy]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values are finite")
     {
@@ -1895,7 +1895,7 @@ TEST_CASE("Randomizer::cauchy", "[rng][randomizer][cauchy]")
 TEST_CASE("Randomizer::normal01 — statistics and cache",
           "[rng][randomizer][normal]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("mean ≈ 0, stddev ≈ 1")
     {
@@ -1953,7 +1953,7 @@ TEST_CASE("Randomizer::normal01 — statistics and cache",
 TEST_CASE("Randomizer::normal — mean/stddev",
           "[rng][randomizer][normal]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("normal(10, 3) has mean ≈ 10, stddev ≈ 3")
     {
@@ -2007,7 +2007,7 @@ TEST_CASE("Randomizer::normal — mean/stddev",
 // ============================================================================
 TEST_CASE("Randomizer::gamma", "[rng][randomizer][gamma]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values are positive and finite")
     {
@@ -2056,7 +2056,7 @@ TEST_CASE("Randomizer::gamma", "[rng][randomizer][gamma]")
 
 TEST_CASE("Randomizer::chiSquared", "[rng][randomizer][chiSquared]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values are positive")
     {
@@ -2098,7 +2098,7 @@ TEST_CASE("Randomizer::chiSquared", "[rng][randomizer][chiSquared]")
 
 TEST_CASE("Randomizer::studentT", "[rng][randomizer][studentT]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values are finite")
     {
@@ -2129,7 +2129,7 @@ TEST_CASE("Randomizer::studentT", "[rng][randomizer][studentT]")
 
 TEST_CASE("Randomizer::beta", "[rng][randomizer][beta]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values in (0, 1)")
     {
@@ -2167,7 +2167,7 @@ TEST_CASE("Randomizer::beta", "[rng][randomizer][beta]")
 
 TEST_CASE("Randomizer::fisherF", "[rng][randomizer][fisherF]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values are positive")
     {
@@ -2198,7 +2198,7 @@ TEST_CASE("Randomizer::fisherF", "[rng][randomizer][fisherF]")
 // ============================================================================
 TEST_CASE("Randomizer::triangular", "[rng][randomizer][triangular]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("triangular(0.5) — values in [0, 1] per doc, finite")
     {
@@ -2254,7 +2254,7 @@ TEST_CASE("Randomizer::triangular", "[rng][randomizer][triangular]")
 // ============================================================================
 TEST_CASE("Randomizer::levy", "[rng][randomizer][levy]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("levy() values are positive")
     {
@@ -2285,7 +2285,7 @@ TEST_CASE("Randomizer::levy", "[rng][randomizer][levy]")
 
 TEST_CASE("Randomizer::symmetrizedLevy", "[rng][randomizer][symmetrizedLevy]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("outputs both positive and negative values")
     {
@@ -2311,7 +2311,7 @@ TEST_CASE("Randomizer::symmetrizedLevy", "[rng][randomizer][symmetrizedLevy]")
 // ============================================================================
 TEST_CASE("Randomizer::bernoulli", "[rng][randomizer][bernoulli]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("returns only 0 or 1")
     {
@@ -2351,7 +2351,7 @@ TEST_CASE("Randomizer::bernoulli", "[rng][randomizer][bernoulli]")
 
 TEST_CASE("Randomizer::binomial", "[rng][randomizer][binomial]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values in [0, n]")
     {
@@ -2387,7 +2387,7 @@ TEST_CASE("Randomizer::binomial", "[rng][randomizer][binomial]")
 TEST_CASE("Randomizer::geometric and geometric05",
           "[rng][randomizer][geometric]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("geometric(p) always >= 1")
     {
@@ -2447,7 +2447,7 @@ TEST_CASE("Randomizer::geometric and geometric05",
 
 TEST_CASE("Randomizer::poisson", "[rng][randomizer][poisson]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("values are >= 0")
     {
@@ -2488,7 +2488,7 @@ TEST_CASE("Randomizer::poisson", "[rng][randomizer][poisson]")
 // ============================================================================
 TEST_CASE("Randomizer::uniform01<RealType>", "[rng][randomizer][uniform01]")
 {
-    using namespace mylib;
+    using namespace mylib::random;
 
     SECTION("return type matches template argument")
     {
@@ -2524,14 +2524,14 @@ TEST_CASE("mylib::GlobalRNG", "[rng][randomizer][global]")
 {
     SECTION("returns a stable reference")
     {
-        auto& a = mylib::GlobalRNG();
-        auto& b = mylib::GlobalRNG();
+        auto& a = mylib::random::GlobalRNG();
+        auto& b = mylib::random::GlobalRNG();
         REQUIRE(&a == &b);
     }
 
     SECTION("advances on each call")
     {
-        auto& r = mylib::GlobalRNG();
+        auto& r = mylib::random::GlobalRNG();
         auto v1 = r();
         auto v2 = r();
         INFO("v1 = " << v1 << ", v2 = " << v2);
@@ -2540,7 +2540,7 @@ TEST_CASE("mylib::GlobalRNG", "[rng][randomizer][global]")
 
     SECTION("usable with distribution helpers")
     {
-        auto& r = mylib::GlobalRNG();
+        auto& r = mylib::random::GlobalRNG();
         for (int i = 0; i < 1000; ++i)
         {
             auto v = r.inRange(1, 6);
@@ -2810,7 +2810,7 @@ TEST_CASE("AliasMethod::sample(gen) determinism and range",
 
         QualityXorshift64 xs{ 42 };
         mylib::random::MersenneTwister<std::uint64_t> mt{ 42 };
-        mylib::Randomizer<> rnd{ 42 };
+        mylib::random::Randomizer<> rnd{ 42 };
 
         for (int i = 0; i < 200; ++i)
         {
@@ -3622,7 +3622,7 @@ TEST_CASE("SumHeap sampling with explicit generator",
         S sh{ 1u, 2u, 3u };
         QualityXorshift64 xs{ 42 };
         mylib::random::MersenneTwister<std::uint64_t> mt{ 42 };
-        mylib::Randomizer<> rnd{ 42 };
+        mylib::random::Randomizer<> rnd{ 42 };
         for (int i = 0; i < 200; ++i)
         {
             REQUIRE(sh.next(xs)  < 3);
