@@ -31,6 +31,8 @@ using Vector = mylib::Vector<T>;
  */
 inline Vector<double> randomInitVector(size_t n)
 {
+    assert(n > 0);
+
     Vector<double> result(n);
     std::uniform_real_distribution<double> dist{ -1.0, 1.0 };
 
@@ -188,8 +190,10 @@ Vector<size_t> randomCombination(size_t k, size_t n, GEN& rng)
  * `k` items from a stream of unknown or infinite size such that every item has an
  * equal probability of being in the final sample.
  *
- * This class is thread-safe: multiple threads can safely call `processed()` and
- * `getSelectedItems()` concurrently, while `processItem()` uses an exclusive lock.
+ * @note Thread safety model: Safe for concurrent reads.
+ *       The processItem() method uses an exclusive lock, so writes
+ *       from multiple threads are serialized (executed one by one).
+ *       This is required to maintain the mathematical correctness of the algorithm.
  *
  * @tparam T The type of elements to be sampled.
  * @tparam GEN The Uniform Random Bit Generator.
