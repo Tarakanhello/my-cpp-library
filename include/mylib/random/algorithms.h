@@ -328,6 +328,52 @@ Vector<std::ranges::range_value_t<Range>> reservoirSample(const Range& range, st
     return sampler.getSelectedItems();
 }
 
+
+
+/**
+ * @brief Generates the i-th order statistic of a sample of size n from a Uniform(0, 1) distribution.
+ *
+ * Instead of generating and sorting n random numbers, this function uses the mathematical
+ * property that the i-th order statistic of a uniform sample follows a Beta(i, n - i + 1) distribution.
+ *
+ * @param rng The Uniform Random Bit Generator.
+ * @param i The 1-based index of the desired order statistic (1 <= i <= n).
+ * @param n The total sample size (n >= 1).
+ * @return A random double in [0, 1) representing the i-th smallest value in the conceptual sample.
+ *
+ * @note Time complexity is O(1) (assuming the Gamma/Beta generator is O(1)),
+ *       avoiding the O(n log n) cost of sorting.
+ */
+inline double uniformOrderStatistic(std::uniform_random_bit_generator auto& rng, std::size_t i, std::size_t n)
+{
+    assert(i >= 1 && i <= n && "Index i must be in range [1, n]");
+
+    // Бета-распределение с параметрами i и (n - i + 1)
+    // Приводим к double для корректного деления в math-функциях
+    return beta(rng, static_cast<double>(i), static_cast<double>(n - i + 1));
+}
+
+
+
+/**
+ * @brief Convenience overload that uses the global thread-local RNG.
+ *
+ * @param i The 1-based index of the desired order statistic (1 <= i <= n).
+ * @param n The total sample size (n >= 1).
+ * @return A random double in [0, 1) representing the i-th smallest value.
+ *
+ * @note For reproducible tests or parallel simulations, use the overload
+ *       that accepts a specific RNG.
+ */
+inline double uniformOrderStatistic(std::size_t i, std::size_t n)
+{
+    assert(i >= 1 && i <= n && "Index i must be in range [1, n]");
+
+    // Бета-распределение с параметрами i и (n - i + 1)
+    // Приводим к double для корректного деления в math-функциях
+    return beta(random::GlobalRNG(), static_cast<double>(i), static_cast<double>(n - i + 1));
+}
+
 } // end mylib::random namespace
 
 
