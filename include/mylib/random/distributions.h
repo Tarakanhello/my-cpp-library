@@ -17,6 +17,32 @@
 namespace mylib::random
 {
     /**
+     * @brief Generates a uniformly distributed random point inside a unit circle.
+     *
+     * Uses rejection sampling. The point is guaranteed to satisfy x^2 + y^2 <= 1.
+     *
+     * @param rng The Uniform Random Bit Generator.
+     * @return std::pair<double, double> The (x, y) coordinates inside the unit circle.
+     */
+    std::pair<double, double> pointInUnitCircle(std::uniform_random_bit_generator auto& rng)
+    {
+        double x{};
+        double y{};
+
+        std::uniform_real_distribution dist{ -1.0, 1.0 };
+
+        do
+        {
+            x = dist(rng);
+            y = dist(rng);
+        } while (x * x + y * y > 1.0);  // Если точка вне круга — генерируем заново
+
+        return { x, y };
+    }
+
+
+
+    /**
      * @brief Generates either 1 or -1 with a 50/50 probability.
      *
      * @param RNG The Uniform Random Bit Generator to use.
@@ -100,23 +126,19 @@ namespace mylib::random
      */
     std::pair<double, double> normal01(std::uniform_random_bit_generator auto& RNG)
     {
-
-        double a{};
-        double b{};
+        std::pair<double, double> point{};
         double c{};
 
         do
         {
-            a = 2.0 * uniform01(RNG) - 1.0;
-            b = 2.0 * uniform01(RNG) - 1.0;
-
-            c = a * a + b * b;
-        } while( c >= 1.0 || c == 0.0);
+            point = pointInUnitCircle(RNG);
+            c = point.first * point.first + point.second * point.second;
+        } while(c == 0.0);
 
 
         double temp{ std::sqrt(-2.0 * std::log(c) / c) };
 
-        return std::pair{ a * temp, b * temp };
+        return std::pair{ point.first * temp, point.second * temp };
     }
 
     /**
