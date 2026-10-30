@@ -181,25 +181,47 @@ Vector<size_t> randomCombination(size_t k, size_t n, GEN& rng)
 
 
 
-
+/**
+ * @brief A thread-safe reservoir sampler for selecting a random subset from a stream.
+ *
+ * Implements the Reservoir Sampling algorithm (Algorithm R), which allows selecting
+ * `k` items from a stream of unknown or infinite size such that every item has an
+ * equal probability of being in the final sample.
+ *
+ * This class is thread-safe: multiple threads can safely call `processed()` and
+ * `getSelectedItems()` concurrently, while `processItem()` uses an exclusive lock.
+ *
+ * @tparam T The type of elements to be sampled.
+ * @tparam GEN The Uniform Random Bit Generator.
+ */
 template<typename T, std::uniform_random_bit_generator GEN>
 class ReservoirSampler
 {
 private:
-    size_t m_size{};
-    size_t m_processed{ 0 };
-    Vector<T> m_reservoir;
-    GEN& m_gen{};
+    size_t m_size{};            ///< The maximum number of items to sample.
+    size_t m_processed{ 0 };    ///< The total number of items seen so far.
+    Vector<T> m_reservoir;      ///< The actual reservoir storing the selected items.
+    GEN& m_gen{};               ///< Reference to the random number generator.
 
+    /// @brief Mutex to protect concurrent access. `mutable` allows locking in const methods.
     mutable std::shared_mutex m_mutex;
 
 public:
     ReservoirSampler() = delete;
+
+    // Копирование и перемещение запрещены, так как класс содержит ссылку (m_gen)
+    // и мьютекс, который нельзя просто так скопировать.
     ReservoirSampler(const ReservoirSampler&) = delete;
     ReservoirSampler& operator=(const ReservoirSampler&) = delete;
     ReservoirSampler(ReservoirSampler&&) = delete;
     ReservoirSampler& operator=(ReservoirSampler&&) = delete;
 
+    /**
+     * @brief Constructs a ReservoirSampler.
+     *
+     * @param size The number of elements to select (k).
+     * @param gen The random number generator. Must outlive the sampler.
+     */
     ReservoirSampler(size_t size, GEN& gen)
         : m_size{ size }
         , m_gen{ gen }
@@ -207,19 +229,45 @@ public:
         m_reservoir.reserve(size);
     }
 
+    /**
+     * @brief Returns the target sample size (k).
+     */
     size_t size() const noexcept { return m_size; }
+
+    /**
+     * @brief Returns the total number of items processed so far.
+     *
+     * @note Thread-safe. Uses a shared lock, allowing concurrent reads.
+     */
     size_t processed() const
     {
         std::shared_lock<std::shared_mutex> lock(m_mutex);
         return m_processed;
     }
 
+    /**
+     * @brief Returns a copy of the currently selected items.
+     *
+     * @return Vector<T> A copy of the reservoir.
+     * @note Thread-safe. Uses a shared lock, allowing concurrent reads.
+     */
     Vector<T> getSelectedItems() const
     {
         std::shared_lock<std::shared_mutex> lock(m_mutex);
         return m_reservoir;
     }
 
+    /**
+     * @brief Processes a new item from the stream.
+     *
+     * If the reservoir is not yet full, the item is added. Otherwise, it replaces
+     * a random existing item with probability `m_size / m_processed`.
+     *
+     * @tparam U The type of the incoming item (must match T).
+     * @param item The item to process. Uses perfect forwarding to avoid unnecessary copies.
+     *
+     * @note Thread-safe. Uses an exclusive lock (unique_lock), blocking all other operations.
+     */
     template<typename U>
         requires std::same_as<T, std::remove_cvref_t<U>>
     void processItem(U&& item)
@@ -232,8 +280,11 @@ public:
         }
         else
         {
+            // Выбираем случайный индекс от 0 до m_processed - 1.
+            // Если он попадает в диапазон резервуара [0, m_size - 1], заменяем элемент.
             std::uniform_int_distribution<size_t> index{ 0, m_processed - 1 };
             size_t kickedOut{ index(m_gen) };
+
             if(kickedOut < m_size)
             {
                 m_reservoir[kickedOut] = std::forward<U>(item);
@@ -242,12 +293,28 @@ public:
     }
 };
 
+/**
+ * @brief Convenience function to perform reservoir sampling on an existing range.
+ *
+ * Iterates over the given range and returns a random sample of the specified size.
+ *
+ * @tparam Range The type of the input range (must satisfy std::ranges::input_range).
+ * @tparam GEN The Uniform Random Bit Generator.
+ * @param range The input stream of elements.
+ * @param size The number of elements to select.
+ * @param rng The random number generator to use.
+ * @return Vector<std::ranges::range_value_t<Range>> A vector containing the sampled items.
+ *
+ * @note This is a sequential (single-threaded) operation. For parallel processing,
+ *       instantiate and use ReservoirSampler directly.
+ */
 template<std::ranges::input_range Range, std::uniform_random_bit_generator GEN>
-Vector<std::ranges::range_value_t<Range>> reservourSample(const Range& range, std::size_t size, GEN& rng)
+Vector<std::ranges::range_value_t<Range>> reservoirSample(const Range& range, std::size_t size, GEN& rng)
 {
     using T = std::ranges::range_value_t<Range>;
 
-    ReservoirSampler<T, std::remove_reference_t<GEN>> sampler{ size, rng };
+    // Убираем возможную ссылку из типа GEN для корректной подстановки в шаблон
+    ReservoirSampler<T, std::remove_cvref_t<GEN>> sampler{ size, rng };
 
     for(const auto& item : range)
     {

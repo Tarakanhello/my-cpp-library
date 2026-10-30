@@ -1339,6 +1339,7 @@ private:
     T* m_ptr;
 
 public:
+    using iterator_concept  = std::contiguous_iterator_tag;
     using iterator_category = std::random_access_iterator_tag;
     using value_type        = T;
     using difference_type   = std::ptrdiff_t;
@@ -1393,8 +1394,8 @@ public:
         return *this;
     }
 
-    constexpr Iterator operator+(std::ptrdiff_t n) noexcept { return Iterator(m_ptr + n); }
-    constexpr Iterator operator-(std::ptrdiff_t n) noexcept { return Iterator(m_ptr - n); }
+    constexpr Iterator operator+(std::ptrdiff_t n) const noexcept { return Iterator(m_ptr + n); }
+    constexpr Iterator operator-(std::ptrdiff_t n) const noexcept { return Iterator(m_ptr - n); }
     friend constexpr  Iterator operator+(std::ptrdiff_t n, const Iterator& it) noexcept { return it + n; }
 
     constexpr std::ptrdiff_t operator-(const Iterator& other) const noexcept { return m_ptr - other.m_ptr; }
@@ -1417,6 +1418,7 @@ private:
     const T* m_ptr;
 
 public:
+    using iterator_concept  = std::contiguous_iterator_tag;
     using iterator_category = std::random_access_iterator_tag;
     using value_type        = T;
     using difference_type   = std::ptrdiff_t;
@@ -1473,8 +1475,8 @@ public:
         return *this;
     }
 
-    constexpr ConstIterator operator+(std::ptrdiff_t n) noexcept { return ConstIterator(m_ptr + n); }
-    constexpr ConstIterator operator-(std::ptrdiff_t n) noexcept { return ConstIterator(m_ptr - n); }
+    constexpr ConstIterator operator+(std::ptrdiff_t n) const noexcept { return ConstIterator(m_ptr + n); }
+    constexpr ConstIterator operator-(std::ptrdiff_t n) const noexcept { return ConstIterator(m_ptr - n); }
     friend constexpr ConstIterator operator+(std::ptrdiff_t n, const ConstIterator& it) noexcept { return it + n; }
 
     constexpr std::ptrdiff_t operator-(const ConstIterator& other) const noexcept { return m_ptr - other.m_ptr; }

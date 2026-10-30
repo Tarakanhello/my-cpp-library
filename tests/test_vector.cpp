@@ -119,6 +119,18 @@ namespace
 
 TEST_CASE("Vector construction and basis properties", "[vector][construction]")
 {
+    using V = mylib::Vector<int>;
+
+    STATIC_REQUIRE(std::ranges::range<V>);
+    STATIC_REQUIRE(std::ranges::input_range<V>);
+    STATIC_REQUIRE(std::ranges::forward_range<V>);
+    STATIC_REQUIRE(std::ranges::bidirectional_range<V>);
+    STATIC_REQUIRE(std::ranges::random_access_range<V>);
+    STATIC_REQUIRE(std::ranges::sized_range<V>);
+
+    STATIC_REQUIRE(std::random_access_iterator<V::Iterator>);
+    STATIC_REQUIRE(std::random_access_iterator<V::ConstIterator>);
+
     SECTION("Default constructor")
     {
         mylib::Vector<int> v;
