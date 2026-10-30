@@ -216,12 +216,12 @@ public:
 
     Vector<T> getSelectedItems() const
     {
-        std::shared_lock<std::shared_lock> lock(m_mutex);
+        std::shared_lock<std::shared_mutex> lock(m_mutex);
         return m_reservoir;
     }
 
     template<typename U>
-        requres std::same_as<T, std::remove_cvref_t<U>>
+        requires std::same_as<T, std::remove_cvref_t<U>>
     void processItem(U&& item)
     {
         std::unique_lock<std::shared_mutex> lock{ m_mutex };
