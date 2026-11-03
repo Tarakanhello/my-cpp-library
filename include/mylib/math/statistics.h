@@ -239,7 +239,7 @@ IncrementalStatistics MonteCarloSimulate(const FUNCTION& f, size_t nSimulations 
  */
 struct CompatisonResult
 {
-    bool    isSignifivant;  ///< True if the difference is statistically significant.
+    bool    isSignificant;  ///< True if the difference is statistically significant.
     double  meanDifference; ///< The difference between the two means (A - B).
     double  error95;        ///< The 95% error margin for the difference.
 };

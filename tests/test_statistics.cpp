@@ -546,7 +546,7 @@ TEST_CASE("CompatisonResult struct", "[math][statistics][compare][struct]")
     SECTION("aggregate initialization")
     {
         CompatisonResult r{ true, 5.0, 2.0 };
-        REQUIRE(r.isSignifivant == true);
+        REQUIRE(r.isSignificant == true);
         REQUIRE(r.meanDifference == 5.0);
         REQUIRE(r.error95 == 2.0);
     }
@@ -554,7 +554,7 @@ TEST_CASE("CompatisonResult struct", "[math][statistics][compare][struct]")
     SECTION("zero-initialization")
     {
         CompatisonResult r{};
-        REQUIRE(r.isSignifivant == false);
+        REQUIRE(r.isSignificant == false);
         REQUIRE(r.meanDifference == 0.0);
         REQUIRE(r.error95 == 0.0);
     }
@@ -579,7 +579,7 @@ TEST_CASE("compareAlgorithms identical statistics",
         }
 
         auto r = compareAlgorithms(a, b);
-        REQUIRE_FALSE(r.isSignifivant);
+        REQUIRE_FALSE(r.isSignificant);
         REQUIRE(r.meanDifference == 0.0);
         // error95 = 2 * sqrt(var_a/n_a + var_b/n_b)
         // = 2 * sqrt(2.5/5 + 2.5/5) = 2 * sqrt(1.0) = 2.0
@@ -593,7 +593,7 @@ TEST_CASE("compareAlgorithms identical statistics",
         for (int i = 0; i < 10; ++i) b.addValue(1.0);
 
         auto r = compareAlgorithms(a, b);
-        REQUIRE_FALSE(r.isSignifivant);
+        REQUIRE_FALSE(r.isSignificant);
         REQUIRE(r.meanDifference == 0.0);
         // variance = 0 для обеих серий, error95 = 0
         REQUIRE(r.error95 == 0.0);
@@ -621,7 +621,7 @@ TEST_CASE("compareAlgorithms clearly different data",
         }
 
         auto r = compareAlgorithms(a, b);
-        REQUIRE(r.isSignifivant);
+        REQUIRE(r.isSignificant);
         INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
         REQUIRE_THAT(r.meanDifference, WithinRel(-99.0, 0.01));
         REQUIRE(r.error95 < 1.0);   // variance/n очень мала
@@ -641,7 +641,7 @@ TEST_CASE("compareAlgorithms clearly different data",
         auto r = compareAlgorithms(a, b);
         REQUIRE(r.meanDifference == 1.0);
         REQUIRE(r.error95 == 0.0);
-        REQUIRE(r.isSignifivant);   // |1| > 0
+        REQUIRE(r.isSignificant);   // |1| > 0
     }
 }
 
@@ -670,7 +670,7 @@ TEST_CASE("compareAlgorithms statistically indistinguishable",
         INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
         // При |meanDiff| < error95 — не значимо. Обычно так и будет.
         REQUIRE(std::abs(r.meanDifference) <= r.error95);
-        REQUIRE_FALSE(r.isSignifivant);
+        REQUIRE_FALSE(r.isSignificant);
     }
 
     SECTION("one sample shifted by less than error95 -> not significant")
@@ -686,7 +686,7 @@ TEST_CASE("compareAlgorithms statistically indistinguishable",
 
         auto r = compareAlgorithms(a, b);
         INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
-        REQUIRE_FALSE(r.isSignifivant);
+        REQUIRE_FALSE(r.isSignificant);
     }
 }
 
@@ -717,7 +717,7 @@ TEST_CASE("compareAlgorithms numeric properties",
         REQUIRE(r.error95 == 0.0);
         REQUIRE(r.meanDifference == -2.0);   // a - b
         // |−2| > 0 → significant
-        REQUIRE(r.isSignifivant);
+        REQUIRE(r.isSignificant);
     }
 
     SECTION("compareAlgorithms is antisymmetric in meanDifference")
@@ -734,7 +734,7 @@ TEST_CASE("compareAlgorithms numeric properties",
         REQUIRE_THAT(ab.meanDifference, WithinRel(-ba.meanDifference, 1e-12));
         REQUIRE_THAT(ab.error95, WithinRel(ba.error95, 1e-12));
         // Значимость симметрична (|diff| > err)
-        REQUIRE(ab.isSignifivant == ba.isSignifivant);
+        REQUIRE(ab.isSignificant == ba.isSignificant);
     }
 
     SECTION("error95 = 2 * sqrt(SE_a^2 + SE_b^2)")
@@ -994,7 +994,7 @@ TEST_CASE("SpeedTester + MonteCarloSimulate + compareAlgorithms",
 
         auto r = compareAlgorithms(statA, statB);
         INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
-        REQUIRE(r.isSignifivant);
+        REQUIRE(r.isSignificant);
         REQUIRE(r.meanDifference < 0.0);   // A быстрее B
     }
 }
