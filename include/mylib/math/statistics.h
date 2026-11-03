@@ -2,9 +2,11 @@
 #define STATISTICS_H
 
 #include <algorithm>
+#include <concepts>
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <type_traits>
 
 #include "mylib/core/structs.h"
 
@@ -191,6 +193,31 @@ struct IncrementalStatistics
         return NormalSummary{ getMean(), getVariance() / n };
     }
 };
+
+
+
+
+/**
+ * @brief Runs a Monte Carlo simulation and returns the accumulated statistics.
+ *
+ * @tparam FUNCTION The type of the callable. It must be invocable with no arguments
+ *                  and return a value convertible to double.
+ * @param f The function to simulate (e.g., a lambda).
+ * @param nSimulations Number of iterations.
+ * @return IncrementalStatistics containing mean, variance, min, max.
+ */
+template<std::invocable<> FUNCTION>
+    requires std::convertible_to<std::invoke_result_t<FUNCTION>, double>
+IncrementalStatistics MonteCarloSimulate(const FUNCTION& f, size_t nSimulations = 1000)
+{
+    IncrementalStatistics s;
+    for(size_t i{ 0 }; i < nSimulations; ++i )
+    {
+        s.addValue(f());
+    }
+
+    return s;
+}
 
 }
 
