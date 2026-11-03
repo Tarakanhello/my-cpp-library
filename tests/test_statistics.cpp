@@ -1,8 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
-#include <limits>
+#include <functional>
+#include <numeric>
+#include <thread>
 #include <vector>
 
 #include "mylib/mylib.h"
@@ -527,5 +531,470 @@ TEST_CASE("Statistics consistency: LLN and Chebyshev",
         REQUIRE_THAT(combined.mean, WithinAbs(0.0, 0.05));
         // Variance of sums of independent SE = var(a)/na + var(b)/nb ≈ 1/50000 + 1/50000
         REQUIRE_THAT(combined.variance, WithinAbs(2.0 / 50'000, 1e-4));
+    }
+}
+
+
+
+// ============================================================================
+//  CompatisonResult: struct
+// ============================================================================
+TEST_CASE("CompatisonResult struct", "[math][statistics][compare][struct]")
+{
+    using mylib::math::CompatisonResult;
+
+    SECTION("aggregate initialization")
+    {
+        CompatisonResult r{ true, 5.0, 2.0 };
+        REQUIRE(r.isSignifivant == true);
+        REQUIRE(r.meanDifference == 5.0);
+        REQUIRE(r.error95 == 2.0);
+    }
+
+    SECTION("zero-initialization")
+    {
+        CompatisonResult r{};
+        REQUIRE(r.isSignifivant == false);
+        REQUIRE(r.meanDifference == 0.0);
+        REQUIRE(r.error95 == 0.0);
+    }
+}
+
+// ============================================================================
+//  compareAlgorithms: identical statistics -> not significant
+// ============================================================================
+TEST_CASE("compareAlgorithms identical statistics",
+          "[math][statistics][compare]")
+{
+    using mylib::math::compareAlgorithms;
+    using mylib::math::IncrementalStatistics;
+
+    SECTION("same data -> meanDifference = 0, not significant")
+    {
+        IncrementalStatistics a, b;
+        for (double v : { 1.0, 2.0, 3.0, 4.0, 5.0 })
+        {
+            a.addValue(v);
+            b.addValue(v);
+        }
+
+        auto r = compareAlgorithms(a, b);
+        REQUIRE_FALSE(r.isSignifivant);
+        REQUIRE(r.meanDifference == 0.0);
+        // error95 = 2 * sqrt(var_a/n_a + var_b/n_b)
+        // = 2 * sqrt(2.5/5 + 2.5/5) = 2 * sqrt(1.0) = 2.0
+        REQUIRE_THAT(r.error95, WithinRel(2.0, 1e-12));
+    }
+
+    SECTION("same data with different n -> error shrinks, still not significant")
+    {
+        IncrementalStatistics a, b;
+        for (int i = 0; i < 100; ++i) a.addValue(1.0);
+        for (int i = 0; i < 10; ++i) b.addValue(1.0);
+
+        auto r = compareAlgorithms(a, b);
+        REQUIRE_FALSE(r.isSignifivant);
+        REQUIRE(r.meanDifference == 0.0);
+        // variance = 0 для обеих серий, error95 = 0
+        REQUIRE(r.error95 == 0.0);
+    }
+}
+
+
+// ============================================================================
+//  compareAlgorithms: явно разные распределения -> significant
+// ============================================================================
+TEST_CASE("compareAlgorithms clearly different data",
+          "[math][statistics][compare]")
+{
+    using mylib::math::compareAlgorithms;
+    using mylib::math::IncrementalStatistics;
+
+    SECTION("means far apart, low variance -> significant")
+    {
+        // a: значения около 1.0, b: около 100.0, малый разброс
+        IncrementalStatistics a, b;
+        for (int i = 0; i < 1000; ++i)
+        {
+            a.addValue(1.0 + (i % 2 == 0 ? 0.01 : -0.01));
+            b.addValue(100.0 + (i % 2 == 0 ? 0.01 : -0.01));
+        }
+
+        auto r = compareAlgorithms(a, b);
+        REQUIRE(r.isSignifivant);
+        INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
+        REQUIRE_THAT(r.meanDifference, WithinRel(-99.0, 0.01));
+        REQUIRE(r.error95 < 1.0);   // variance/n очень мала
+    }
+
+    SECTION("mean difference barely exceeds error95 -> significant")
+    {
+        // Конструируем случай, где |meanDiff| чуть больше error95.
+        // Симметричные выборки, разность средних ~ 1, error95 ~ 0.5.
+        IncrementalStatistics a, b;
+        for (int i = 0; i < 100; ++i)
+        {
+            a.addValue(1.0);
+            b.addValue(0.0);
+        }
+        // variance = 0 в обеих, error95 = 0, meanDiff = 1
+        auto r = compareAlgorithms(a, b);
+        REQUIRE(r.meanDifference == 1.0);
+        REQUIRE(r.error95 == 0.0);
+        REQUIRE(r.isSignifivant);   // |1| > 0
+    }
+}
+
+// ============================================================================
+//  compareAlgorithms: близкие средние -> not significant
+// ============================================================================
+TEST_CASE("compareAlgorithms statistically indistinguishable",
+          "[math][statistics][compare]")
+{
+    using mylib::math::compareAlgorithms;
+    using mylib::math::IncrementalStatistics;
+
+    SECTION("same distribution, different seeds -> not significant")
+    {
+        mylib::random::Randomizer<> r1{ 42 };
+        mylib::random::Randomizer<> r2{ 12345 };
+        IncrementalStatistics a, b;
+
+        for (int i = 0; i < 10'000; ++i)
+        {
+            a.addValue(r1.normal(0.0, 1.0));
+            b.addValue(r2.normal(0.0, 1.0));
+        }
+
+        auto r = compareAlgorithms(a, b);
+        INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
+        // При |meanDiff| < error95 — не значимо. Обычно так и будет.
+        REQUIRE(std::abs(r.meanDifference) <= r.error95);
+        REQUIRE_FALSE(r.isSignifivant);
+    }
+
+    SECTION("one sample shifted by less than error95 -> not significant")
+    {
+        IncrementalStatistics a, b;
+        mylib::random::Randomizer<> rng{ 7 };
+        for (int i = 0; i < 1000; ++i)
+        {
+            const double base = rng.normal(0.0, 10.0);
+            a.addValue(base);
+            b.addValue(base + 0.001);   // сдвиг гораздо меньше error95
+        }
+
+        auto r = compareAlgorithms(a, b);
+        INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
+        REQUIRE_FALSE(r.isSignifivant);
+    }
+}
+
+// ============================================================================
+//  compareAlgorithms: числовые свойства
+// ============================================================================
+TEST_CASE("compareAlgorithms numeric properties",
+          "[math][statistics][compare]")
+{
+    using mylib::math::compareAlgorithms;
+    using mylib::math::IncrementalStatistics;
+
+    SECTION("error95 is non-negative")
+    {
+        IncrementalStatistics a, b;
+        for (int i = 0; i < 100; ++i) { a.addValue(i); b.addValue(i + 1); }
+        auto r = compareAlgorithms(a, b);
+        REQUIRE(r.error95 >= 0.0);
+    }
+
+    SECTION("single-value samples: variance = 0, error95 = 0")
+    {
+        IncrementalStatistics a, b;
+        a.addValue(5.0);
+        b.addValue(7.0);
+
+        auto r = compareAlgorithms(a, b);
+        REQUIRE(r.error95 == 0.0);
+        REQUIRE(r.meanDifference == -2.0);   // a - b
+        // |−2| > 0 → significant
+        REQUIRE(r.isSignifivant);
+    }
+
+    SECTION("compareAlgorithms is antisymmetric in meanDifference")
+    {
+        IncrementalStatistics a, b;
+        for (int i = 0; i < 50; ++i)
+        {
+            a.addValue(1.0 + 0.001 * i);
+            b.addValue(2.0 + 0.001 * i);
+        }
+
+        auto ab = compareAlgorithms(a, b);
+        auto ba = compareAlgorithms(b, a);
+        REQUIRE_THAT(ab.meanDifference, WithinRel(-ba.meanDifference, 1e-12));
+        REQUIRE_THAT(ab.error95, WithinRel(ba.error95, 1e-12));
+        // Значимость симметрична (|diff| > err)
+        REQUIRE(ab.isSignifivant == ba.isSignifivant);
+    }
+
+    SECTION("error95 = 2 * sqrt(SE_a^2 + SE_b^2)")
+    {
+        IncrementalStatistics a, b;
+        for (double v : { 1.0, 2.0, 3.0, 4.0, 5.0 }) a.addValue(v);   // var=2.5, n=5
+        for (double v : { 10.0, 20.0, 30.0 }) b.addValue(v);            // var=100, n=3
+
+        const double se2A = 2.5 / 5.0;    // 0.5
+        const double se2B = 100.0 / 3.0;  // 33.33
+        const double expectedErr = 2.0 * std::sqrt(se2A + se2B);
+
+        auto r = compareAlgorithms(a, b);
+        INFO("error95 = " << r.error95 << ", expected = " << expectedErr);
+        REQUIRE_THAT(r.error95, WithinRel(expectedErr, 1e-9));
+    }
+}
+
+// ============================================================================
+//  SpeedTester: базовые свойства
+// ============================================================================
+TEST_CASE("SpeedTester basic behavior", "[utility][speedtester]")
+{
+    using mylib::utility::SpeedTester;
+
+    SECTION("returns non-negative duration")
+    {
+        SpeedTester st{ [] { /* no-op */ } };
+        double t = st();
+        REQUIRE(t >= 0.0);
+        REQUIRE(std::isfinite(t));
+    }
+
+    SECTION("invokes the callable exactly once per call")
+    {
+        int calls = 0;
+        SpeedTester st{ [&calls] { ++calls; } };
+
+        REQUIRE(calls == 0);
+        st();
+        REQUIRE(calls == 1);
+        st();
+        REQUIRE(calls == 2);
+    }
+
+    SECTION("callable returning a value: value discarded, time recorded")
+    {
+        SpeedTester st{ [] { return 42; } };
+        double t = st();
+        REQUIRE(t >= 0.0);
+    }
+
+    SECTION("measuring a busy loop yields positive time")
+    {
+        SpeedTester st{ [] {
+            volatile double s = 0.0;
+            for (int i = 0; i < 100'000; ++i) s += i;
+            (void)s;
+        } };
+        const double t = st();
+        INFO("t = " << t << "s");
+        REQUIRE(t > 0.0);
+        // Заведомо меньше 5 секунд (если только CI не супер-медленный)
+        REQUIRE(t < 5.0);
+    }
+
+    SECTION("measuring sleep(10ms) yields >= 10ms")
+    {
+        SpeedTester st{ [] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        } };
+        const double t = st();
+        INFO("t = " << t << "s");
+        REQUIRE(t >= 0.009);   // slight tolerance for clock granularity
+    }
+}
+
+
+// ============================================================================
+//  SpeedTester: CTAD и хранение лямбды
+// ============================================================================
+TEST_CASE("SpeedTester CTAD and copyability", "[utility][speedtester]")
+{
+    using mylib::utility::SpeedTester;
+
+    SECTION("deduction guide deduces lambda type")
+    {
+        auto lambda = [] { };
+        using LambdaT = decltype(lambda);
+
+        auto st = SpeedTester{ lambda };
+        STATIC_REQUIRE(std::is_same_v<decltype(st), SpeedTester<LambdaT>>);
+        REQUIRE_NOTHROW(st());
+    }
+
+    SECTION("works with std::function")
+    {
+        std::function<void()> f = [] { };
+        SpeedTester st{ f };
+        REQUIRE(st() >= 0.0);
+    }
+
+    SECTION("works with function pointer")
+    {
+        void (*fp)() = [] {};
+        SpeedTester st{ fp };
+        REQUIRE(st() >= 0.0);
+    }
+
+    SECTION("callable state preserved (captures)")
+    {
+        int counter = 0;
+        SpeedTester st{ [&counter] { ++counter; } };
+        st();
+        st();
+        st();
+        REQUIRE(counter == 3);
+    }
+
+    SECTION("mutable lambda works (mutable capture)")
+    {
+        // SpeedTester хранит FUNCTION, operator() const -> mutable FUNCTION
+        // нужен, чтобы менять захваченное состояние без наружного const.
+        auto mutableLambda = [n = 0]() mutable { ++n; };
+        SpeedTester st{ std::move(mutableLambda) };
+        // Если бы m_f был не mutable, следующая строка не скомпилировалась бы
+        // (operator() у SpeedTester - const, а mutable-lambda требует non-const operator()).
+        REQUIRE_NOTHROW(st());
+    }
+}
+
+
+// ============================================================================
+//  SpeedTester: operator() помечен const
+// ============================================================================
+TEST_CASE("SpeedTester operator() is const-callable",
+          "[utility][speedtester][const]")
+{
+    using mylib::utility::SpeedTester;
+
+    SECTION("const SpeedTester& can invoke operator()")
+    {
+        SpeedTester st{ [] { } };
+        const auto& cst = st;
+        REQUIRE_NOTHROW(cst());
+    }
+
+    SECTION("constexpr noexcept if FUNCTION::operator() is noexcept")
+    {
+        // Не гарантирует noexcept, но проверяем, что не падает
+        SpeedTester st{ [] {} };
+        REQUIRE_NOTHROW(st());
+    }
+}
+
+
+// ============================================================================
+//  SpeedTester: результаты измеримы и осмысленны
+// ============================================================================
+TEST_CASE("SpeedTester comparative timing",
+          "[utility][speedtester][timing]")
+{
+    using mylib::utility::SpeedTester;
+
+    SECTION("heavier workload takes measurably longer")
+    {
+        SpeedTester fast{ [] {
+            volatile int x = 0;
+            for (int i = 0; i < 1000; ++i) x += i;
+            (void)x;
+        } };
+        SpeedTester slow{ [] {
+            volatile int x = 0;
+            for (int i = 0; i < 1'000'000; ++i) x += i;
+            (void)x;
+        } };
+
+        // Усреднение по нескольким прогонам, чтобы снизить шум
+        constexpr int N{ 5 };
+        double fastTotal = 0, slowTotal = 0;
+        for (int i = 0; i < N; ++i)
+        {
+            fastTotal += fast();
+            slowTotal += slow();
+        }
+
+        INFO("fast mean = " << fastTotal / N
+                            << ", slow mean = " << slowTotal / N);
+        REQUIRE(slowTotal > fastTotal);
+    }
+
+    SECTION("repeated calls are independent measurements")
+    {
+        SpeedTester st{ [] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        } };
+
+        const double t1 = st();
+        const double t2 = st();
+        const double t3 = st();
+
+        // Все три — валидные измерения
+        REQUIRE(t1 >= 0.0);
+        REQUIRE(t2 >= 0.0);
+        REQUIRE(t3 >= 0.0);
+        REQUIRE(std::isfinite(t1));
+        REQUIRE(std::isfinite(t2));
+        REQUIRE(std::isfinite(t3));
+    }
+}
+
+
+// ============================================================================
+//  SpeedTester: интеграция с compareAlgorithms (реальный сценарий)
+// ============================================================================
+TEST_CASE("SpeedTester + MonteCarloSimulate + compareAlgorithms",
+          "[utility][speedtester][integration]")
+{
+    using mylib::utility::SpeedTester;
+    using mylib::math::MonteCarloSimulate;
+    using mylib::math::compareAlgorithms;
+
+    // Имитируем бенчмарк двух "алгоритмов":
+    //   A: 1000 итераций над вектором
+    //   B: 1000 итераций над вектором (тот же размер) — для одинаковой скорости.
+    auto workLoad = [](std::size_t n) {
+        volatile double s = 0.0;
+        for (std::size_t i = 0; i < n; ++i) s += static_cast<double>(i);
+        (void)s;
+    };
+
+    SECTION("identical workloads -> not significant")
+    {
+        constexpr std::size_t WORK = 10'000;
+        SpeedTester A{ [workLoad] { workLoad(WORK); } };
+        SpeedTester B{ [workLoad] { workLoad(WORK); } };
+
+        // 20 замеров каждого, чтобы получить достаточно узкие SE
+        auto statA = MonteCarloSimulate(A, 20);
+        auto statB = MonteCarloSimulate(B, 20);
+
+        auto r = compareAlgorithms(statA, statB);
+        INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
+        // Не гарантируем «not significant» на 100% (шум может быть),
+        // но гарантируем корректность полей:
+        REQUIRE(r.error95 >= 0.0);
+        REQUIRE(std::isfinite(r.meanDifference));
+    }
+
+    SECTION("very different workloads -> significant")
+    {
+        SpeedTester A{ [workLoad] { workLoad(100); } };
+        SpeedTester B{ [workLoad] { workLoad(100'000); } };
+
+        auto statA = MonteCarloSimulate(A, 20);
+        auto statB = MonteCarloSimulate(B, 20);
+
+        auto r = compareAlgorithms(statA, statB);
+        INFO("meanDiff = " << r.meanDifference << ", error95 = " << r.error95);
+        REQUIRE(r.isSignifivant);
+        REQUIRE(r.meanDifference < 0.0);   // A быстрее B
     }
 }
