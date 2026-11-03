@@ -231,6 +231,45 @@ IncrementalStatistics MonteCarloSimulate(const FUNCTION& f, size_t nSimulations 
     return s;
 }
 
+
+
+
+/**
+ * @brief Result of comparing two benchmark runs.
+ */
+struct CompatisonResult
+{
+    bool    isSignifivant;  ///< True if the difference is statistically significant.
+    double  meanDifference; ///< The difference between the two means (A - B).
+    double  error95;        ///< The 95% error margin for the difference.
+};
+
+
+
+/**
+ * @brief Compares two IncrementalStatistics to see if one is significantly faster than the other.
+ *
+ * @param a The statistics of the first algorithm.
+ * @param b The statistics of the second algorithm.
+ * @return ComparisonResult The result of the comparison.
+ */
+inline CompatisonResult compareAlgorithms(const IncrementalStatistics& a, const IncrementalStatistics& b)
+{
+    // 1. Получаем "Стандартные ошибки средних" (Standard Error)
+    // Это колокол, описывающий точность вычисления среднего времени.
+    NormalSummary summaryA{ a.getStandardErrorSummary() };
+    NormalSummary summaryB{ b.getStandardErrorSummary() };
+
+    // 2. Вычисляем разницу (A - B)
+    // При вычитании средние вычитаются, а дисперсии складываются.
+    NormalSummary diff{ summaryA - summaryB };
+
+    // 3. Проверяем, попадает ли ноль в 95% доверительный интервал
+    // Ноль попадает, если модуль разницы меньше нашей погрешности.
+    bool isSignificant{ std::abs(diff.mean) > diff.error95() };
+
+    return{ isSignificant, diff.mean, diff.error95() };
+}
 }
 
 
