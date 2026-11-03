@@ -60,7 +60,7 @@ struct NormalSummary : public ArithmeticType<NormalSummary>
      * @param b The other NormalSummary to add.
      * @return NormalSummary A reference to this object after modification.
      */
-    NormalSummary operator+=(NormalSummary const& b)
+    NormalSummary& operator+=(NormalSummary const& b)
     {
         mean += b.mean;
         variance += b.variance;
@@ -76,7 +76,7 @@ struct NormalSummary : public ArithmeticType<NormalSummary>
      * @param b The other NormalSummary to subtract.
      * @return NormalSummary A reference to this object after modification.
      */
-    NormalSummary operator-=(NormalSummary const& b)
+    NormalSummary& operator-=(NormalSummary const& b)
     {
         mean -= b.mean;
         variance += b.variance;
@@ -91,14 +91,26 @@ struct NormalSummary : public ArithmeticType<NormalSummary>
      * @param a The scaling factor.
      * @return NormalSummary A reference to this object after modification.
      */
-     NormalSummary operator*=(double a)
+     NormalSummary& operator*=(double a)
     {
         mean *= a;
         variance *= a * a;
         return *this;
     }
-};
 
+    NormalSummary operator*(double a) const
+    {
+        NormalSummary temp{ *this };
+        temp *= a;
+        return temp;
+    }
+
+    friend NormalSummary operator*(double a, const NormalSummary& ns)
+    {
+        return ns * a;
+    }
+
+};
 
 
 
@@ -220,5 +232,11 @@ IncrementalStatistics MonteCarloSimulate(const FUNCTION& f, size_t nSimulations 
 }
 
 }
+
+
+
+
+
+
 
 #endif // STATISTICS_H
