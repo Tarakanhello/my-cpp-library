@@ -6,14 +6,17 @@
 #include <cmath>
 #include <cstdint>
 #include <deque>
+#include <list>
 #include <map>
 #include <numeric>
 #include <random>
 #include <set>
+#include <string>
 #include <thread>
 #include <vector>
 
-#include "mylib/random/algorithms.h"
+#include "mylib/mylib.h"
+
 
 // ============================================================================
 //  randomInitVector

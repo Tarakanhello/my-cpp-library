@@ -1,5 +1,5 @@
-#ifndef ALGORITHMS_H
-#define ALGORITHMS_H
+#ifndef ALGORITHMS_RANDOM_H
+#define ALGORITHMS_RANDOM_H
 
 #include <concepts>
 #include <mutex>
@@ -379,4 +379,4 @@ inline double uniformOrderStatistic(std::size_t i, std::size_t n)
 
 
 
-#endif // ALGORITHMS_H
+#endif // ALGORITHMS_RANDOM_H

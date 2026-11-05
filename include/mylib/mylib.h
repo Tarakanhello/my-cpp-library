@@ -3,6 +3,7 @@
 
 #include "mylib/memory/memory.h"
 
+#include "algorithms.h"
 #include "containers.h"
 #include "core.h"
 #include "math.h"
