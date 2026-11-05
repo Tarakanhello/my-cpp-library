@@ -75,33 +75,29 @@ void partition(IT begin, IT end, IT& it_i, IT& it_j, const COMPARATOR& comp = CO
 {
     auto value{ *pickPivot(begin, end, comp) };
 
-    auto leftBound { &it_i };
-    auto rightBound{ &it_j };
-
-    rightBound = std::prev(rightBound);
+    auto leftBound { std::prev(begin) };
+    auto rightBound{ end };
 
     std::optional<IT> lastLeftEqual { std::nullopt };
     std::optional<IT> lastRightEqual{ std::nullopt };
 
+    auto isEqual{ [&comp](const auto& a, const auto& b){
+        return !comp(a, b) && !comp(b, a);
+    } };
+
     while(true)
     {
-        while(comp(*leftBound, value))
-        {
-            leftBound = std::next(leftBound);
-        }
-        while(comp(value, *rightBound))
-        {
-            rightBound = std::prev(rightBound);
-        }
+        while(comp(*(++leftBound), value));
+        while(comp(value, *(--rightBound)));
 
-        if(std::distance(leftBound, rightBound) <= 0)
+        if(leftBound == rightBound || leftBound == std::next(rightBound))
         {
             break;
         }
 
         std::swap(*leftBound, *rightBound);
 
-        if(*leftBound == *value)
+        if(isEqual(*leftBound, value))
         {
             if(!lastLeftEqual.has_value())
             {
@@ -114,7 +110,7 @@ void partition(IT begin, IT end, IT& it_i, IT& it_j, const COMPARATOR& comp = CO
                 std::swap(*(lastLeftEqual.value()), *leftBound);
             }
         }
-        if(*rightBound == value)
+        if(isEqual(*rightBound, value))
         {
             if(!lastRightEqual.has_value())
             {
@@ -131,16 +127,16 @@ void partition(IT begin, IT end, IT& it_i, IT& it_j, const COMPARATOR& comp = CO
 
     if(leftBound == rightBound)
     {
-        leftBound = std::next(leftBound);
-        rightBound = std::prev(rightBound);
+        ++leftBound;
+        --rightBound;
     }
 
     if(lastLeftEqual.has_value())
     {
         for(auto it_k{ begin }; it_k != std::next(lastLeftEqual.value()); ++it_k )
         {
-            std::swap(*it_k, *it_j);
-            --it_j;
+            std::swap(*it_k, *rightBound);
+            --rightBound;
         }
     }
 
@@ -148,10 +144,13 @@ void partition(IT begin, IT end, IT& it_i, IT& it_j, const COMPARATOR& comp = CO
     {
         for(auto it_k{ std::prev(end) }; it_k != std::prev(lastRightEqual.value()); --it_k )
         {
-            std::swap(*it_k, *it_i);
-            ++it_i;
+            std::swap(*it_k, *leftBound);
+            ++leftBound;
         }
     }
+
+    it_i = leftBound;
+    it_j = rightBound;
 }
 
 }
