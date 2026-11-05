@@ -69,9 +69,43 @@ IT pickPivot(IT begin, IT end, const COMPARATOR& comp = COMPARATOR())
 }
 
 
+template<std::forward_iterator IT, typename PREDICATE>
+IT partition(IT begin, IT end, const PREDICATE& pred)
+{
+    while(true)
+    {
+        while(begin != end && pred(*begin))
+        {
+            ++begin;
+        }
+
+        if(begin == end)
+        {
+            break;
+        }
+
+        --end;
+
+        while(begin != end && !pred(*end))
+        {
+            --end;
+        }
+
+        if(begin == end)
+        {
+            break;
+        }
+
+        std::swap(*begin, *end);
+
+        ++begin;
+    }
+
+    return begin;
+}
 
 template<std::bidirectional_iterator IT, typename COMPARATOR = comparators::DefaultComparator<std::iter_value_t<IT>>>
-void partition(IT begin, IT end, IT& it_i, IT& it_j, const COMPARATOR& comp = COMPARATOR())
+void partition3(IT begin, IT end, IT& it_i, IT& it_j, const COMPARATOR& comp = COMPARATOR())
 {
     auto value{ *pickPivot(begin, end, comp) };
 
