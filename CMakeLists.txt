@@ -63,6 +63,9 @@ add_library(mylib STATIC
     include/mylib/random/weighted.h
     include/mylib/random/multivariate.h
     include/mylib/math/statistics.h
+    include/mylib/utility/speed_tester.h
+    include/mylib/utility.h
+
 
 
 )

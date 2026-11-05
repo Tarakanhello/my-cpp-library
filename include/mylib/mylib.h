@@ -6,6 +6,7 @@
 #include "containers.h"
 #include "core.h"
 #include "math.h"
+#include "utility.h"
 #include "mylib/random.h"
 
 #endif // MYLIB_H_INCLUDED

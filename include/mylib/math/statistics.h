@@ -2,9 +2,11 @@
 #define STATISTICS_H
 
 #include <algorithm>
+#include <concepts>
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <type_traits>
 
 #include "mylib/core/structs.h"
 
@@ -58,7 +60,7 @@ struct NormalSummary : public ArithmeticType<NormalSummary>
      * @param b The other NormalSummary to add.
      * @return NormalSummary A reference to this object after modification.
      */
-    NormalSummary operator+=(NormalSummary const& b)
+    NormalSummary& operator+=(NormalSummary const& b)
     {
         mean += b.mean;
         variance += b.variance;
@@ -74,7 +76,7 @@ struct NormalSummary : public ArithmeticType<NormalSummary>
      * @param b The other NormalSummary to subtract.
      * @return NormalSummary A reference to this object after modification.
      */
-    NormalSummary operator-=(NormalSummary const& b)
+    NormalSummary& operator-=(NormalSummary const& b)
     {
         mean -= b.mean;
         variance += b.variance;
@@ -89,14 +91,26 @@ struct NormalSummary : public ArithmeticType<NormalSummary>
      * @param a The scaling factor.
      * @return NormalSummary A reference to this object after modification.
      */
-     NormalSummary operator*=(double a)
+     NormalSummary& operator*=(double a)
     {
         mean *= a;
         variance *= a * a;
         return *this;
     }
-};
 
+    NormalSummary operator*(double a) const
+    {
+        NormalSummary temp{ *this };
+        temp *= a;
+        return temp;
+    }
+
+    friend NormalSummary operator*(double a, const NormalSummary& ns)
+    {
+        return ns * a;
+    }
+
+};
 
 
 
@@ -192,6 +206,76 @@ struct IncrementalStatistics
     }
 };
 
+
+
+
+/**
+ * @brief Runs a Monte Carlo simulation and returns the accumulated statistics.
+ *
+ * @tparam FUNCTION The type of the callable. It must be invocable with no arguments
+ *                  and return a value convertible to double.
+ * @param f The function to simulate (e.g., a lambda).
+ * @param nSimulations Number of iterations.
+ * @return IncrementalStatistics containing mean, variance, min, max.
+ */
+template<std::invocable<> FUNCTION>
+    requires std::convertible_to<std::invoke_result_t<FUNCTION>, double>
+IncrementalStatistics MonteCarloSimulate(const FUNCTION& f, size_t nSimulations = 1000)
+{
+    IncrementalStatistics s;
+    for(size_t i{ 0 }; i < nSimulations; ++i )
+    {
+        s.addValue(f());
+    }
+
+    return s;
 }
+
+
+
+
+/**
+ * @brief Result of comparing two benchmark runs.
+ */
+struct CompatisonResult
+{
+    bool    isSignificant;  ///< True if the difference is statistically significant.
+    double  meanDifference; ///< The difference between the two means (A - B).
+    double  error95;        ///< The 95% error margin for the difference.
+};
+
+
+
+/**
+ * @brief Compares two IncrementalStatistics to see if one is significantly faster than the other.
+ *
+ * @param a The statistics of the first algorithm.
+ * @param b The statistics of the second algorithm.
+ * @return ComparisonResult The result of the comparison.
+ */
+inline CompatisonResult compareAlgorithms(const IncrementalStatistics& a, const IncrementalStatistics& b)
+{
+    // 1. Получаем "Стандартные ошибки средних" (Standard Error)
+    // Это колокол, описывающий точность вычисления среднего времени.
+    NormalSummary summaryA{ a.getStandardErrorSummary() };
+    NormalSummary summaryB{ b.getStandardErrorSummary() };
+
+    // 2. Вычисляем разницу (A - B)
+    // При вычитании средние вычитаются, а дисперсии складываются.
+    NormalSummary diff{ summaryA - summaryB };
+
+    // 3. Проверяем, попадает ли ноль в 95% доверительный интервал
+    // Ноль попадает, если модуль разницы меньше нашей погрешности.
+    bool isSignificant{ std::abs(diff.mean) > diff.error95() };
+
+    return{ isSignificant, diff.mean, diff.error95() };
+}
+}
+
+
+
+
+
+
 
 #endif // STATISTICS_H
