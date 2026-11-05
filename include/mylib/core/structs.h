@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "concepts.h"
+
 
 namespace mylib
 {
@@ -52,7 +54,7 @@ namespace mylib
          * @brief Компаратор по умолчанию, использующий операторы < и ==.
          * @tparam T Тип сравниваемых объектов.
          */
-        template<typename T>
+        template<LessAndEqualComparable T>
         struct DefaultComparator
         {
             /**
@@ -83,7 +85,7 @@ namespace mylib
          * @tparam T         Тип сравниваемых объектов.
          * @tparam COMPARATOR Базовый компаратор (по умолчанию DefaultComparator<T>).
          */
-        template<typename T, typename COMPARATOR = DefaultComparator<T> >
+        template<LessAndEqualComparable T, typename COMPARATOR = DefaultComparator<T> >
         struct ReverseComparator
         {
             COMPARATOR comparator;

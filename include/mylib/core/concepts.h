@@ -52,6 +52,20 @@ concept SeedSequence = requires(T& seq, uint32_t* ptr)
     { seq.generate(ptr, ptr) } -> std::same_as<void>;
 };
 
+
+/**
+ * @brief Concept that detects whether the type provides operator< and operator==
+ *        suitable for use with DefaultComparator.
+ *        (Концепт, проверяющий наличие операторов < и ==, пригодных для
+ *        использования с DefaultComparator.)
+ */
+template<typename T>
+concept LessAndEqualComparable = requires(const T& a, const T& b)
+{
+    { a < b }  -> std::convertible_to<bool>;
+    { a == b } -> std::convertible_to<bool>;
+};
+
 } // end namespace
 
 #endif // CONCEPTS_H
