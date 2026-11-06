@@ -60,7 +60,7 @@ IT pickPivot(IT begin, IT end, const COMPARATOR& comp = COMPARATOR())
     {
         return it_j;
     }
-    else if (comp(*it_i), *(it_k))
+    else if (comp(*it_i, *it_k))
     {
         return it_k;
     }
@@ -69,122 +69,125 @@ IT pickPivot(IT begin, IT end, const COMPARATOR& comp = COMPARATOR())
 }
 
 
+
+/**
+ * @brief Reorders elements in the range [begin, end) based on a unary predicate.
+ *
+ * This function partitions the range into two groups: elements for which the
+ * predicate returns `true` are placed before the elements for which it returns `false`.
+ * The relative order of elements within each group is not preserved (the algorithm is unstable).
+ *
+ * The implementation automatically selects the most efficient strategy based on the
+ * iterator category:
+ * - For bidirectional (or stronger) iterators, it uses the Hoare partition scheme.
+ * - For forward iterators, it uses a Lomuto-like partition scheme.
+ *
+ * @tparam IT The forward iterator type. Must satisfy std::forward_iterator.
+ * @tparam PREDICATE The type of the unary predicate. It must accept the value type
+ *                    of the iterator and return a boolean-convertible value.
+ *
+ * @param begin Iterator to the beginning of the range to partition (inclusive).
+ * @param end Iterator to the end of the range to partition (exclusive).
+ * @param pred Unary predicate that returns `true` if the element should be placed
+ *             in the first group (left side of the partition).
+ *
+ * @return IT An iterator pointing to the first element that does NOT satisfy the predicate.
+ *            If all elements satisfy the predicate, returns `end`.
+ *
+ * @note Time complexity: O(N) comparisons and O(N) swaps (where N = distance(begin, end)).
+ * @note Post-condition: All elements in the range [begin, return_value) satisfy `pred`.
+ * @note Post-condition: All elements in the range [return_value, end) do NOT satisfy `pred`.
+ * @note The predicate must not modify the elements it receives.
+ */
 template<std::forward_iterator IT, typename PREDICATE>
 IT partition(IT begin, IT end, const PREDICATE& pred)
 {
-    while(true)
+    if(begin == end)
     {
-        while(begin != end && pred(*begin))
+        return begin;
+    }
+
+    // Branch 1: Bidirectional iterators (std::vector, std::list, std::deque)
+    // Uses the Hoare partition scheme (two pointers moving towards each other)
+    if constexpr(std::bidirectional_iterator<IT>)
+    {
+        while(true)
         {
+            while(begin != end && pred(*begin))
+            {
+                ++begin;
+            }
+
+            if(begin == end)
+            {
+                break;
+            }
+
+            --end;
+
+            while(begin != end && !pred(*end))
+            {
+                --end;
+            }
+
+            if(begin == end)
+            {
+                break;
+            }
+
+            std::swap(*begin, *end);
+
             ++begin;
         }
+    }
+    // Branch 2: Forward-only iterators (std::forward_list)
+    // Uses a Lomuto-like scheme (a boundary flag and a scanner)
+    else
+    {
+        // `flag` points to the first element that does NOT satisfy the predicate.
+        // Initialized to `end` to act as a sentinel (meaning "no such element found yet").
+        IT flag{ end };
 
-        if(begin == end)
+        while(begin != end)
         {
-            break;
+            if(pred(*begin))
+            {
+                if(flag != end)
+                {
+                    std::swap(*flag, *begin);
+                    ++flag;
+                }
+                ++begin;
+            }
+            else
+            {
+                // If we found an element that does NOT satisfy the predicate,
+                // and the flag hasn't been set yet, this is our partition point.
+                if(flag == end)
+                {
+                    flag = begin;
+                }
+                ++begin;
+            }
+
         }
 
-        --end;
-
-        while(begin != end && !pred(*end))
-        {
-            --end;
-        }
-
-        if(begin == end)
-        {
-            break;
-        }
-
-        std::swap(*begin, *end);
-
-        ++begin;
+        begin = flag;
     }
 
     return begin;
 }
 
 template<std::bidirectional_iterator IT, typename COMPARATOR = comparators::DefaultComparator<std::iter_value_t<IT>>>
-void partition3(IT begin, IT end, IT& it_i, IT& it_j, const COMPARATOR& comp = COMPARATOR())
+std::pair<IT, IT> partition3(IT begin, IT end, const COMPARATOR& comp = COMPARATOR())
 {
     auto value{ *pickPivot(begin, end, comp) };
 
     auto leftBound { std::prev(begin) };
     auto rightBound{ end };
 
-    std::optional<IT> lastLeftEqual { std::nullopt };
-    std::optional<IT> lastRightEqual{ std::nullopt };
 
-    auto isEqual{ [&comp](const auto& a, const auto& b){
-        return !comp(a, b) && !comp(b, a);
-    } };
-
-    while(true)
-    {
-        while(comp(*(++leftBound), value));
-        while(comp(value, *(--rightBound)));
-
-        if(leftBound == rightBound || leftBound == std::next(rightBound))
-        {
-            break;
-        }
-
-        std::swap(*leftBound, *rightBound);
-
-        if(isEqual(*leftBound, value))
-        {
-            if(!lastLeftEqual.has_value())
-            {
-                lastLeftEqual.emplace(begin);
-                std::swap(*(lastLeftEqual.value()), *leftBound);
-            }
-            else
-            {
-                lastLeftEqual = std::next(lastLeftEqual.value());
-                std::swap(*(lastLeftEqual.value()), *leftBound);
-            }
-        }
-        if(isEqual(*rightBound, value))
-        {
-            if(!lastRightEqual.has_value())
-            {
-                lastRightEqual.emplace(std::prev(end));
-                std::swap(*(lastRightEqual.value()), *rightBound);
-            }
-            else
-            {
-                lastRightEqual = std::prev(lastRightEqual.value());
-                std::swap(*(lastRightEqual.value()), *rightBound);
-            }
-        }
-    }
-
-    if(leftBound == rightBound)
-    {
-        ++leftBound;
-        --rightBound;
-    }
-
-    if(lastLeftEqual.has_value())
-    {
-        for(auto it_k{ begin }; it_k != std::next(lastLeftEqual.value()); ++it_k )
-        {
-            std::swap(*it_k, *rightBound);
-            --rightBound;
-        }
-    }
-
-    if(lastRightEqual.has_value())
-    {
-        for(auto it_k{ std::prev(end) }; it_k != std::prev(lastRightEqual.value()); --it_k )
-        {
-            std::swap(*it_k, *leftBound);
-            ++leftBound;
-        }
-    }
-
-    it_i = leftBound;
-    it_j = rightBound;
+    return { leftBound, rightBound };
 }
 
 }
