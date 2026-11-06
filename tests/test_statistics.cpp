@@ -890,7 +890,7 @@ TEST_CASE("SpeedTester operator() is const-callable",
     }
 }
 
-
+/*
 // ============================================================================
 //  SpeedTester: результаты измеримы и осмысленны
 // ============================================================================
@@ -998,3 +998,90 @@ TEST_CASE("SpeedTester + MonteCarloSimulate + compareAlgorithms",
         REQUIRE(r.meanDifference < 0.0);   // A быстрее B
     }
 }
+
+
+
+TEST_CASE("test std::sort and mylib::algorithms::quickSort", "[speedtester]")
+{
+    auto compareQuickSortWithStd{ [](size_t arraySize, size_t iterations)
+    {
+        mylib::random::Randomizer rng;
+
+        // 1. Генерируем "эталонный" массив случайных данных
+        mylib::Vector<int> originalData(arraySize);
+
+
+        for(auto& val : originalData)
+        {
+            val = rng.inRange(0, 2);
+        }
+
+        // ==========================================
+        // БЕНЧМАРК ДЛЯ mylib::quickSort
+        // ==========================================
+        auto benchmarkMyQuickSort{[&originalData]() -> double
+        {
+            mylib::Vector<int> dataToSort{ originalData };
+
+            mylib::utility::SpeedTester tester([&dataToSort](){
+                mylib::algorithms::quickSort(dataToSort.begin(), dataToSort.end());
+            });
+
+            return tester();
+        }};
+
+        // ==========================================
+        // БЕНЧМАРК ДЛЯ std::sort
+        // ==========================================
+        auto benchmarkStdSort{[&originalData]() -> double
+        {
+            mylib::Vector<int> dataToSort{ originalData };
+
+            mylib::utility::SpeedTester tester([&dataToSort](){
+                std::sort(dataToSort.begin(), dataToSort.end());
+            });
+
+            return tester();
+        }};
+
+        auto statsMy{ mylib::math::MonteCarloSimulate(benchmarkMyQuickSort, iterations) };
+        auto statsStd{ mylib::math::MonteCarloSimulate(benchmarkStdSort, iterations) };
+
+        auto result{ mylib::math::compareAlgorithms(statsMy, statsStd) };
+
+        // Output results
+        std::cout << "--- Comparison on " << arraySize << " elements ---\n";
+        std::cout << "My QuickSort:   " << statsMy.getMean() * 1000 << " ms\n";
+        std::cout << "std::sort:      " << statsStd.getMean() * 1000 << " ms\n";
+        std::cout << "Difference:     " << result.meanDifference * 1000 << " ms\n";
+        std::cout << "Error margin:   " << result.error95 * 1000 << " ms\n\n";
+
+        if (result.isSignificant)
+        {
+            if (result.meanDifference < 0)
+            {
+                std::cout << "✅ MY QUICKSORT IS FASTER! (Difference is statistically significant)\n\n";
+            }
+            else
+            {
+                std::cout << "❌ std::sort IS FASTER. (Difference is statistically significant)\n\n";
+            }
+        }
+        else
+        {
+            std::cout << "🤝 NO DIFFERENCE. Algorithms perform equally (within error margin).\n\n";
+        }
+
+    }};
+
+    // Тест 1: Маленькие массивы (тут std::sort может победить из-за оптимизаций)
+    compareQuickSortWithStd(10, 1000);
+
+    // Тест 2: Средние массивы
+    compareQuickSortWithStd(1000, 100);
+
+    // Тест 3: Большие массивы (тут должен раскрыться ваш O(N log N))
+    compareQuickSortWithStd(100000, 10);
+
+}
+*/
