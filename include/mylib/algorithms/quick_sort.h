@@ -5,6 +5,7 @@
 #include <iterator>
 #include <utility>
 
+#include "mylib/algorithms/insertionSort.h"
 #include "mylib/core/structs.h"
 #include "mylib/random/distributions.h"
 
@@ -27,6 +28,7 @@ namespace mylib::algorithms
  * @param comp The comparator used to determine order.
  *
  * @return IT An iterator pointing to the selected pivot element.
+ * @note If `begin == end`, returns `begin`.
  */
 template<std::forward_iterator IT, typename COMPARATOR = comparators::DefaultComparator<std::iter_value_t<IT>>>
 IT pickPivot(IT begin, IT end, const COMPARATOR& comp = COMPARATOR())
@@ -222,25 +224,134 @@ std::pair<IT, IT> partition3(IT begin, IT end, const COMPARATOR& comp = COMPARAT
         return {begin, begin};
     }
 
-    auto pivot{ *pickPivot(begin, end, comp) };
+    IT leftBound{};
+    IT rightBound{};
 
-    // [begin, leftBound) — элементы < pivot
-    auto leftBound { ::mylib::algorithms::partition(begin, end,
-                               [&pivot, &comp](const auto& value)
-                               {
-                                   return comp(value, pivot);
-                               }) };
-    // [leftBound, rightBound) — элементы == pivot
-    // [rightBound, end)       — элементы > pivot
-    auto rightBound{ ::mylib::algorithms::partition(leftBound, end,
-                               [&pivot, &comp](const auto& value)
-                               {
-                                   return !comp(pivot, value);
-                               }) };
+    if constexpr(std::bidirectional_iterator<IT>)
+    {
+        std::iter_swap(begin, pickPivot(begin, end, comp));
+
+        auto nextBegin = std::next(begin);
+        leftBound = ::mylib::algorithms::partition(nextBegin, end,
+                                                   [&begin, &comp](const auto& value)
+                                                   {
+                                                       return comp(value, *begin);
+                                                   });
+
+        if(leftBound == nextBegin)
+        {
+            leftBound = begin;   // нет элементов < pivot
+        }
+        else
+        {
+            leftBound = std::prev(leftBound);
+            std::iter_swap(begin, leftBound);
+        }
+
+        rightBound = ::mylib::algorithms::partition(leftBound, end,
+                                                   [&leftBound, &comp](const auto& value)
+                                                   {
+                                                       return !comp(*leftBound, value);
+                                                   });
+    }
+    else
+    {
+        auto pivot{ *pickPivot(begin, end, comp) };
+
+        // [begin, leftBound) — элементы < pivot
+        leftBound = ::mylib::algorithms::partition(begin, end,
+                                   [&pivot, &comp](const auto& value)
+                                   {
+                                       return comp(value, pivot);
+                                   });
+        // [leftBound, rightBound) — элементы == pivot
+        // [rightBound, end)       — элементы > pivot
+        rightBound = ::mylib::algorithms::partition(leftBound, end,
+                                   [&pivot, &comp](const auto& value)
+                                   {
+                                       return !comp(pivot, value);
+                                   });
+
+    }
 
     return { leftBound, rightBound };
 }
 
+
+
+/**
+ * @brief Sorts a range in-place using the Quicksort algorithm with three-way partitioning.
+ *
+ * The implementation is optimized for different iterator categories:
+ * - For random access iterators, it uses an iterative loop with tail-call elimination,
+ *   switching to insertion sort for ranges smaller than 16 elements.
+ * - For bidirectional iterators (e.g., std::list), it recursively partitions and
+ *   recurses into the smaller side, guaranteeing O(log N) stack depth.
+ *
+ * The three-way partition (see partition3) ensures that elements equal to the pivot
+ * are placed in their final position and excluded from further recursion. This
+ * prevents O(N^2) degradation on inputs with many duplicate keys.
+ *
+ * @tparam IT The bidirectional iterator type.
+ * @tparam COMPARATOR The type of the comparison function object.
+ *
+ * @param begin Iterator to the beginning of the range (inclusive).
+ * @param end Iterator to the end of the range (exclusive).
+ * @param comp The comparator used to determine order.
+ *
+ * @note Average time complexity: O(N log N).
+ * @note Worst-case time complexity: O(N^2) (mitigated by random pivot selection).
+ * @note The algorithm is not stable.
+ * @note Stack depth is O(log N) thanks to tail-call elimination.
+ */
+template<std::bidirectional_iterator IT, typename COMPARATOR = comparators::DefaultComparator<std::iter_value_t<IT>>>
+void quickSort(IT begin, IT end, const COMPARATOR& comp = COMPARATOR())
+{
+    if(begin == end)
+    {
+        return;
+    }
+
+    while(true)
+    {
+        if constexpr(std::random_access_iterator<IT>)
+        {
+            if(std::distance(begin, end) < 17)
+            {
+                break;
+            }
+        }
+        else
+        {
+            if(begin == end)
+            {
+                break;
+            }
+        }
+
+        auto [leftBorder, rightBorder] { partition3(begin, end, comp) };
+
+        auto leftSize { std::distance(begin, leftBorder) };
+        auto rightSize{ std::distance(rightBorder, end ) };
+
+        if(leftSize < rightSize)
+        {
+            quickSort(begin, leftBorder, comp);
+            begin = rightBorder;
+        }
+        else
+        {
+            quickSort(rightBorder, end, comp);
+            end = leftBorder;
+        }
+    }
+
+    if constexpr(std::random_access_iterator<IT>)
+    {
+        insertSort(begin, end, comp);
+    }
 }
+
+} // end namespace
 
 #endif // QUICK_SORT_H
