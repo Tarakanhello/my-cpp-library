@@ -69,7 +69,9 @@ void insertSort(T* vector, size_t left, size_t right, const COMPARATOR& comp = C
  * @param end Iterator to the end of the range to sort (exclusive).
  * @param comp The comparator used to determine order. Defaults to DefaultComparator.
  */
-template<std::bidirectional_iterator IT, typename COMPARATOR = comparators::DefaultComparator<std::iter_value_t<IT>>>
+template<std::bidirectional_iterator IT,
+         typename COMPARATOR = comparators::DefaultComparator<std::iter_value_t<IT>>>
+    requires std::permutable<IT>
 void insertSort(IT begin, IT end, const COMPARATOR& comp = COMPARATOR())
 {
     if(begin == end)

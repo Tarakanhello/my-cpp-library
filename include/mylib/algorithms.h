@@ -3,6 +3,7 @@
 
 
 #include "mylib/algorithms/insertionSort.h"
+#include "mylib/algorithms/quick_sort.h"
 
 #include "mylib/random/algorithms.h"
 

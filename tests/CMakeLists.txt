@@ -17,7 +17,9 @@ add_executable(unit_tests
     test_random.cpp
     test_random_algorithms.cpp
     test_statistics.cpp
-    test_algorithms.h
+    test_algorithms.cpp
+
+
 )
 target_link_libraries(unit_tests PRIVATE mylib Catch2::Catch2WithMain)
 
