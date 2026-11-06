@@ -427,7 +427,10 @@ namespace mylib::random
      */
     int poisson(std::uniform_random_bit_generator auto& RNG, double l)
     {
-        assert(l > 0.0);
+        if(l == 0)
+        {
+            return 0;
+        }
 
         int result = -1;
 
@@ -616,7 +619,9 @@ public:
     template<std::floating_point RealType = double>
     RealType uniform01()
     {
-        return random::uniform01(m_g);
+        std::uniform_real_distribution<RealType> real{ RealType{ 0.0 }, RealType{ 1.0 } };
+
+        return real(m_g);
     }
 
     /**

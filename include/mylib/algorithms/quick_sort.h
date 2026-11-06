@@ -226,14 +226,14 @@ std::pair<IT, IT> partition3(IT begin, IT end, const COMPARATOR& comp = COMPARAT
 
     // [begin, leftBound) — элементы < pivot
     auto leftBound { ::mylib::algorithms::partition(begin, end,
-                               [&pivot, &comp](const std::iter_value_t<IT>& value)
+                               [&pivot, &comp](const auto& value)
                                {
                                    return comp(value, pivot);
                                }) };
     // [leftBound, rightBound) — элементы == pivot
     // [rightBound, end)       — элементы > pivot
     auto rightBound{ ::mylib::algorithms::partition(leftBound, end,
-                               [&pivot, &comp](const std::iter_value_t<IT>& value)
+                               [&pivot, &comp](const auto& value)
                                {
                                    return !comp(pivot, value);
                                }) };

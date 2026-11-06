@@ -536,13 +536,13 @@ namespace mylib
      * @brief Вычисляет новую ёмкость, достаточную для хранения requiredSize элементов.
      * @param requiredSize Необходимый размер.
      * @param maxSize Максимальный размер
-     * @param minCapacity = 0 Минильная емкость
+     * @param minCapacity = 1 Минильная емкость
      * @param source = "" Источник вызова функции
      * @return Новая ёмкость (не менее MinCapacity и не менее requiredSize, степень двойки).
      */
     constexpr inline size_t calculateNewCapacity(size_t requiredSize,
                                                 size_t maxSize,
-                                                size_t minCapacity = 0,
+                                                size_t minCapacity = 1,
                                                 std::string_view source = "")
     {
         if(requiredSize > maxSize)

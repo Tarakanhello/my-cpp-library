@@ -457,7 +457,7 @@ namespace mylib
          */
         template<typename T = uint64_t, typename Z = uint64_t>
             requires std::unsigned_integral<T> && std::unsigned_integral<Z>
-        constexpr void setValue(T& x, Z value, int i = 0, int n = std::numeric_limits<Z>::digits)
+        constexpr void setValue(T& x, Z value, int i = 0, int n = std::min(std::numeric_limits<Z>::digits, std::numeric_limits<T>::digits) )
         {
             constexpr int digits = std::numeric_limits<T>::digits;
             if (i < 0 || i >= digits)
