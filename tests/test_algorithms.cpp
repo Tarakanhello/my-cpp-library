@@ -1278,4 +1278,547 @@ TEST_CASE("partition3 enables quicksort-like recursion",
     }
 }
 
+
+// ============================================================================
+//  quickSort — базовые сценарии
+// ============================================================================
+TEST_CASE("quickSort basic scenarios", "[algorithms][quickSort]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("empty range")
+    {
+        std::vector<int> v;
+        REQUIRE_NOTHROW(quickSort(v.begin(), v.end()));
+        REQUIRE(v.empty());
+    }
+
+    SECTION("single element")
+    {
+        std::vector<int> v{ 42 };
+        quickSort(v.begin(), v.end());
+        REQUIRE(v == std::vector<int>{ 42 });
+    }
+
+    SECTION("two elements — both orders")
+    {
+        std::vector<int> a{ 2, 1 };
+        quickSort(a.begin(), a.end());
+        REQUIRE(a == std::vector<int>{ 1, 2 });
+
+        std::vector<int> b{ 1, 2 };
+        quickSort(b.begin(), b.end());
+        REQUIRE(b == std::vector<int>{ 1, 2 });
+    }
+
+    SECTION("three elements")
+    {
+        std::vector<int> v{ 3, 1, 2 };
+        quickSort(v.begin(), v.end());
+        REQUIRE(v == std::vector<int>{ 1, 2, 3 });
+    }
+
+    SECTION("already sorted")
+    {
+        std::vector<int> v{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+        REQUIRE(v == std::vector<int>{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
+    }
+
+    SECTION("reverse sorted")
+    {
+        std::vector<int> v{ 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+    }
+
+    SECTION("random permutation")
+    {
+        std::vector<int> v{ 5, 2, 8, 1, 9, 3, 7, 4, 6 };
+        quickSort(v.begin(), v.end());
+        REQUIRE(v == std::vector<int>{ 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+    }
+
+    SECTION("negative values")
+    {
+        std::vector<int> v{ -3, 5, -1, 0, -10, 7 };
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+        REQUIRE(v.front() == -10);
+        REQUIRE(v.back() == 7);
+    }
+}
+
+
+// ============================================================================
+//  quickSort — duplicates и all-equal (three-way partition advantage)
+// ============================================================================
+TEST_CASE("quickSort handles duplicates efficiently",
+          "[algorithms][quickSort][duplicates]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("all identical")
+    {
+        std::vector<int> v(1000, 7);
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+        REQUIRE(std::count(v.begin(), v.end(), 7) == 1000);
+    }
+
+    SECTION("few distinct values, many duplicates")
+    {
+        std::vector<int> v;
+        for (int i = 0; i < 1000; ++i) v.push_back(i % 3);   // 0,1,2,0,1,2,...
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+        REQUIRE(std::count(v.begin(), v.end(), 0) == 334);
+        REQUIRE(std::count(v.begin(), v.end(), 1) == 333);
+        REQUIRE(std::count(v.begin(), v.end(), 2) == 333);
+    }
+
+    SECTION("mostly equal with a few different")
+    {
+        std::vector<int> v(1000, 42);
+        v[0] = 1;
+        v[500] = 100;
+        v[999] = -1;
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+        REQUIRE(v.front() == -1);
+        REQUIRE(v.back() == 100);
+    }
+
+    SECTION("worst case for naive quicksort — must not be O(N^2)")
+    {
+        // 100000 all-equal: с three-way partition — O(N), с naive — O(N^2).
+        // Тест не измеряет время, но если бы был O(N^2), тест висел бы минуты.
+        std::vector<int> v(100'000, 5);
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+    }
+}
+
+
+// ============================================================================
+//  quickSort — кастомный компаратор
+// ============================================================================
+TEST_CASE("quickSort with custom comparator",
+          "[algorithms][quickSort][comparator]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("descending order")
+    {
+        std::vector<int> v{ 3, 1, 4, 1, 5, 9, 2, 6 };
+        auto desc = [](int a, int b) { return a > b; };
+        quickSort(v.begin(), v.end(), desc);
+        REQUIRE(std::is_sorted(v.begin(), v.end(), std::greater<int>{}));
+        REQUIRE(v.front() == 9);
+        REQUIRE(v.back() == 1);
+    }
+
+    SECTION("by absolute value")
+    {
+        std::vector<int> v{ -5, 3, -1, 4, -2 };
+        auto byAbs = [](int a, int b) { return std::abs(a) < std::abs(b); };
+        quickSort(v.begin(), v.end(), byAbs);
+        // Ожидаемый порядок по |x|: -1(1), -2(2), 3(3), 4(4), -5(5)
+        REQUIRE(std::abs(v[0]) == 1);
+        REQUIRE(std::abs(v[1]) == 2);
+        REQUIRE(std::abs(v[2]) == 3);
+        REQUIRE(std::abs(v[3]) == 4);
+        REQUIRE(std::abs(v[4]) == 5);
+    }
+
+    SECTION("case-insensitive string comparison")
+    {
+        std::vector<std::string> v{ "banana", "Apple", "cherry", "date" };
+        auto lower = [](const std::string& a, const std::string& b) {
+            std::string la(a), lb(b);
+            std::transform(la.begin(), la.end(), la.begin(), ::tolower);
+            std::transform(lb.begin(), lb.end(), lb.begin(), ::tolower);
+            return la < lb;
+        };
+        quickSort(v.begin(), v.end(), lower);
+        REQUIRE(v[0] == "Apple");
+        REQUIRE(v[3] == "date");
+    }
+}
+
+
+// ============================================================================
+//  quickSort — контейнеры и типы
+// ============================================================================
+TEST_CASE("quickSort with different containers",
+          "[algorithms][quickSort][containers]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("std::array")
+    {
+        std::array<int, 5> arr{ 3, 1, 4, 1, 5 };
+        quickSort(arr.begin(), arr.end());
+        REQUIRE(std::is_sorted(arr.begin(), arr.end()));
+    }
+
+    SECTION("std::list (bidirectional)")
+    {
+        std::list<int> l{ 5, 2, 8, 1, 9, 3, 7, 4, 6 };
+        quickSort(l.begin(), l.end());
+        REQUIRE(std::is_sorted(l.begin(), l.end()));
+        REQUIRE(l.front() == 1);
+        REQUIRE(l.back() == 9);
+    }
+
+    SECTION("std::list with duplicates")
+    {
+        std::list<int> l{ 3, 1, 3, 5, 3, 2, 3, 4 };
+        quickSort(l.begin(), l.end());
+        REQUIRE(std::is_sorted(l.begin(), l.end()));
+        REQUIRE(std::count(l.begin(), l.end(), 3) == 4);
+    }
+
+    SECTION("mylib::Vector")
+    {
+        mylib::Vector<int> v{ 4, 1, 3, 2 };
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+    }
+
+    SECTION("std::string characters")
+    {
+        std::string s{ "dbca" };
+        quickSort(s.begin(), s.end());
+        REQUIRE(s == "abcd");
+    }
+
+    SECTION("std::vector<std::string>")
+    {
+        std::vector<std::string> v{ "epsilon", "alpha", "delta", "beta", "gamma" };
+        quickSort(v.begin(), v.end());
+        REQUIRE(v[0] == "alpha");
+        REQUIRE(v[1] == "beta");
+        REQUIRE(v[2] == "delta");
+        REQUIRE(v[3] == "epsilon");
+        REQUIRE(v[4] == "gamma");
+    }
+}
+
+
+// ============================================================================
+//  quickSort — subrange и границы
+// ============================================================================
+TEST_CASE("quickSort subrange", "[algorithms][quickSort][subrange]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("sort only middle slice, outside untouched")
+    {
+        std::vector<int> v{ 99, 3, 1, 2, 88 };
+        quickSort(v.begin() + 1, v.begin() + 4);   // сортируем {3,1,2}
+        REQUIRE(v[0] == 99);
+        REQUIRE(v[4] == 88);
+        REQUIRE(v[1] == 1);
+        REQUIRE(v[2] == 2);
+        REQUIRE(v[3] == 3);
+    }
+
+    SECTION("empty subrange (begin == end) inside larger array")
+    {
+        std::vector<int> v{ 5, 3, 1, 4, 2 };
+        auto mid = v.begin() + 2;
+        REQUIRE_NOTHROW(quickSort(mid, mid));
+        REQUIRE(v == std::vector<int>{ 5, 3, 1, 4, 2 });
+    }
+}
+
+
+// ============================================================================
+//  quickSort — согласованность с std::sort
+// ============================================================================
+TEST_CASE("quickSort agrees with std::sort",
+          "[algorithms][quickSort][reference]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("random ints, many trials")
+    {
+        std::mt19937 rng{ 42 };
+        std::uniform_int_distribution<int> dist{ -1000, 1000 };
+
+        for (int trial = 0; trial < 30; ++trial)
+        {
+            const size_t N{ 200 };
+            std::vector<int> a(N), b(N);
+            for (auto& x : a) x = dist(rng);
+            b = a;
+
+            quickSort(a.begin(), a.end());
+            std::sort(b.begin(), b.end());
+
+            INFO("trial = " << trial);
+            REQUIRE(a == b);
+        }
+    }
+
+    SECTION("random with duplicates")
+    {
+        std::mt19937 rng{ 7 };
+        std::uniform_int_distribution<int> dist{ 0, 10 };   // много повторов
+
+        for (int trial = 0; trial < 20; ++trial)
+        {
+            const size_t N{ 500 };
+            std::vector<int> a(N), b(N);
+            for (auto& x : a) x = dist(rng);
+            b = a;
+
+            quickSort(a.begin(), a.end());
+            std::sort(b.begin(), b.end());
+            REQUIRE(a == b);
+        }
+    }
+
+    SECTION("random doubles")
+    {
+        std::mt19937 rng{ 42 };
+        std::uniform_real_distribution<double> dist{ -100.0, 100.0 };
+
+        for (int trial = 0; trial < 20; ++trial)
+        {
+            std::vector<double> a(100), b;
+            for (auto& x : a) x = dist(rng);
+            b = a;
+
+            quickSort(a.begin(), a.end());
+            std::sort(b.begin(), b.end());
+            REQUIRE(a == b);
+        }
+    }
+
+    SECTION("strings")
+    {
+        std::mt19937 rng{ 42 };
+        std::vector<std::string> v;
+        for (int i = 0; i < 100; ++i)
+        {
+            v.push_back(std::to_string(rng() % 1000));
+        }
+        auto expected = v;
+        std::sort(expected.begin(), expected.end());
+
+        quickSort(v.begin(), v.end());
+        REQUIRE(v == expected);
+    }
+}
+
+
+// ============================================================================
+//  quickSort — multiset preserved (не stable, но permutation)
+// ============================================================================
+TEST_CASE("quickSort preserves multiset", "[algorithms][quickSort]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("random data, multiset preserved")
+    {
+        std::mt19937 rng{ 42 };
+        std::uniform_int_distribution<int> dist{ -100, 100 };
+
+        for (int trial = 0; trial < 10; ++trial)
+        {
+            std::vector<int> v(1000);
+            for (auto& x : v) x = dist(rng);
+            auto original = v;
+
+            quickSort(v.begin(), v.end());
+
+            std::sort(v.begin(), v.end());
+            std::sort(original.begin(), original.end());
+            INFO("trial = " << trial);
+            REQUIRE(v == original);
+        }
+    }
+}
+
+
+// ============================================================================
+//  quickSort — масштаб / производительность
+// ============================================================================
+TEST_CASE("quickSort large-scale smoke", "[algorithms][quickSort][stress]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("100k random ints sorted correctly")
+    {
+        std::mt19937 rng{ 42 };
+        std::uniform_int_distribution<int> dist{ -1'000'000, 1'000'000 };
+
+        std::vector<int> v(100'000);
+        for (auto& x : v) x = dist(rng);
+
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+    }
+
+    SECTION("already sorted 100k — random pivot avoids O(N^2)")
+    {
+        std::vector<int> v(100'000);
+        std::iota(v.begin(), v.end(), 0);
+
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+        REQUIRE(v.front() == 0);
+        REQUIRE(v.back() == 99'999);
+    }
+
+    SECTION("reverse sorted 100k")
+    {
+        std::vector<int> v(100'000);
+        std::iota(v.rbegin(), v.rend(), 0);   // 99999, 99998, ..., 0
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+    }
+
+    SECTION("many duplicates 100k")
+    {
+        std::vector<int> v(100'000);
+        for (size_t i = 0; i < v.size(); ++i)
+            v[i] = static_cast<int>(i % 10);
+        quickSort(v.begin(), v.end());
+        REQUIRE(std::is_sorted(v.begin(), v.end()));
+    }
+}
+
+
+// ============================================================================
+//  quickSort — std::list (bidirectional specialization)
+// ============================================================================
+TEST_CASE("quickSort on std::list (bidirectional path)",
+          "[algorithms][quickSort][list]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("random ints")
+    {
+        std::mt19937 rng{ 42 };
+        std::uniform_int_distribution<int> dist{ 0, 1000 };
+        std::list<int> l;
+        for (int i = 0; i < 500; ++i) l.push_back(dist(rng));
+
+        quickSort(l.begin(), l.end());
+        REQUIRE(std::is_sorted(l.begin(), l.end()));
+    }
+
+    SECTION("already sorted")
+    {
+        std::list<int> l;
+        for (int i = 0; i < 100; ++i) l.push_back(i);
+        quickSort(l.begin(), l.end());
+        REQUIRE(std::is_sorted(l.begin(), l.end()));
+    }
+
+    SECTION("all identical")
+    {
+        std::list<int> l(1000, 7);
+        quickSort(l.begin(), l.end());
+        REQUIRE(std::count(l.begin(), l.end(), 7) == 1000);
+    }
+
+    SECTION("with duplicates matches std::sort")
+    {
+        std::list<int> l{ 3, 1, 4, 1, 5, 9, 2, 6, 5, 3 };
+        auto expected = std::vector<int>{ l.begin(), l.end() };
+        std::sort(expected.begin(), expected.end());
+
+        quickSort(l.begin(), l.end());
+
+        std::vector<int> actual{ l.begin(), l.end() };
+        REQUIRE(actual == expected);
+    }
+}
+
+
+// ============================================================================
+//  quickSort — стабильность (не требуется, но multiset проверяем)
+// ============================================================================
+namespace
+{
+struct QsTagged
+{
+    int key;
+    int id;
+    bool operator<(const QsTagged& o)  const noexcept { return key < o.key; }
+    bool operator<=(const QsTagged& o) const noexcept { return key <= o.key; }
+    bool operator==(const QsTagged& o) const noexcept { return key == o.key && id == o.id; }
+};
+}
+
+TEST_CASE("quickSort is not stable but preserves key multiset",
+          "[algorithms][quickSort][stability]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("keys sorted, ids may be reordered within same key")
+    {
+        std::vector<QsTagged> v{
+            { 2, 0 }, { 1, 1 }, { 2, 2 }, { 1, 3 }, { 2, 4 }, { 1, 5 }
+        };
+        quickSort(v.begin(), v.end());
+
+        // Ключи отсортированы
+        for (size_t i = 1; i < v.size(); ++i)
+            REQUIRE(v[i - 1].key <= v[i].key);
+
+        // Мультимножество (key, id) сохранено
+        std::vector<std::pair<int,int>> before{
+            { 2, 0 }, { 1, 1 }, { 2, 2 }, { 1, 3 }, { 2, 4 }, { 1, 5 }
+        };
+        std::vector<std::pair<int,int>> after;
+        for (const auto& t : v) after.push_back({ t.key, t.id });
+        std::sort(before.begin(), before.end());
+        std::sort(after.begin(), after.end());
+        REQUIRE(after == before);
+    }
+}
+
+
+// ============================================================================
+//  quickSort — noexcept / signature
+// ============================================================================
+TEST_CASE("quickSort signature", "[algorithms][quickSort][traits]")
+{
+    using mylib::algorithms::quickSort;
+
+    SECTION("returns void")
+    {
+        std::vector<int> v{ 2, 1 };
+        STATIC_REQUIRE(std::is_void_v<
+                       decltype(quickSort(v.begin(), v.end()))
+                       >);
+    }
+
+    SECTION("accepts bidirectional iterators")
+    {
+        STATIC_REQUIRE(requires(std::list<int>& l) {
+            quickSort(l.begin(), l.end());
+        });
+        STATIC_REQUIRE(requires(std::vector<int>& v) {
+            quickSort(v.begin(), v.end());
+        });
+        STATIC_REQUIRE(requires(std::array<int, 5>& a) {
+            quickSort(a.begin(), a.end());
+        });
+    }
+
+    SECTION("accepts custom comparator")
+    {
+        STATIC_REQUIRE(requires(std::vector<int>& v) {
+            quickSort(v.begin(), v.end(), std::greater<int>{});
+        });
+    }
+}
+
 #endif // TEST_ALGORITHMS_H
