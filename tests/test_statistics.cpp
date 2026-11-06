@@ -890,7 +890,7 @@ TEST_CASE("SpeedTester operator() is const-callable",
     }
 }
 
-/*
+
 // ============================================================================
 //  SpeedTester: результаты измеримы и осмысленны
 // ============================================================================
@@ -1008,12 +1008,12 @@ TEST_CASE("test std::sort and mylib::algorithms::quickSort", "[speedtester]")
         mylib::random::Randomizer rng;
 
         // 1. Генерируем "эталонный" массив случайных данных
-        mylib::Vector<int> originalData(arraySize);
+        mylib::List<int> originalData(arraySize);
 
 
         for(auto& val : originalData)
         {
-            val = rng.inRange(0, 2);
+            val = rng.inRange(0, 1'000'000);
         }
 
         // ==========================================
@@ -1021,7 +1021,7 @@ TEST_CASE("test std::sort and mylib::algorithms::quickSort", "[speedtester]")
         // ==========================================
         auto benchmarkMyQuickSort{[&originalData]() -> double
         {
-            mylib::Vector<int> dataToSort{ originalData };
+            mylib::List<int> dataToSort{ originalData };
 
             mylib::utility::SpeedTester tester([&dataToSort](){
                 mylib::algorithms::quickSort(dataToSort.begin(), dataToSort.end());
@@ -1035,7 +1035,7 @@ TEST_CASE("test std::sort and mylib::algorithms::quickSort", "[speedtester]")
         // ==========================================
         auto benchmarkStdSort{[&originalData]() -> double
         {
-            mylib::Vector<int> dataToSort{ originalData };
+            mylib::ChunkedArray<int> dataToSort{ originalData };
 
             mylib::utility::SpeedTester tester([&dataToSort](){
                 std::sort(dataToSort.begin(), dataToSort.end());
@@ -1081,7 +1081,7 @@ TEST_CASE("test std::sort and mylib::algorithms::quickSort", "[speedtester]")
     compareQuickSortWithStd(1000, 100);
 
     // Тест 3: Большие массивы (тут должен раскрыться ваш O(N log N))
-    compareQuickSortWithStd(100000, 10);
+    compareQuickSortWithStd(100'000, 10);
 
 }
-*/
+

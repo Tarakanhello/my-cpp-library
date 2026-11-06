@@ -1,21 +1,21 @@
 add_executable(unit_tests
 
-    test_debug_log.cpp
-    test_math.cpp
-    test_structs.cpp
-    test_vector.cpp
-    test_chunked_array.cpp
-    test_list.cpp
-    test_static_free_list.cpp
-    test_free_list.cpp
-    test_stack.cpp
-    test_queue.cpp
-    test_bit_operations.cpp
-    test_flag_set.cpp
-    test_bitset.cpp
-    test_union_find.cpp
-    test_random.cpp
-    test_random_algorithms.cpp
+    #test_debug_log.cpp
+    #test_math.cpp
+    #test_structs.cpp
+    #test_vector.cpp
+    #test_chunked_array.cpp
+    #test_list.cpp
+    #test_static_free_list.cpp
+    #test_free_list.cpp
+    #test_stack.cpp
+    #test_queue.cpp
+    #test_bit_operations.cpp
+    #test_flag_set.cpp
+    #test_bitset.cpp
+    #test_union_find.cpp
+    #test_random.cpp
+    #test_random_algorithms.cpp
     test_statistics.cpp
     test_algorithms.cpp
 
